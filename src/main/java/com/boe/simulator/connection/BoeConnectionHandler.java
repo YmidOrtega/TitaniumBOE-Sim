@@ -14,7 +14,7 @@ import java.util.logging.Level;
 
 public class BoeConnectionHandler {
     private static final Logger LOGGER = Logger.getLogger(BoeConnectionHandler.class.getName());
-    private static final short MESSAGE_LENGTH_FIELD_SIZE = 4;
+    private static final short MESSAGE_LENGTH_FIELD_SIZE = 2;
     
     private final String host;
     private final int port;
@@ -95,20 +95,19 @@ public class BoeConnectionHandler {
     }
 
     private byte[] readMessage() throws IOException {
-        byte[] lengthBytes = new byte[2];
-        readFully(lengthBytes, 0, 2);
+        byte[] lengthBytes = new byte[MESSAGE_LENGTH_FIELD_SIZE];
+        readFully(lengthBytes, 0, MESSAGE_LENGTH_FIELD_SIZE);
         
         ByteBuffer lengthBuffer = ByteBuffer.wrap(lengthBytes).order(ByteOrder.LITTLE_ENDIAN);
         int messageLength = lengthBuffer.getShort() & 0xFFFF;
         
-        if (messageLength <= 2) throw new IOException("Invalid message length: " + messageLength);
+        if (messageLength < MESSAGE_LENGTH_FIELD_SIZE) throw new IOException("Invalid message length: " + messageLength);
         
         byte[] message = new byte[messageLength];
-
-        System.arraycopy(lengthBytes, 0, message, 0, 2); 
-
-        int remainingLength = messageLength - 2;
-        if (remainingLength > 0)  readFully(message, 2, remainingLength);
+        System.arraycopy(lengthBytes, 0, message, 0, MESSAGE_LENGTH_FIELD_SIZE);
+        
+        int remainingLength = messageLength - MESSAGE_LENGTH_FIELD_SIZE;
+        if (remainingLength > 0) readFully(message, MESSAGE_LENGTH_FIELD_SIZE, remainingLength);
         
         return message;
     }
