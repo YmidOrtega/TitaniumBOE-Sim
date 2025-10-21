@@ -1,8 +1,9 @@
 package com.boe.simulator.connection;
 
+import com.boe.simulator.protocol.message.BoeMessage;
+import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
+
 import java.net.Socket;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -14,11 +15,11 @@ import java.util.logging.Level;
 
 public class BoeConnectionHandler {
     private static final Logger LOGGER = Logger.getLogger(BoeConnectionHandler.class.getName());
-    private static final short MESSAGE_LENGTH_FIELD_SIZE = 2;
     
     private final String host;
     private final int port;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final BoeMessageSerializer serializer = new BoeMessageSerializer();
     
     private Socket socket;
     private InputStream inputStream;
@@ -84,43 +85,34 @@ public class BoeConnectionHandler {
         }, executor);
     }
 
-    private void readFully(byte[] buffer, int offset, int length) throws IOException {
-        int bytesRead = 0;
-        while (bytesRead < length) {
-            int count = inputStream.read(buffer, offset + bytesRead, length - bytesRead);
-            if (count < 0) throw new IOException("End of stream reached before reading fully.");
-
-            bytesRead += count;
-        }
-    }
-
-    private byte[] readMessage() throws IOException {
-        byte[] lengthBytes = new byte[MESSAGE_LENGTH_FIELD_SIZE];
-        readFully(lengthBytes, 0, MESSAGE_LENGTH_FIELD_SIZE);
-        
-        ByteBuffer lengthBuffer = ByteBuffer.wrap(lengthBytes).order(ByteOrder.LITTLE_ENDIAN);
-        int messageLength = lengthBuffer.getShort() & 0xFFFF;
-        
-        if (messageLength < MESSAGE_LENGTH_FIELD_SIZE) throw new IOException("Invalid message length: " + messageLength);
-        
-        byte[] message = new byte[messageLength];
-        System.arraycopy(lengthBytes, 0, message, 0, MESSAGE_LENGTH_FIELD_SIZE);
-        
-        int remainingLength = messageLength - MESSAGE_LENGTH_FIELD_SIZE;
-        if (remainingLength > 0) readFully(message, MESSAGE_LENGTH_FIELD_SIZE, remainingLength);
-        
-        return message;
-    }
-
-    public CompletableFuture<Void> sendMessage(byte[] message) {
+    public CompletableFuture<Void> sendMessage(BoeMessage message) {
         return CompletableFuture.runAsync(() -> {
             synchronized (this) {
                 try {
                     if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
                     
-                    outputStream.write(message);
+                    byte[] data = serializer.serialize(message);
+                    outputStream.write(data);
                     outputStream.flush();
-                    LOGGER.fine("Message sent, length: " + message.length);
+                    LOGGER.fine("Message sent, length: " + message.getLength());
+                } catch (IOException e) {
+                    LOGGER.log(Level.SEVERE, "Error sending message", e);
+                    throw new RuntimeException(e);
+                }
+            }
+        }, executor);
+    }
+
+    public CompletableFuture<Void> sendMessage(byte[] payload) {
+        return CompletableFuture.runAsync(() -> {
+            synchronized (this) {
+                try {
+                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
+                    
+                    byte[] data = serializer.serialize(payload);
+                    outputStream.write(data);
+                    outputStream.flush();
+                    LOGGER.fine("Message sent, length: " + data.length);
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
@@ -143,14 +135,13 @@ public class BoeConnectionHandler {
 
             while (running) {
                 try {
-                    byte[] message;
+                    BoeMessage message;
                     synchronized (this) {
                         if (!running || socket == null || socket.isClosed()) break;
-                        
-                        message = readMessage();
+                        message = serializer.deserialize(inputStream);
                     }
                     
-                    LOGGER.info("Received message of length: " + message.length);
+                    LOGGER.info("Received message: " + message);
                     processMessage(message);
 
                 } catch (IOException e) {
@@ -168,12 +159,10 @@ public class BoeConnectionHandler {
         }, executor);
     }
 
-    public CompletableFuture<Void> stopListener() {
-        return CompletableFuture.runAsync(() -> {
-            synchronized (this) {
-                running = false;
-            }
-        }, executor);
+    public void stopListener() {
+        synchronized (this) {
+            running = false;
+        }
     }
 
     public boolean isConnected() {
@@ -182,9 +171,8 @@ public class BoeConnectionHandler {
         }
     }
 
-    protected void processMessage(byte[] message) {
-        // Override this method to handle incoming messages
-        LOGGER.info("Processing message of length: " + message.length);
+    protected void processMessage(BoeMessage message) {
+        LOGGER.info("Processing message: " + message);
     }
 
     public void shutdown() {
