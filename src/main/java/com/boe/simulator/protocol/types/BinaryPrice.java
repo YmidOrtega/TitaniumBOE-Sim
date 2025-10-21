@@ -16,8 +16,8 @@ public class BinaryPrice {
         if(price == null) {
             throw new IllegalArgumentException("Price cannot be null");
         }
-        BigDecimal bigDecimalPrice = price.multiply(BigDecimal.valueOf(10000));
-        long binaryPrice = bigDecimalPrice.setScale(4, RoundingMode.HALF_UP).longValueExact();
+        BigDecimal bigDecimalPrice = price.setScale(4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(10000));
+        long binaryPrice = bigDecimalPrice.longValueExact();
         return new BinaryPrice(binaryPrice);
     }
 
