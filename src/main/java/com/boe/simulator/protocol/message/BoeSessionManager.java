@@ -79,8 +79,8 @@ public class BoeSessionManager {
             LoginRequestMessage loginMessage = new LoginRequestMessage(
                 username, 
                 password, 
-                sessionSubID, 
-                0
+                sessionSubID,
+                    (byte) 0
             );
             
             byte[] messageBytes = loginMessage.toBytes();
@@ -141,7 +141,7 @@ public class BoeSessionManager {
 
     public String generateSessionSubID() {
         int sessionId = sessionIdCounter.getAndIncrement();
-        this.sessionSubID = String.format("SESSION-%06d", sessionId);
+        this.sessionSubID = String.format("S%03d", sessionId % 1000); // Use modulo to keep it 3 digits
         return this.sessionSubID;
     }
 
