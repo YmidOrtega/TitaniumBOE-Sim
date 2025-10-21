@@ -6,12 +6,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public class LoginRequestMessage {
+    // Message Type según el PDF
     private static final byte MESSAGE_TYPE = 0x37;
     
     // Start of Message marker
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
     
+    // Field sizes según el PDF
     private static final int SESSION_SUB_ID_SIZE = 4;
     private static final int USERNAME_SIZE = 4;
     private static final int PASSWORD_SIZE = 10;
@@ -30,36 +32,39 @@ public class LoginRequestMessage {
     }
 
     public LoginRequestMessage(String username, String password, String sessionSubID) {
-        this(username, password, sessionSubID, 0); 
+        this(username, password, sessionSubID, (byte) 0);
     }
 
-    public LoginRequestMessage(String username, String password, String sessionSubID, int matchingUnit) {
+    public LoginRequestMessage(String username, String password, String sessionSubID, byte matchingUnit) {
         if (username == null || username.isEmpty() || username.length() > USERNAME_SIZE) throw new IllegalArgumentException("Username must be between 1 and " + USERNAME_SIZE + " characters");
         if (password == null || password.isEmpty() || password.length() > PASSWORD_SIZE) throw new IllegalArgumentException("Password must be between 1 and " + PASSWORD_SIZE + " characters");
-        if (sessionSubID != null && sessionSubID.length() > SESSION_SUB_ID_SIZE) throw new IllegalArgumentException(
-                "Session Sub ID must be at most " + SESSION_SUB_ID_SIZE + " characters");
+        if (sessionSubID != null && sessionSubID.length() > SESSION_SUB_ID_SIZE) throw new IllegalArgumentException("Session Sub ID must be at most " + SESSION_SUB_ID_SIZE + " characters");
+        
         this.username = username;
         this.password = password;
         this.sessionSubID = sessionSubID != null ? sessionSubID : "";
-        this.matchingUnit = 0;
+        this.matchingUnit = matchingUnit;
         this.sequenceNumber = 1;
-        this.numberOfParamGroups = 0;
+        this.numberOfParamGroups = 0; 
     }
 
     public byte[] toBytes() {
-        // Calculate message length:
-        // StartOfMessage(2) + MessageLength(2) + MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + SessionSubID(4) + Username(4) + Password(10) + NumberOfParamGroups(1)
-        int messageLength = 2 + 2 + 1 + 1 + 4 + SESSION_SUB_ID_SIZE + USERNAME_SIZE + PASSWORD_SIZE + 1;
+    
+        int payloadLength = 1 + 1 + 4 + SESSION_SUB_ID_SIZE + USERNAME_SIZE + PASSWORD_SIZE + 1;
+        int messageLength = 2 + payloadLength; // 2 for MessageLength field itself
         
-        ByteBuffer buffer = ByteBuffer.allocate(messageLength);
+        // Total buffer = StartOfMessage(2) + MessageLength(2) + Payload
+        int totalLength = 2 + messageLength;
+        
+        ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         
         // Start of Message (2 bytes)
         buffer.put(START_OF_MESSAGE_1);
         buffer.put(START_OF_MESSAGE_2);
         
-        // Message Length (2 bytes) - length from MessageType onwards
-        buffer.putShort((short) (messageLength - 4));
+        // Message Length (2 bytes) - includes itself
+        buffer.putShort((short) messageLength);
         
         // Message Type (1 byte)
         buffer.put(MESSAGE_TYPE);
