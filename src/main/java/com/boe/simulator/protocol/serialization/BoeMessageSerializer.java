@@ -8,43 +8,73 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public class BoeMessageSerializer {
-    private static final short MESSAGE_LENGTH_FIELD_SIZE = 2;
+    // Start of Message marker
+    private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
+    private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
+    private static final int HEADER_SIZE = 4;
 
     public byte[] serialize(BoeMessage message) {
         return message.getData();
     }
 
     public byte[] serialize(byte[] payload) {
-        int totalLength = MESSAGE_LENGTH_FIELD_SIZE + payload.length;
+        if (payload == null || payload.length == 0) throw new IllegalArgumentException("Payload cannot be null or empty");
+    
+        // MessageLength = 2 (length field itself) + payload length
+        int messageLength = 2 + payload.length;
         
-        if (totalLength > 0xFFFF) throw new IllegalArgumentException("Message too large: " + totalLength + " bytes");
+        // Total message = StartOfMessage(2) + MessageLength(2) + Payload
+        int totalLength = 2 + messageLength;
+        
+        if (messageLength > 0xFFFF) throw new IllegalArgumentException("Message too large: " + messageLength + " bytes");
         
         byte[] message = new byte[totalLength];
+        ByteBuffer buffer = ByteBuffer.wrap(message).order(ByteOrder.LITTLE_ENDIAN);
         
-        ByteBuffer buffer = ByteBuffer.wrap(message, 0, MESSAGE_LENGTH_FIELD_SIZE).order(ByteOrder.LITTLE_ENDIAN);
-        buffer.putShort((short) totalLength);
+        // Start of Message (2 bytes)
+        buffer.put(START_OF_MESSAGE_1);
+        buffer.put(START_OF_MESSAGE_2);
         
-        System.arraycopy(payload, 0, message, MESSAGE_LENGTH_FIELD_SIZE, payload.length);
+        // Message Length (2 bytes) - includes itself + payload
+        buffer.putShort((short) messageLength);
+        
+        // Payload
+        buffer.put(payload);
         
         return message;
     }
 
     public BoeMessage deserialize(InputStream inputStream) throws IOException {
-        byte[] lengthBytes = new byte[MESSAGE_LENGTH_FIELD_SIZE];
-        readFully(inputStream, lengthBytes, 0, MESSAGE_LENGTH_FIELD_SIZE);
+        // Read Start of Message (2 bytes)
+        byte[] startMarker = new byte[2];
+        readFully(inputStream, startMarker, 0, 2);
+        
+        if (startMarker[0] != START_OF_MESSAGE_1 || startMarker[1] != START_OF_MESSAGE_2) throw new IOException("Invalid start of message marker: 0x" + String.format("%02X%02X", startMarker[0], startMarker[1]));
+        
+        // Read Message Length (2 bytes)
+        byte[] lengthBytes = new byte[2];
+        readFully(inputStream, lengthBytes, 0, 2);
         
         ByteBuffer lengthBuffer = ByteBuffer.wrap(lengthBytes).order(ByteOrder.LITTLE_ENDIAN);
         int messageLength = lengthBuffer.getShort() & 0xFFFF;
+
+        final int MIN_PROCESSABLE_LENGTH = 8;
         
-        if (messageLength < MESSAGE_LENGTH_FIELD_SIZE) throw new IOException("Invalid message length: " + messageLength);
+        if (messageLength < MIN_PROCESSABLE_LENGTH) throw new IOException("Invalid message length: " + messageLength);
+
+        int payloadLength = messageLength - 2;
         
-        byte[] messageData = new byte[messageLength];
-        System.arraycopy(lengthBytes, 0, messageData, 0, MESSAGE_LENGTH_FIELD_SIZE);
+        // Read message body
+        byte[] messageBody = new byte[payloadLength];
+        readFully(inputStream, messageBody, 0, payloadLength);
         
-        int remainingLength = messageLength - MESSAGE_LENGTH_FIELD_SIZE;
-        if (remainingLength > 0) readFully(inputStream, messageData, MESSAGE_LENGTH_FIELD_SIZE, remainingLength);
+        // Reconstruct full message including header
+        byte[] fullMessage = new byte[HEADER_SIZE + payloadLength];
+        System.arraycopy(startMarker, 0, fullMessage, 0, 2);
+        System.arraycopy(lengthBytes, 0, fullMessage, 2, 2);
+        System.arraycopy(messageBody, 0, fullMessage, HEADER_SIZE, payloadLength);
         
-        return new BoeMessage(messageData);
+        return new BoeMessage(fullMessage);
     }
 
     private void readFully(InputStream inputStream, byte[] buffer, int offset, int length) throws IOException {
