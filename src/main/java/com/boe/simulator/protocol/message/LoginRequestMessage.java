@@ -28,7 +28,7 @@ public class LoginRequestMessage {
     private byte numberOfParamGroups;
 
     public LoginRequestMessage(String username, String password) {
-        this(username, password, "");
+        this(username, password, "", (byte) 0);
     }
 
     public LoginRequestMessage(String username, String password, String sessionSubID) {
@@ -44,14 +44,17 @@ public class LoginRequestMessage {
         this.password = password;
         this.sessionSubID = sessionSubID != null ? sessionSubID : "";
         this.matchingUnit = matchingUnit;
-        this.sequenceNumber = 1;
-        this.numberOfParamGroups = 0; 
+        this.sequenceNumber = 0;
+        this.numberOfParamGroups = 0;
     }
 
     public byte[] toBytes() {
-    
+        // Calculate message length:
+        // MessageLength = 2 (itself) + MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + SessionSubID(4) + Username(4) + Password(10) + NumberOfParamGroups(1)
+        // Total payload (after MessageLength field) = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes
+        // MessageLength = 2 + 25 = 27
         int payloadLength = 1 + 1 + 4 + SESSION_SUB_ID_SIZE + USERNAME_SIZE + PASSWORD_SIZE + 1;
-        int messageLength = 2 + payloadLength; // 2 for MessageLength field itself
+        int messageLength = 2 + payloadLength;
         
         // Total buffer = StartOfMessage(2) + MessageLength(2) + Payload
         int totalLength = 2 + messageLength;
