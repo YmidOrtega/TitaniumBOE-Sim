@@ -94,7 +94,7 @@ public class BoeConnectionHandler {
                     byte[] data = serializer.serialize(message);
                     outputStream.write(data);
                     outputStream.flush();
-                    LOGGER.fine("Message sent, length: " + message.getMessageLength());
+                    LOGGER.fine("Message sent, length: " + message.toString().length());
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
