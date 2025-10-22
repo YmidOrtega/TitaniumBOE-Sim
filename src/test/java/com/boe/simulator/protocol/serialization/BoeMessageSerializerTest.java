@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
@@ -91,12 +92,11 @@ class BoeMessageSerializerTest {
     void deserialize_shouldReconstructBoeMessageCorrectly() throws IOException {
         byte[] variableData = "Test Message".getBytes();
 
-        final int FIXED_FIELDS_SIZE = 6; // Type (1) + Unit (1) + SeqNum (4)
+        final int FIXED_FIELDS_SIZE = 6;
         byte[] fullPayload = new byte[FIXED_FIELDS_SIZE + variableData.length];
 
-        fullPayload[0] = 0x01; // MessageType
-        fullPayload[1] = 0x00; // MatchingUnit
-        // SeqNum (4 bytes) se inicializa a 0x00 automáticamente (Offset 2 a 5)
+        fullPayload[0] = 0x01;
+        fullPayload[1] = 0x00;
 
         System.arraycopy(variableData, 0, fullPayload, FIXED_FIELDS_SIZE, variableData.length);
 
@@ -107,8 +107,7 @@ class BoeMessageSerializerTest {
 
         assertArrayEquals(serialized, deserializedMessage.getData());
 
-        assertArrayEquals(variableData, deserializedMessage.getPayload());
-     assertArrayEquals(variableData, deserializedMessage.getPayload());
+        assertArrayEquals(fullPayload, deserializedMessage.getPayload());
     }
 
     @Test
@@ -123,7 +122,7 @@ class BoeMessageSerializerTest {
 
     @Test
     void deserialize_shouldThrowIOExceptionForInvalidStartMarker() {
-        // Invalid start marker
+
         byte[] invalidMessage = new byte[]{0x00, 0x00, 0x05, 0x00, 0x01};
         InputStream invalidStream = new ByteArrayInputStream(invalidMessage);
         
@@ -135,10 +134,10 @@ class BoeMessageSerializerTest {
 
     @Test
     void deserialize_shouldThrowIOExceptionForPrematureEndOfStream() {
-        // Valid header but missing payload
+
         byte[] partialMessage = new byte[]{
             START_OF_MESSAGE_1, START_OF_MESSAGE_2, 
-            0x0A, 0x00  // MessageLength = 10, but no payload follows
+            0x0A, 0x00
         };
         InputStream partialStream = new ByteArrayInputStream(partialMessage);
         
@@ -164,6 +163,9 @@ class BoeMessageSerializerTest {
 
     @Test
     void deserialize_shouldHandleMinimumValidMessage() throws IOException {
+        final byte START_OF_MESSAGE_1 = (byte) 0xBA;
+        final byte START_OF_MESSAGE_2 = (byte) 0xBA;
+
         byte[] minMessage = new byte[]{
                 START_OF_MESSAGE_1, START_OF_MESSAGE_2,
                 0x08, 0x00,
@@ -175,8 +177,8 @@ class BoeMessageSerializerTest {
         BoeMessage message = serializer.deserialize(inputStream);
 
         assertNotNull(message);
-        assertEquals(10, message.getMessageLength());
-        assertEquals(0, message.getPayload().length);
+        assertEquals(10, message.getLength());
+        assertEquals(6, message.getPayload().length);
     }
 
     @Test
@@ -186,8 +188,8 @@ class BoeMessageSerializerTest {
         final int FIXED_FIELDS_SIZE = 6;
         byte[] fullPayload = new byte[FIXED_FIELDS_SIZE + variablePayload.length];
 
-        fullPayload[0] = 0x01; // MessageType
-        fullPayload[1] = 0x00; // MatchingUnit
+        fullPayload[0] = 0x01;
+        fullPayload[1] = 0x00;
 
         System.arraycopy(variablePayload, 0, fullPayload, FIXED_FIELDS_SIZE, variablePayload.length);
 
@@ -197,25 +199,25 @@ class BoeMessageSerializerTest {
         BoeMessage deserializedMessage = serializer.deserialize(inputStream);
 
         byte[] actualPayload = deserializedMessage.getPayload();
-        assertArrayEquals(variablePayload, actualPayload);
+        byte[] actualVariablePayload = Arrays.copyOfRange(actualPayload, FIXED_FIELDS_SIZE, actualPayload.length);
+
+        assertArrayEquals(variablePayload, actualVariablePayload);
     }
 
     @Test
     void roundTrip_multipleMessages_shouldDeserializeCorrectly() throws IOException {
-
         byte[] variablePayload1 = "First message".getBytes();
         byte[] variablePayload2 = "Second message".getBytes();
 
         final int FIXED_FIELDS_SIZE = 6;
 
-        byte[] fullPayload1 = new byte[FIXED_FIELDS_SIZE + variablePayload1.length]; // 6 + 13 = 19 bytes
-        fullPayload1[0] = 0x01;
+        byte[] fullPayload1 = new byte[FIXED_FIELDS_SIZE + variablePayload1.length];
         fullPayload1[1] = 0x00;
 
         System.arraycopy(variablePayload1, 0, fullPayload1, FIXED_FIELDS_SIZE, variablePayload1.length);
         byte[] serialized1 = serializer.serialize(fullPayload1);
 
-        byte[] fullPayload2 = new byte[FIXED_FIELDS_SIZE + variablePayload2.length]; // 6 + 14 = 20 bytes
+        byte[] fullPayload2 = new byte[FIXED_FIELDS_SIZE + variablePayload2.length];
         fullPayload2[0] = 0x01;
         fullPayload2[1] = 0x00;
 
@@ -229,10 +231,14 @@ class BoeMessageSerializerTest {
         InputStream inputStream = new ByteArrayInputStream(combined);
 
         BoeMessage message1 = serializer.deserialize(inputStream);
-        assertArrayEquals(variablePayload1, message1.getPayload());
+        byte[] actualPayload1 = message1.getPayload();
+        byte[] actualVariablePayload1 = Arrays.copyOfRange(actualPayload1, FIXED_FIELDS_SIZE, actualPayload1.length);
+        assertArrayEquals(variablePayload1, actualVariablePayload1);
 
         BoeMessage message2 = serializer.deserialize(inputStream);
-        assertArrayEquals(variablePayload2, message2.getPayload());
+        byte[] actualPayload2 = message2.getPayload();
+        byte[] actualVariablePayload2 = Arrays.copyOfRange(actualPayload2, FIXED_FIELDS_SIZE, actualPayload2.length);
+        assertArrayEquals(variablePayload2, actualVariablePayload2);
     }
 
     @Test
@@ -245,8 +251,7 @@ class BoeMessageSerializerTest {
         }
         
         byte[] serialized = serializer.serialize(largePayload);
-        
-        // Verify structure
+
         assertEquals(START_OF_MESSAGE_1, serialized[0]);
         assertEquals(START_OF_MESSAGE_2, serialized[1]);
         
