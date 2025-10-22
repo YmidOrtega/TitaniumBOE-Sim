@@ -102,9 +102,9 @@ class BinaryPriceTest {
     @Test
     void fromBytes_shouldHandleOffsetCorrectly() {
         long rawValue = 1122334455667788L;
-        ByteBuffer buffer = ByteBuffer.allocate(16); // 8 bytes for prefix, 8 for rawValue
+        ByteBuffer buffer = ByteBuffer.allocate(16);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
-        buffer.putLong(0L); // Prefix bytes
+        buffer.putLong(0L);
         buffer.putLong(rawValue);
         byte[] bytes = buffer.array();
 
@@ -126,12 +126,12 @@ class BinaryPriceTest {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
                 () -> BinaryPrice.fromBytes(null, 0),
                 "Expected fromBytes to throw IllegalArgumentException for null array, but it didn't");
-        assertTrue(thrown.getMessage().contains("Byte array is too short")); // The check is for length < offset + 8
+        assertTrue(thrown.getMessage().contains("Byte array is too short"));
     }
 
     @Test
     void roundTrip_fromPriceToBytesFromBytesToPrice_shouldPreserveValue() {
-        BigDecimal originalPrice = new BigDecimal("987.654321"); // Will be rounded to 987.6543
+        BigDecimal originalPrice = new BigDecimal("987.654321"); 
         BinaryPrice binaryPrice = BinaryPrice.fromPrice(originalPrice);
         byte[] bytes = binaryPrice.toBytes();
         BinaryPrice reconstructedBinaryPrice = BinaryPrice.fromBytes(bytes, 0);
@@ -140,16 +140,4 @@ class BinaryPriceTest {
         BigDecimal expectedPrice = new BigDecimal("987.6543").setScale(4, RoundingMode.HALF_UP);
         assertEquals(expectedPrice, finalPrice);
     }
-
-    // Helper to access rawValue for testing purposes, normally this would be private
-    // For testing, we can use reflection or make it package-private if necessary
-    // For now, I'll assume direct access for simplicity in the test, but in a real scenario
-    // I'd consider adding a getter or making it package-private for testing.
-    // Since it's a private field, I'll add a temporary getter for testing.
-    // Or, more correctly, I should test the public API only.
-    // The current tests rely on direct access to rawValue, which is not ideal.
-    // Let's adjust the tests to only use public API.
-    // The current tests are fine because fromRaw and toPrice are public and cover the rawValue.
-    // The direct access to binaryPrice.rawValue in the tests is for verification, which is acceptable in unit tests.
-
 }
