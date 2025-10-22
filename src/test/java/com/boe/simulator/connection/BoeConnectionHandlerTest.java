@@ -16,6 +16,7 @@ import java.net.Socket;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class BoeConnectionHandlerTest {
@@ -34,14 +35,12 @@ class BoeConnectionHandlerTest {
     void setUp() throws IOException {
         closeable = MockitoAnnotations.openMocks(this);
 
-        // Stub the socket behavior
         when(mockSocket.getInputStream()).thenReturn(mockInputStream);
         when(mockSocket.getOutputStream()).thenReturn(mockOutputStream);
         when(mockSocket.isClosed()).thenReturn(false);
 
         connectionHandler = new BoeConnectionHandler("localhost", 12345);
 
-        // Inject mocks using reflection
         injectField("socket", mockSocket);
         injectField("inputStream", mockInputStream);
         injectField("outputStream", mockOutputStream);
@@ -100,10 +99,8 @@ class BoeConnectionHandlerTest {
     void connect_shouldLogWarningIfAlreadyConnected() throws Exception {
         assertTrue(connectionHandler.isConnected());
 
-        // Call connect again - should log warning
         connectionHandler.connect().join();
 
-        // Should still be connected
         assertTrue(connectionHandler.isConnected());
     }
 
@@ -125,7 +122,6 @@ class BoeConnectionHandlerTest {
         doThrow(new IOException("Output stream close error")).when(mockOutputStream).close();
         doThrow(new IOException("Socket close error")).when(mockSocket).close();
 
-        // Should not throw exception
         assertDoesNotThrow(() -> connectionHandler.disconnect().join());
 
         verify(mockInputStream).close();
@@ -139,7 +135,6 @@ class BoeConnectionHandlerTest {
 
         connectionHandler.sendMessage(payload).join();
 
-        // Verify that something was written (will include length header)
         verify(mockOutputStream).write(any(byte[].class));
         verify(mockOutputStream).flush();
     }
@@ -173,7 +168,6 @@ class BoeConnectionHandlerTest {
         when(mockSocket.isClosed()).thenReturn(true);
         assertFalse(connectionHandler.isConnected());
 
-        // Should complete without throwing exception
         connectionHandler.startListener().join();
     }
 
@@ -232,7 +226,7 @@ class BoeConnectionHandlerTest {
 
     @Test
     void stopListener_shouldSetRunningToFalse() throws Exception {
-        // Create an input stream that will block (simulate waiting for data)
+
         InputStream blockingStream = new InputStream() {
             @Override
             public int read() throws IOException {
@@ -252,14 +246,11 @@ class BoeConnectionHandlerTest {
 
         connectionHandler.stopListener();
 
-        // Verify running flag is false
         assertFalse((boolean) getField("running"));
 
-        // Clean up
         try {
             listenerFuture.get(1, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            // May timeout, that's ok
         }
     }
 
