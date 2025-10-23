@@ -3,7 +3,7 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class LogoutMessage {
+public class LogoutRequestMessage {
     private static final byte MESSAGE_TYPE = 0x02;
     
     // Start of Message marker
@@ -13,30 +13,34 @@ public class LogoutMessage {
     private byte matchingUnit;
     private int sequenceNumber;
 
-    public LogoutMessage() {
+    public LogoutRequestMessage() {
         this.matchingUnit = 0;
         this.sequenceNumber = 0;
     }
 
-    public LogoutMessage(byte matchingUnit, int sequenceNumber) {
+    public LogoutRequestMessage(byte matchingUnit, int sequenceNumber) {
         this.matchingUnit = matchingUnit;
         this.sequenceNumber = sequenceNumber;
     }
 
     public byte[] toBytes() {
-        // Calculate message length:
-        // StartOfMessage(2) + MessageLength(2) + MessageType(1) + MatchingUnit(1) + SequenceNumber(4)
-        int messageLength = 2 + 2 + 1 + 1 + 4;
+        // Calculate message length according to BOE spec:
+        // MessageLength = from MessageType to end 
+        // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) = 6 bytes
+        int messageLength = 6;
         
-        ByteBuffer buffer = ByteBuffer.allocate(messageLength);
+        // Total message = StartOfMessage(2) + MessageLength(2) + Payload(6) = 10 bytes
+        int totalLength = 2 + 2 + messageLength;
+        
+        ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         
         // Start of Message (2 bytes)
         buffer.put(START_OF_MESSAGE_1);
         buffer.put(START_OF_MESSAGE_2);
         
-        // Message Length (2 bytes) - length from MessageType onwards
-        buffer.putShort((short) (messageLength - 4));
+        // Message Length (2 bytes)
+        buffer.putShort((short) messageLength);
         
         // Message Type (1 byte)
         buffer.put(MESSAGE_TYPE);
@@ -58,9 +62,17 @@ public class LogoutMessage {
         this.sequenceNumber = sequenceNumber;
     }
 
+    public byte getMatchingUnit() {
+        return matchingUnit;
+    }
+
+    public int getSequenceNumber() {
+        return sequenceNumber;
+    }
+
     @Override
     public String toString() {
-        return "LogoutMessage{" +
+        return "LogoutRequestMessage{" +
                 "matchingUnit=" + matchingUnit +
                 ", sequenceNumber=" + sequenceNumber +
                 '}';
