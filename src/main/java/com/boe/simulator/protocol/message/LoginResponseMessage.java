@@ -83,13 +83,11 @@ public class LoginResponseMessage {
 
     public byte[] toBytes() {
         // Calculate message length according to BOE spec:
-        // MessageLength = 2 (itself) + MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + LoginResponseStatus(1) + LoginResponseText(60) + LastReceivedSeq(4) + NumUnits(1)
         // Payload = 1 + 1 + 4 + 1 + 60 + 4 + 1 = 72 bytes
         int payloadLength = 1 + 1 + 4 + 1 + LOGIN_RESPONSE_TEXT_SIZE + 4 + 1;
-        int messageLength = 2 + payloadLength;
         
         // Total message = StartOfMessage(2) + MessageLength(2) + Payload(72)
-        int totalLength = 2 + messageLength;
+        int totalLength = 2 + 2 + payloadLength;
         
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -99,7 +97,7 @@ public class LoginResponseMessage {
         buffer.put(START_OF_MESSAGE_2);
         
         // Message Length (2 bytes) - includes itself and payload, not StartOfMessage
-        buffer.putShort((short) messageLength);
+        buffer.putShort((short) payloadLength);
         
         // Message Type (1 byte)
         buffer.put(MESSAGE_TYPE);
