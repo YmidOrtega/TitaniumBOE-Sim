@@ -6,16 +6,14 @@ import java.nio.ByteBuffer;
 
 public class BinaryPrice {
 
-    private long rawValue;
+    private final long rawValue;
 
     private BinaryPrice(long rawValue) {
         this.rawValue = rawValue;
     }
 
     public static BinaryPrice fromPrice(BigDecimal price) {
-        if(price == null) {
-            throw new IllegalArgumentException("Price cannot be null");
-        }
+        if(price == null) throw new IllegalArgumentException("Price cannot be null");
         BigDecimal bigDecimalPrice = price.setScale(4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(10000));
         long binaryPrice = bigDecimalPrice.longValueExact();
         return new BinaryPrice(binaryPrice);
