@@ -124,6 +124,14 @@ public class LoginRequestMessage {
         return sessionSubID;
     }
 
+    public byte getMatchingUnit() {
+        return matchingUnit;
+    }
+
+    public int getSequenceNumber() {
+        return sequenceNumber;
+    }
+
     @Override
     public String toString() {
         return "LoginRequestMessage{" +
