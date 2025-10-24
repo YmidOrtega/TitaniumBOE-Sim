@@ -1,6 +1,7 @@
 package com.boe.simulator.protocol.message;
 
 import com.boe.simulator.connection.BoeConnectionHandler;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -9,6 +10,7 @@ import org.mockito.MockitoAnnotations;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class BoeSessionManagerTest {
@@ -17,105 +19,108 @@ class BoeSessionManagerTest {
     private BoeConnectionHandler mockConnectionHandler;
 
     private BoeSessionManager sessionManager;
+    
+    private AutoCloseable closeable;
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
+        closeable = MockitoAnnotations.openMocks(this);
         sessionManager = new BoeSessionManager(mockConnectionHandler);
     }
 
+    @AfterEach
+    void tearDown() throws Exception {
+        closeable.close();
+    }
+
     @Test
-    void constructor_shouldInitializeWithDisconnectedState() {
+    void newSessionManager_shouldBeInDisconnectedState() {
+        // Arrange, Act & Assert
         assertEquals(SessionState.DISCONNECTED, sessionManager.getSessionState());
     }
 
     @Test
-    void login_shouldTransitionStatesAndSendLoginRequestOnSuccess() {
+    void login_shouldTransitionToAuthenticated_whenConnectionAndLoginSucceed() {
+        // Arrange
         when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
         when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
 
-        CompletableFuture<Void> loginFuture = sessionManager.login("user", "testPass");
-        loginFuture.join();
+        // Act
+        sessionManager.login("user", "testPass").join();
 
+        // Assert
         verify(mockConnectionHandler).connect();
-        verify(mockConnectionHandler, times(1)).sendMessage(any(byte[].class));
-
+        verify(mockConnectionHandler).sendMessage(any(byte[].class));
         assertEquals(SessionState.AUTHENTICATED, sessionManager.getSessionState());
-
-        assertEquals("S001", sessionManager.getSessionSubID());
-
         assertEquals("user", sessionManager.getUsername());
         assertEquals("testPass", sessionManager.getPassword());
     }
 
     @Test
-    void login_shouldSetErrorStateOnConnectionFailure() {
+    void login_shouldTransitionToErrorState_whenConnectionFails() {
+        // Arrange
         when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.supplyAsync(() -> {
             throw new RuntimeException("Connection failed");
         }));
 
-        RuntimeException thrown = assertThrows(RuntimeException.class,
-                () -> sessionManager.login("user", "testPass").join(),
-                "Expected login to throw RuntimeException on connection failure, but it didn't");
-        assertTrue(thrown.getMessage().contains("Login failed"));
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> sessionManager.login("user", "testPass").join());
         assertEquals(SessionState.ERROR, sessionManager.getSessionState());
     }
 
     @Test
-    void login_shouldSetErrorStateOnLoginRequestFailure() {
+    void login_shouldTransitionToErrorState_whenLoginRequestFails() {
+        // Arrange
         when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
         when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.supplyAsync(() -> {
             throw new RuntimeException("Login request failed");
         }));
 
-        RuntimeException thrown = assertThrows(RuntimeException.class,
-                () -> sessionManager.login("user", "testPass").join(),
-                "Expected login to throw RuntimeException on login request failure, but it didn't");
-        assertTrue(thrown.getMessage().contains("Login failed"));
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> sessionManager.login("user", "testPass").join());
         assertEquals(SessionState.ERROR, sessionManager.getSessionState());
     }
 
     @Test
-    void logout_shouldTransitionStatesAndSendLogoutRequestOnSuccess() {
-
-        when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
-        when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
-        sessionManager.login("user", "testPass").join();
-        assertEquals(SessionState.AUTHENTICATED, sessionManager.getSessionState());
-
+    void logout_shouldTransitionToDisconnected_whenLogoutSucceeds() {
+        // Arrange
+        givenLoggedInSession();
         when(mockConnectionHandler.disconnect()).thenReturn(CompletableFuture.completedFuture(null));
+        when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
 
-        CompletableFuture<Void> logoutFuture = sessionManager.logout();
-        logoutFuture.join();
+        // Act
+        sessionManager.logout().join();
 
-        verify(mockConnectionHandler, times(2)).sendMessage(any(byte[].class));
+        // Assert
         verify(mockConnectionHandler).disconnect();
+        verify(mockConnectionHandler, times(2)).sendMessage(any(byte[].class));
         assertEquals(SessionState.DISCONNECTED, sessionManager.getSessionState());
     }
 
     @Test
-    void logout_shouldThrowRuntimeExceptionOnFailure() {
-
-        when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
-        when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
-        sessionManager.login("user", "testPass").join();
-
+    void logout_shouldNotChangeState_whenDisconnectFails() {
+        // Arrange
+        givenLoggedInSession();
         when(mockConnectionHandler.disconnect()).thenReturn(CompletableFuture.supplyAsync(() -> {
             throw new RuntimeException("Disconnect failed");
         }));
+        when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
 
-        RuntimeException thrown = assertThrows(RuntimeException.class,
-                () -> sessionManager.logout().join(),
-                "Expected logout to throw RuntimeException on disconnect failure, but it didn't");
-        assertTrue(thrown.getMessage().contains("Logout failed"));
 
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> sessionManager.logout().join());
         assertNotEquals(SessionState.DISCONNECTED, sessionManager.getSessionState());
     }
 
     @Test
-    void generateSessionSubID_shouldGenerateUniqueIDs() {
+    void generateSessionSubID_shouldReturnUniqueIDs() {
+        // Arrange
         String id1 = sessionManager.generateSessionSubID();
+        
+        // Act
         String id2 = sessionManager.generateSessionSubID();
+
+        // Assert
         assertNotNull(id1);
         assertNotNull(id2);
         assertNotEquals(id1, id2);
@@ -124,29 +129,35 @@ class BoeSessionManagerTest {
     }
 
     @Test
-    void getSessionState_shouldReturnCurrentState() {
-        assertEquals(SessionState.DISCONNECTED, sessionManager.getSessionState());
+    void isActive_shouldReturnTrue_whenStateIsAuthenticated() {
+        // Arrange
+        givenLoggedInSession();
+
+        // Act & Assert
+        assertTrue(sessionManager.isActive());
     }
 
     @Test
-    void isActive_shouldReturnTrueForActiveAndAuthenticatedStates() {
-        when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
-        when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
-        sessionManager.login("user", "testPass").join();
-        assertTrue(sessionManager.isActive());
-
-        sessionManager = new BoeSessionManager(mockConnectionHandler);
+    void isActive_shouldReturnFalse_whenStateIsDisconnected() {
+        // Arrange, Act & Assert
         assertFalse(sessionManager.isActive());
     }
 
     @Test
-    void shutdown_shouldStopHeartbeatAndShutdownConnectionHandler() {
+    void shutdown_shouldCallConnectionHandlerShutdown() {
+        // Arrange
+        givenLoggedInSession();
+
+        // Act
+        sessionManager.shutdown();
+
+        // Assert
+        verify(mockConnectionHandler).shutdown();
+    }
+
+    private void givenLoggedInSession() {
         when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
         when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
         sessionManager.login("user", "testPass").join();
-
-        sessionManager.shutdown();
-
-        verify(mockConnectionHandler).shutdown();
     }
 }

@@ -9,8 +9,8 @@
 ```
 
 -  **StartOfMessage**: Always `0xBA 0xBA`
--  **MessageLength**: Includes itself (2 bytes) but NOT StartOfMessage
-   -  Example: If payload is 25 bytes, MessageLength = 2 + 25 = 27
+-  **MessageLength**: Length of the payload (from MessageType to the end). Does NOT include StartOfMessage or the MessageLength field itself.
+   -  Example: If payload is 25 bytes, MessageLength = 25
 -  **Payload**: Message Type + Message Body
 
 ### All values are **Little Endian**
@@ -37,7 +37,7 @@
 Offset | Size | Field            | Type         | Notes
 -------|------|------------------|--------------|---------------------------
 0      | 2    | StartOfMessage   | Binary       | 0xBA 0xBA
-2      | 2    | MessageLength    | Binary (LE)  | Includes itself
+2      | 2    | MessageLength    | Binary (LE)  | Length of payload (25)
 4      | 1    | MessageType      | Binary       | 0x37
 5      | 1    | MatchingUnit     | Binary       | Usually 0
 6      | 4    | SequenceNumber   | Binary (LE)  | Incremental counter
@@ -47,9 +47,9 @@ Offset | Size | Field            | Type         | Notes
 28     | 1    | NumParamGroups   | Binary       | Usually 0
 ```
 
-**Total Payload**: 25 bytes  
-**MessageLength**: 27 (2 + 25)  
-**Total Message**: 29 bytes (2 + 27)
+**Total Payload**: 25 bytes
+**MessageLength**: 25
+**Total Message**: 29 bytes (2 + 2 + 25)
 
 ---
 
@@ -61,15 +61,15 @@ Offset | Size | Field            | Type         | Notes
 Offset | Size | Field            | Type         | Notes
 -------|------|------------------|--------------|---------------------------
 0      | 2    | StartOfMessage   | Binary       | 0xBA 0xBA
-2      | 2    | MessageLength    | Binary (LE)  | Always 8
+2      | 2    | MessageLength    | Binary (LE)  | Always 6
 4      | 1    | MessageType      | Binary       | 0x02
 5      | 1    | MatchingUnit     | Binary       | Usually 0
 6      | 4    | SequenceNumber   | Binary (LE)  | Incremental counter
 ```
 
-**Total Payload**: 6 bytes  
-**MessageLength**: 8 (2 + 6)  
-**Total Message**: 10 bytes (2 + 8)
+**Total Payload**: 6 bytes
+**MessageLength**: 6
+**Total Message**: 10 bytes (2 + 2 + 6)
 
 ---
 
@@ -81,15 +81,15 @@ Offset | Size | Field            | Type         | Notes
 Offset | Size | Field            | Type         | Notes
 -------|------|------------------|--------------|---------------------------
 0      | 2    | StartOfMessage   | Binary       | 0xBA 0xBA
-2      | 2    | MessageLength    | Binary (LE)  | Always 8
+2      | 2    | MessageLength    | Binary (LE)  | Always 6
 4      | 1    | MessageType      | Binary       | 0x03
 5      | 1    | MatchingUnit     | Binary       | Usually 0
 6      | 4    | SequenceNumber   | Binary (LE)  | Incremental counter
 ```
 
-**Total Payload**: 6 bytes  
-**MessageLength**: 8 (2 + 6)  
-**Total Message**: 10 bytes (2 + 8)
+**Total Payload**: 6 bytes
+**MessageLength**: 6
+**Total Message**: 10 bytes (2 + 2 + 6)
 
 ---
 
@@ -129,7 +129,7 @@ Offset | Size | Field            | Type         | Notes
 ```
 Components:
 - StartOfMessage: 2 bytes (NOT in MessageLength)
-- MessageLength field: 2 bytes (IN MessageLength)
+- MessageLength field: 2 bytes (NOT in MessageLength)
 - MessageType: 1 byte
 - MatchingUnit: 1 byte
 - SequenceNumber: 4 bytes
@@ -139,8 +139,8 @@ Components:
 - NumParamGroups: 1 byte
 
 Payload = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes
-MessageLength = 2 (itself) + 25 = 27 bytes
-Total Message = 2 (StartOfMessage) + 27 = 29 bytes
+MessageLength = 25 bytes
+Total Message = 2 (StartOfMessage) + 2 (MessageLength field) + 25 = 29 bytes
 ```
 
 ### Example 2: Logout/Heartbeat
@@ -148,33 +148,33 @@ Total Message = 2 (StartOfMessage) + 27 = 29 bytes
 ```
 Components:
 - StartOfMessage: 2 bytes (NOT in MessageLength)
-- MessageLength field: 2 bytes (IN MessageLength)
+- MessageLength field: 2 bytes (NOT in MessageLength)
 - MessageType: 1 byte
 - MatchingUnit: 1 byte
 - SequenceNumber: 4 bytes
 
 Payload = 1 + 1 + 4 = 6 bytes
-MessageLength = 2 (itself) + 6 = 8 bytes
-Total Message = 2 (StartOfMessage) + 8 = 10 bytes
+MessageLength = 6 bytes
+Total Message = 2 (StartOfMessage) + 2 (MessageLength field) + 6 = 10 bytes
 ```
 
 ---
 
 ## Common Pitfalls
 
-❌ **Wrong**: MessageLength = payload only (missing the 2 bytes of length field)  
-✅ **Correct**: MessageLength = 2 + payload
+✅ **Correct**: MessageLength = payload only
+❌ **Wrong**: MessageLength = 2 + payload (includes the 2 bytes of length field)
 
-❌ **Wrong**: MessageLength includes StartOfMessage  
+❌ **Wrong**: MessageLength includes StartOfMessage
 ✅ **Correct**: MessageLength does NOT include StartOfMessage
 
-❌ **Wrong**: Padding with null bytes (0x00)  
+❌ **Wrong**: Padding with null bytes (0x00)
 ✅ **Correct**: Padding with spaces (0x20)
 
-❌ **Wrong**: Independent sequence numbers per message type  
+❌ **Wrong**: Independent sequence numbers per message type
 ✅ **Correct**: Single global sequence counter for all messages
 
-❌ **Wrong**: Hardcoded sequence numbers  
+❌ **Wrong**: Hardcoded sequence numbers
 ✅ **Correct**: Incremental AtomicInteger
 
 ---
@@ -182,7 +182,7 @@ Total Message = 2 (StartOfMessage) + 8 = 10 bytes
 ## Testing Checklist
 
 -  [ ] StartOfMessage is always `0xBA 0xBA`
--  [ ] MessageLength calculation is correct (2 + payload)
+-  [ ] MessageLength calculation is correct (payload only)
 -  [ ] All numeric fields are Little Endian
 -  [ ] Strings are padded with spaces (0x20)
 -  [ ] Sequence numbers increment correctly

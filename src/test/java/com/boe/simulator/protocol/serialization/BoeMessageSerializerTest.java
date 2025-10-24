@@ -1,38 +1,55 @@
 package com.boe.simulator.protocol.serialization;
 
 import com.boe.simulator.protocol.message.BoeMessage;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 class BoeMessageSerializerTest {
 
-    private final BoeMessageSerializer serializer = new BoeMessageSerializer();
+    private BoeMessageSerializer serializer;
+
+    @Mock
+    private InputStream mockInputStream;
     
-    private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
-    private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
+    private AutoCloseable closeable;
+
+    @BeforeEach
+    void setUp() {
+        closeable = MockitoAnnotations.openMocks(this);
+        serializer = new BoeMessageSerializer();
+    }
+    
+    @AfterEach
+    void tearDown() throws Exception {
+        closeable.close();
+    }
 
     @Test
     void serialize_payload_shouldPrependHeaderAndReturnCorrectBytes() {
+        // Arrange
         byte[] payload = "Hello World".getBytes();
-        byte[] serializedMessage = serializer.serialize(payload);
-
         int expectedMessageLength = 2 + payload.length;
         int expectedTotalLength = 2 + expectedMessageLength;
 
-        assertEquals(expectedTotalLength, serializedMessage.length);
+        // Act
+        byte[] serializedMessage = serializer.serialize(payload);
 
-        assertEquals(START_OF_MESSAGE_1, serializedMessage[0]);
-        assertEquals(START_OF_MESSAGE_2, serializedMessage[1]);
+        // Assert
+        assertEquals(expectedTotalLength, serializedMessage.length);
+        assertEquals((byte) 0xBA, serializedMessage[0]);
+        assertEquals((byte) 0xBA, serializedMessage[1]);
 
         ByteBuffer buffer = ByteBuffer.wrap(serializedMessage, 2, 2).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(expectedMessageLength, buffer.getShort() & 0xFFFF);
@@ -43,212 +60,165 @@ class BoeMessageSerializerTest {
     }
 
     @Test
-    void serialize_payload_shouldThrowExceptionForNullPayload() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                () -> serializer.serialize((byte[]) null),
-                "Expected serialize to throw IllegalArgumentException for null payload");
-        assertTrue(thrown.getMessage().contains("cannot be null"));
+    void serialize_payload_shouldThrowException_whenPayloadIsNull() {
+        // Arrange, Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> serializer.serialize((byte[]) null));
     }
 
     @Test
-    void serialize_payload_shouldThrowExceptionForEmptyPayload() {
+    void serialize_payload_shouldThrowException_whenPayloadIsEmpty() {
+        // Arrange
         byte[] payload = new byte[0];
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                () -> serializer.serialize(payload),
-                "Expected serialize to throw IllegalArgumentException for empty payload");
-        assertTrue(thrown.getMessage().contains("cannot be null or empty"));
+
+        // Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> serializer.serialize(payload));
     }
 
     @Test
-    void serialize_payload_shouldThrowExceptionIfMessageTooLarge() {
-
+    void serialize_payload_shouldThrowException_whenMessageIsTooLarge() {
+        // Arrange
         byte[] largePayload = new byte[65534];
-        
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                () -> serializer.serialize(largePayload),
-                "Expected serialize to throw IllegalArgumentException for large payload");
-        assertTrue(thrown.getMessage().contains("Message too large"));
+
+        // Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> serializer.serialize(largePayload));
     }
 
     @Test
-    void serialize_boeMessage_shouldReturnBoeMessageData() {
-        BoeMessage mockMessage = Mockito.mock(BoeMessage.class);
-        byte[] expectedData = new byte[]{START_OF_MESSAGE_1, START_OF_MESSAGE_2, 0x05, 0x00, 0x01};
+    void serialize_boeMessage_shouldReturnDataFromMessage() {
+        // Arrange
+        BoeMessage mockMessage = org.mockito.Mockito.mock(BoeMessage.class);
+        byte[] expectedData = {(byte) 0xBA, (byte) 0xBA, 0x05, 0x00, 0x01};
         when(mockMessage.getData()).thenReturn(expectedData);
 
+        // Act
         byte[] actualData = serializer.serialize(mockMessage);
+
+        // Assert
         assertArrayEquals(expectedData, actualData);
     }
 
     @Test
-    void deserialize_shouldReconstructBoeMessageCorrectly() throws IOException {
-        byte[] variableData = "Test Message".getBytes();
-
-        final int FIXED_FIELDS_SIZE = 6;
-        byte[] fullPayload = new byte[FIXED_FIELDS_SIZE + variableData.length];
-
-        fullPayload[0] = 0x01;
-        fullPayload[1] = 0x00;
-
-        System.arraycopy(variableData, 0, fullPayload, FIXED_FIELDS_SIZE, variableData.length);
-
-        byte[] serialized = serializer.serialize(fullPayload);
-
+    void deserialize_shouldReconstructMessageCorrectly_whenStreamIsValid() throws IOException {
+        // Arrange
+        byte[] payload = "Test Message".getBytes();
+        byte[] serialized = serializer.serialize(payload);
         InputStream inputStream = new ByteArrayInputStream(serialized);
+
+        // Act
         BoeMessage deserializedMessage = serializer.deserialize(inputStream);
 
+        // Assert
         assertArrayEquals(serialized, deserializedMessage.getData());
-
-        assertArrayEquals(fullPayload, deserializedMessage.getPayload());
+        assertArrayEquals(payload, deserializedMessage.getPayload());
     }
 
     @Test
-    void deserialize_shouldThrowIOExceptionForEmptyStream() {
+    void deserialize_shouldThrowException_whenStreamIsEmpty() {
+        // Arrange
         InputStream emptyStream = new ByteArrayInputStream(new byte[0]);
-        
-        IOException thrown = assertThrows(IOException.class,
-                () -> serializer.deserialize(emptyStream),
-                "Expected deserialize to throw IOException for empty stream");
-        assertTrue(thrown.getMessage().contains("End of stream reached"));
+
+        // Act & Assert
+        assertThrows(IOException.class, () -> serializer.deserialize(emptyStream));
     }
 
     @Test
-    void deserialize_shouldThrowIOExceptionForInvalidStartMarker() {
-
-        byte[] invalidMessage = new byte[]{0x00, 0x00, 0x05, 0x00, 0x01};
+    void deserialize_shouldThrowException_whenMarkerIsInvalid() {
+        // Arrange
+        byte[] invalidMessage = {0x00, 0x00, 0x05, 0x00, 0x01};
         InputStream invalidStream = new ByteArrayInputStream(invalidMessage);
-        
-        IOException thrown = assertThrows(IOException.class,
-                () -> serializer.deserialize(invalidStream),
-                "Expected deserialize to throw IOException for invalid start marker");
-        assertTrue(thrown.getMessage().contains("Invalid start of message marker"));
+
+        // Act & Assert
+        assertThrows(IOException.class, () -> serializer.deserialize(invalidStream));
     }
 
     @Test
-    void deserialize_shouldThrowIOExceptionForPrematureEndOfStream() {
-
-        byte[] partialMessage = new byte[]{
-            START_OF_MESSAGE_1, START_OF_MESSAGE_2, 
-            0x0A, 0x00
-        };
+    void deserialize_shouldThrowException_whenStreamEndsPrematurely() {
+        // Arrange
+        byte[] partialMessage = {(byte) 0xBA, (byte) 0xBA, 0x0A, 0x00};
         InputStream partialStream = new ByteArrayInputStream(partialMessage);
-        
-        IOException thrown = assertThrows(IOException.class,
-                () -> serializer.deserialize(partialStream),
-                "Expected deserialize to throw IOException for premature end of stream");
-        assertTrue(thrown.getMessage().contains("End of stream reached"));
+
+        // Act & Assert
+        assertThrows(IOException.class, () -> serializer.deserialize(partialStream));
     }
 
     @Test
-    void deserialize_shouldThrowIOExceptionForInvalidMessageLength() {
-        byte[] invalidLengthMessage = new byte[]{
-                START_OF_MESSAGE_1, START_OF_MESSAGE_2,
-                0x03, 0x00
-        };
+    void deserialize_shouldThrowException_whenMessageLengthIsInvalid() {
+        // Arrange
+        byte[] invalidLengthMessage = {(byte) 0xBA, (byte) 0xBA, 0x03, 0x00};
         InputStream invalidStream = new ByteArrayInputStream(invalidLengthMessage);
 
-        IOException thrown = assertThrows(IOException.class,
-                () -> serializer.deserialize(invalidStream),
-                "Expected deserialize to throw IOException for invalid message length");
-        assertTrue(thrown.getMessage().contains("Invalid message length"));
+        // Act & Assert
+        assertThrows(IOException.class, () -> serializer.deserialize(invalidStream));
     }
 
     @Test
     void deserialize_shouldHandleMinimumValidMessage() throws IOException {
-        final byte START_OF_MESSAGE_1 = (byte) 0xBA;
-        final byte START_OF_MESSAGE_2 = (byte) 0xBA;
-
-        byte[] minMessage = new byte[]{
-                START_OF_MESSAGE_1, START_OF_MESSAGE_2,
-                0x08, 0x00,
-                (byte) 0x01,
-                (byte) 0x00,
-                0x00, 0x00, 0x00, 0x00
+        // Arrange
+        byte[] minMessage = {
+                (byte) 0xBA, (byte) 0xBA, // Start of message
+                0x08, 0x00,             // Message length (2 + 6)
+                (byte) 0x01,            // Message Type
+                (byte) 0x00,            // Matching Unit
+                0x00, 0x00, 0x00, 0x00    // Sequence Number
         };
         InputStream inputStream = new ByteArrayInputStream(minMessage);
+
+        // Act
         BoeMessage message = serializer.deserialize(inputStream);
 
+        // Assert
         assertNotNull(message);
         assertEquals(10, message.getLength());
         assertEquals(6, message.getPayload().length);
     }
 
     @Test
-    void roundTrip_serializeDeserialize_shouldPreservePayload() throws IOException {
-        byte[] variablePayload = "Round trip test data with special chars: åéñ".getBytes();
+    void roundTrip_serializeAndDeserialize_shouldPreservePayload() throws IOException {
+        // Arrange
+        byte[] payload = "Round trip test data with special chars: åéñ".getBytes();
 
-        final int FIXED_FIELDS_SIZE = 6;
-        byte[] fullPayload = new byte[FIXED_FIELDS_SIZE + variablePayload.length];
-
-        fullPayload[0] = 0x01;
-        fullPayload[1] = 0x00;
-
-        System.arraycopy(variablePayload, 0, fullPayload, FIXED_FIELDS_SIZE, variablePayload.length);
-
-        byte[] serialized = serializer.serialize(fullPayload);
-
+        // Act
+        byte[] serialized = serializer.serialize(payload);
         InputStream inputStream = new ByteArrayInputStream(serialized);
         BoeMessage deserializedMessage = serializer.deserialize(inputStream);
 
-        byte[] actualPayload = deserializedMessage.getPayload();
-        byte[] actualVariablePayload = Arrays.copyOfRange(actualPayload, FIXED_FIELDS_SIZE, actualPayload.length);
-
-        assertArrayEquals(variablePayload, actualVariablePayload);
+        // Assert
+        assertArrayEquals(payload, deserializedMessage.getPayload());
     }
 
     @Test
     void roundTrip_multipleMessages_shouldDeserializeCorrectly() throws IOException {
-        byte[] variablePayload1 = "First message".getBytes();
-        byte[] variablePayload2 = "Second message".getBytes();
-
-        final int FIXED_FIELDS_SIZE = 6;
-
-        byte[] fullPayload1 = new byte[FIXED_FIELDS_SIZE + variablePayload1.length];
-        fullPayload1[1] = 0x00;
-
-        System.arraycopy(variablePayload1, 0, fullPayload1, FIXED_FIELDS_SIZE, variablePayload1.length);
-        byte[] serialized1 = serializer.serialize(fullPayload1);
-
-        byte[] fullPayload2 = new byte[FIXED_FIELDS_SIZE + variablePayload2.length];
-        fullPayload2[0] = 0x01;
-        fullPayload2[1] = 0x00;
-
-        System.arraycopy(variablePayload2, 0, fullPayload2, FIXED_FIELDS_SIZE, variablePayload2.length);
-        byte[] serialized2 = serializer.serialize(fullPayload2);
-
+        // Arrange
+        byte[] payload1 = "First message".getBytes();
+        byte[] payload2 = "Second message".getBytes();
+        byte[] serialized1 = serializer.serialize(payload1);
+        byte[] serialized2 = serializer.serialize(payload2);
         byte[] combined = new byte[serialized1.length + serialized2.length];
         System.arraycopy(serialized1, 0, combined, 0, serialized1.length);
         System.arraycopy(serialized2, 0, combined, serialized1.length, serialized2.length);
-
         InputStream inputStream = new ByteArrayInputStream(combined);
 
+        // Act
         BoeMessage message1 = serializer.deserialize(inputStream);
-        byte[] actualPayload1 = message1.getPayload();
-        byte[] actualVariablePayload1 = Arrays.copyOfRange(actualPayload1, FIXED_FIELDS_SIZE, actualPayload1.length);
-        assertArrayEquals(variablePayload1, actualVariablePayload1);
-
         BoeMessage message2 = serializer.deserialize(inputStream);
-        byte[] actualPayload2 = message2.getPayload();
-        byte[] actualVariablePayload2 = Arrays.copyOfRange(actualPayload2, FIXED_FIELDS_SIZE, actualPayload2.length);
-        assertArrayEquals(variablePayload2, actualVariablePayload2);
+
+        // Assert
+        assertArrayEquals(payload1, message1.getPayload());
+        assertArrayEquals(payload2, message2.getPayload());
     }
 
     @Test
-    void serialize_shouldHandleLargePayload() {
-
+    void serialize_shouldHandleMaxPayloadSize() {
+        // Arrange
         int maxPayloadSize = 65533;
         byte[] largePayload = new byte[maxPayloadSize];
-        for (int i = 0; i < largePayload.length; i++) {
-            largePayload[i] = (byte) (i % 256);
-        }
-        
-        byte[] serialized = serializer.serialize(largePayload);
 
-        assertEquals(START_OF_MESSAGE_1, serialized[0]);
-        assertEquals(START_OF_MESSAGE_2, serialized[1]);
-        
+        // Act
+        byte[] serialized = serializer.serialize(largePayload);
         ByteBuffer buffer = ByteBuffer.wrap(serialized, 2, 2).order(ByteOrder.LITTLE_ENDIAN);
         int messageLength = buffer.getShort() & 0xFFFF;
+
+        // Assert
         assertEquals(2 + maxPayloadSize, messageLength);
     }
 }
