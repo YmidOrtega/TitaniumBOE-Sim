@@ -1,6 +1,9 @@
 package com.boe.simulator.connection;
 
 import com.boe.simulator.protocol.message.BoeMessage;
+import com.boe.simulator.protocol.message.LoginResponseMessage;
+import com.boe.simulator.protocol.message.LogoutResponseMessage;
+import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
 import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
 
 import java.net.Socket;
@@ -25,6 +28,8 @@ public class BoeConnectionHandler {
     private InputStream inputStream;
     private OutputStream outputStream;
     private volatile boolean running = false;
+    
+    private BoeMessageListener messageListener;
 
     public BoeConnectionHandler(String host, int port) {
         this.host = host;
@@ -43,6 +48,7 @@ public class BoeConnectionHandler {
                     inputStream = socket.getInputStream();
                     outputStream = socket.getOutputStream();
                     LOGGER.info("Connected to " + host + ":" + port);
+
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error connecting", e);
                     throw new RuntimeException(e);
@@ -90,11 +96,12 @@ public class BoeConnectionHandler {
             synchronized (this) {
                 try {
                     if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
-                    
+
                     byte[] data = serializer.serialize(message);
                     outputStream.write(data);
                     outputStream.flush();
-                    LOGGER.fine("Message sent, length: " + message.toString().length());
+                    LOGGER.fine("Message sent, length: " + message.getLength());
+
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
@@ -107,12 +114,13 @@ public class BoeConnectionHandler {
         return CompletableFuture.runAsync(() -> {
             synchronized (this) {
                 try {
-                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
-                    
+                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not " + "connected. Call connect() first.");
+
                     byte[] data = serializer.serialize(payload);
                     outputStream.write(data);
                     outputStream.flush();
                     LOGGER.fine("Message sent, length: " + data.length);
+
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
@@ -172,10 +180,83 @@ public class BoeConnectionHandler {
     }
 
     protected void processMessage(BoeMessage message) {
-        LOGGER.info("Processing message: " + message);
+        byte messageType = message.getMessageType();
+        
+        LOGGER.info("Processing message type: 0x" + String.format("%02X", messageType) + ", length: " + message.getLength());
+        
+        try {
+            switch(messageType) {
+                case 0x04: // Server Heartbeat
+                    processServerHeartbeat(message);
+                    break;
+                    
+                case 0x07: // Login Response
+                    processLoginResponse(message);
+                    break;
+                    
+                case 0x08: // Logout Response
+                    processLogoutResponse(message);
+                    break;
+                    
+                default:
+                    LOGGER.warning("Unknown message type: 0x" + String.format("%02X", messageType));
+                    if (messageListener != null) messageListener.onUnknownMessage(message);
+                    break;
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error processing message type 0x" + String.format("%02X", messageType), e);
+        }
+    }
+    
+    private void processServerHeartbeat(BoeMessage message) {
+        try {
+            ServerHeartbeatMessage heartbeat = new ServerHeartbeatMessage(message.getData());
+            LOGGER.fine("Received server heartbeat: " + heartbeat);
+            
+            if (messageListener != null) messageListener.onServerHeartbeat(heartbeat);
+
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to parse server heartbeat", e);
+            if (messageListener != null) messageListener.onMessageError((byte) 0x04, e);
+        }
+    }
+    
+    private void processLoginResponse(BoeMessage message) {
+        try {
+            LoginResponseMessage response = new LoginResponseMessage(message.getData());
+            LOGGER.info("Received login response: " + response);
+            
+            if (response.isAccepted()) LOGGER.info("Login accepted: " + response.getLoginResponseText());
+            else if (response.isRejected()) LOGGER.warning("Login rejected: " + response.getLoginResponseText());
+            if (messageListener != null) messageListener.onLoginResponse(response);
+
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Failed to parse login response", e);
+            if (messageListener != null) messageListener.onMessageError((byte) 0x07, e);
+        }
+    }
+    
+    private void processLogoutResponse(BoeMessage message) {
+        try {
+            LogoutResponseMessage response = new LogoutResponseMessage(message.getData());
+            LOGGER.info("Received logout response: " + response);
+            if (messageListener != null) messageListener.onLogoutResponse(response);
+
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to parse logout response", e);
+            if (messageListener != null) messageListener.onMessageError((byte) 0x08, e);
+        }
     }
 
     public void shutdown() {
         executor.shutdown();
+    }
+    
+    public void setMessageListener(BoeMessageListener listener) {
+        this.messageListener = listener;
+    }
+    
+    public BoeMessageListener getMessageListener() {
+        return messageListener;
     }
 }
