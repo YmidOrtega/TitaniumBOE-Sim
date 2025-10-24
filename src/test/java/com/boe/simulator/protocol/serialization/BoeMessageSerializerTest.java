@@ -21,14 +21,6 @@ class BoeMessageSerializerTest {
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
 
-    private static byte[] buildFullPayload(byte[] variableData) {
-        byte[] full = new byte[2 + variableData.length];
-        full[0] = 0x01;
-        full[1] = 0x00;
-        System.arraycopy(variableData, 0, full, 2, variableData.length);
-        return full;
-    }
-
     @Test
     void serialize_payload_shouldPrependHeaderAndReturnCorrectBytes() {
         byte[] payload = "Hello World".getBytes();
