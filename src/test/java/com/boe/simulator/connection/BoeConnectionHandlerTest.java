@@ -65,13 +65,13 @@ class BoeConnectionHandlerTest {
         }
     }
 
-    private Object getField(String fieldName) {
+    private Object getField() {
         try {
-            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField(fieldName);
+            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField("running");
             field.setAccessible(true);
             return field.get(connectionHandler);
         } catch (NoSuchFieldException | IllegalAccessException e) {
-            fail("Failed to access field '" + fieldName + "': " + e.getMessage());
+            fail("Failed to access field '" + "running" + "': " + e.getMessage());
             return null;
         }
     }
@@ -96,7 +96,7 @@ class BoeConnectionHandlerTest {
     }
 
     @Test
-    void connect_shouldLogWarningIfAlreadyConnected() throws Exception {
+    void connect_shouldLogWarningIfAlreadyConnected() {
         assertTrue(connectionHandler.isConnected());
 
         connectionHandler.connect().join();
@@ -140,7 +140,7 @@ class BoeConnectionHandlerTest {
     }
 
     @Test
-    void sendMessage_shouldThrowExceptionIfNotConnected() throws Exception {
+    void sendMessage_shouldThrowExceptionIfNotConnected() {
         connectionHandler.disconnect().join();
         when(mockSocket.isClosed()).thenReturn(true);
         assertFalse(connectionHandler.isConnected());
@@ -159,11 +159,11 @@ class BoeConnectionHandlerTest {
 
         CompletionException thrown = assertThrows(CompletionException.class,
                 () -> connectionHandler.sendMessage(payload).join());
-        assertTrue(thrown.getCause() instanceof RuntimeException);
+        assertInstanceOf(RuntimeException.class, thrown.getCause());
     }
 
     @Test
-    void startListener_shouldLogWarningIfNotConnected() throws Exception {
+    void startListener_shouldLogWarningIfNotConnected() {
         connectionHandler.disconnect().join();
         when(mockSocket.isClosed()).thenReturn(true);
         assertFalse(connectionHandler.isConnected());
@@ -174,6 +174,34 @@ class BoeConnectionHandlerTest {
     @Test
     void startListener_shouldProcessMessagesUntilStopped() throws Exception {
 
+        InputStream testInputStream = getInputStream();
+
+        BoeConnectionHandler spyHandler = spy(connectionHandler);
+        doNothing().when(spyHandler).processMessage(any(BoeMessage.class));
+
+        try {
+            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField("inputStream");
+            field.setAccessible(true);
+            field.set(spyHandler, testInputStream);
+        } catch (Exception e) {
+            fail("Failed to inject input stream: " + e.getMessage());
+        }
+
+        CompletableFuture<Void> listenerFuture = spyHandler.startListener();
+
+        TimeUnit.MILLISECONDS.sleep(200);
+
+        spyHandler.stopListener();
+
+        try {
+            listenerFuture.get(1, TimeUnit.SECONDS);
+        } catch (TimeoutException ignored) {
+        }
+
+        verify(spyHandler, times(2)).processMessage(any(BoeMessage.class));
+    }
+
+    private static InputStream getInputStream() throws IOException {
         final byte START_OF_MESSAGE_1 = (byte) 0xBA;
         final byte START_OF_MESSAGE_2 = (byte) 0xBA;
 
@@ -197,31 +225,7 @@ class BoeConnectionHandlerTest {
         combinedStream.write(msg1Data);
         combinedStream.write(msg2Data);
 
-        InputStream testInputStream = new ByteArrayInputStream(combinedStream.toByteArray());
-
-        BoeConnectionHandler spyHandler = spy(connectionHandler);
-        doNothing().when(spyHandler).processMessage(any(BoeMessage.class));
-
-        try {
-            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField("inputStream");
-            field.setAccessible(true);
-            field.set(spyHandler, testInputStream);
-        } catch (Exception e) {
-            fail("Failed to inject input stream: " + e.getMessage());
-        }
-
-        CompletableFuture<Void> listenerFuture = spyHandler.startListener();
-
-        TimeUnit.MILLISECONDS.sleep(200);
-
-        spyHandler.stopListener();
-
-        try {
-            listenerFuture.get(1, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-        }
-
-        verify(spyHandler, times(2)).processMessage(any(BoeMessage.class));
+        return new ByteArrayInputStream(combinedStream.toByteArray());
     }
 
     @Test
@@ -246,11 +250,11 @@ class BoeConnectionHandlerTest {
 
         connectionHandler.stopListener();
 
-        assertFalse((boolean) getField("running"));
+        assertFalse((boolean) getField());
 
         try {
             listenerFuture.get(1, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
+        } catch (TimeoutException ignored) {
         }
     }
 
@@ -260,7 +264,7 @@ class BoeConnectionHandlerTest {
     }
 
     @Test
-    void isConnected_shouldReturnFalseWhenDisconnected() throws Exception {
+    void isConnected_shouldReturnFalseWhenDisconnected() {
         connectionHandler.disconnect().join();
         when(mockSocket.isClosed()).thenReturn(true);
         assertFalse(connectionHandler.isConnected());

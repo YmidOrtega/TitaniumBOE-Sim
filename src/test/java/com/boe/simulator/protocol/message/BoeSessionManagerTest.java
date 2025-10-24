@@ -7,8 +7,6 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ScheduledExecutorService;
-
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -17,8 +15,6 @@ class BoeSessionManagerTest {
 
     @Mock
     private BoeConnectionHandler mockConnectionHandler;
-    @Mock
-    private ScheduledExecutorService mockHeartbeatScheduler;
 
     private BoeSessionManager sessionManager;
 
@@ -34,7 +30,7 @@ class BoeSessionManagerTest {
     }
 
     @Test
-    void login_shouldTransitionStatesAndSendLoginRequestOnSuccess() throws Exception {
+    void login_shouldTransitionStatesAndSendLoginRequestOnSuccess() {
         when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
         when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
 
@@ -80,7 +76,7 @@ class BoeSessionManagerTest {
     }
 
     @Test
-    void logout_shouldTransitionStatesAndSendLogoutRequestOnSuccess() throws Exception {
+    void logout_shouldTransitionStatesAndSendLogoutRequestOnSuccess() {
 
         when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
         when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
