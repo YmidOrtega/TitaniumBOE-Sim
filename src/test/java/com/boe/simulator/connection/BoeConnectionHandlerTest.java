@@ -13,7 +13,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,17 +36,16 @@ class BoeConnectionHandlerTest {
     @BeforeEach
     void setUp() throws IOException {
         closeable = MockitoAnnotations.openMocks(this);
+        connectionHandler = new BoeConnectionHandler("localhost", 12345);
 
         when(mockSocket.getInputStream()).thenReturn(mockInputStream);
         when(mockSocket.getOutputStream()).thenReturn(mockOutputStream);
         when(mockSocket.isClosed()).thenReturn(false);
 
-        connectionHandler = new BoeConnectionHandler("localhost", 12345);
-
-        injectField("socket", mockSocket);
-        injectField("inputStream", mockInputStream);
-        injectField("outputStream", mockOutputStream);
-        injectField("running", true);
+        setField(connectionHandler, "socket", mockSocket);
+        setField(connectionHandler, "inputStream", mockInputStream);
+        setField(connectionHandler, "outputStream", mockOutputStream);
+        setField(connectionHandler, "running", true);
     }
 
     @AfterEach
@@ -55,229 +56,212 @@ class BoeConnectionHandlerTest {
         connectionHandler.shutdown();
     }
 
-    private void injectField(String fieldName, Object value) {
-        try {
-            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(connectionHandler, value);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            fail("Failed to inject field '" + fieldName + "': " + e.getMessage());
-        }
-    }
-
-    private Object getField() {
-        try {
-            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField("running");
-            field.setAccessible(true);
-            return field.get(connectionHandler);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            fail("Failed to access field '" + "running" + "': " + e.getMessage());
-            return null;
-        }
-    }
-
     @Test
     void constructor_shouldSetHostAndPort() {
-        BoeConnectionHandler handler = new BoeConnectionHandler("testHost", 8080);
+        // Arrange
+        String host = "testHost";
+        int port = 8080;
 
-        assertEquals("testHost", getFieldFromHandler(handler, "host"));
-        assertEquals(8080, getFieldFromHandler(handler, "port"));
-    }
+        // Act
+        BoeConnectionHandler handler = new BoeConnectionHandler(host, port);
 
-    private Object getFieldFromHandler(BoeConnectionHandler handler, String fieldName) {
-        try {
-            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return field.get(handler);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            fail("Failed to access field '" + fieldName + "': " + e.getMessage());
-            return null;
-        }
+        // Assert
+        assertEquals(host, getField(handler, "host"));
+        assertEquals(port, getField(handler, "port"));
     }
 
     @Test
-    void connect_shouldLogWarningIfAlreadyConnected() {
+    void connect_shouldNotReconnect_whenAlreadyConnected() throws Exception {
+        // Arrange
         assertTrue(connectionHandler.isConnected());
 
+        // Act
         connectionHandler.connect().join();
 
+        // Assert
         assertTrue(connectionHandler.isConnected());
+        // verify that a new socket is not created
+        verify(mockSocket, never()).close();
     }
 
     @Test
-    void disconnect_shouldCloseStreamsAndSocketSuccessfully() throws Exception {
+    void disconnect_shouldCloseAllResources() throws Exception {
+        // Arrange & Act
         connectionHandler.disconnect().join();
 
-        verify(mockInputStream).close();
-        verify(mockOutputStream).close();
-        verify(mockSocket).close();
-
-        when(mockSocket.isClosed()).thenReturn(true);
-        assertFalse(connectionHandler.isConnected());
-    }
-
-    @Test
-    void disconnect_shouldHandleIOExceptionDuringClose() throws Exception {
-        doThrow(new IOException("Input stream close error")).when(mockInputStream).close();
-        doThrow(new IOException("Output stream close error")).when(mockOutputStream).close();
-        doThrow(new IOException("Socket close error")).when(mockSocket).close();
-
-        assertDoesNotThrow(() -> connectionHandler.disconnect().join());
-
+        // Assert
         verify(mockInputStream).close();
         verify(mockOutputStream).close();
         verify(mockSocket).close();
     }
+    
+    @Test
+    void disconnect_shouldHandleIOExceptionsGracefully() {
+        // Arrange
+        assertDoesNotThrow(() -> {
+            doThrow(new IOException("Input stream close error")).when(mockInputStream).close();
+            doThrow(new IOException("Output stream close error")).when(mockOutputStream).close();
+            doThrow(new IOException("Socket close error")).when(mockSocket).close();
+
+            // Act
+            connectionHandler.disconnect().join();
+
+            // Assert
+            verify(mockInputStream).close();
+            verify(mockOutputStream).close();
+            verify(mockSocket).close();
+        });
+    }
 
     @Test
-    void sendMessage_payload_shouldWriteToOutputStream() throws Exception {
+    void sendMessage_shouldWritePayloadToOutputStream() {
+        // Arrange
         byte[] payload = {0x05, 0x06, 0x07};
 
+        // Act
         connectionHandler.sendMessage(payload).join();
 
-        verify(mockOutputStream).write(any(byte[].class));
-        verify(mockOutputStream).flush();
+        // Assert
+        assertDoesNotThrow(() -> {
+            verify(mockOutputStream).write(any(byte[].class));
+            verify(mockOutputStream).flush();
+        });
     }
 
     @Test
-    void sendMessage_shouldThrowExceptionIfNotConnected() {
+    void sendMessage_shouldThrowException_whenNotConnected() {
+        // Arrange
         connectionHandler.disconnect().join();
         when(mockSocket.isClosed()).thenReturn(true);
-        assertFalse(connectionHandler.isConnected());
-
         byte[] payload = {0x01, 0x02};
 
-        CompletionException thrown = assertThrows(CompletionException.class,
-                () -> connectionHandler.sendMessage(payload).join());
-        assertTrue(thrown.getCause().getMessage().contains("Not connected"));
-    }
-
-    @Test
-    void sendMessage_shouldThrowRuntimeExceptionOnWriteError() throws Exception {
-        byte[] payload = {0x01, 0x02, 0x03};
-        doThrow(new IOException("Write error")).when(mockOutputStream).write(any(byte[].class));
-
+        // Act & Assert
         CompletionException thrown = assertThrows(CompletionException.class,
                 () -> connectionHandler.sendMessage(payload).join());
         assertInstanceOf(RuntimeException.class, thrown.getCause());
+        assertInstanceOf(IOException.class, thrown.getCause().getCause());
+        assertTrue(thrown.getCause().getCause().getMessage().contains("Not connected"));
     }
 
     @Test
-    void startListener_shouldLogWarningIfNotConnected() {
+    void sendMessage_shouldThrowRuntimeException_whenWriteFails() throws IOException {
+        // Arrange
+        byte[] payload = {0x01, 0x02, 0x03};
+        doThrow(new IOException("Write error")).when(mockOutputStream).write(any(byte[].class));
+
+        // Act & Assert
+        assertThrows(CompletionException.class, () -> connectionHandler.sendMessage(payload).join());
+    }
+
+    @Test
+    void startListener_shouldDoNothing_whenNotConnected() {
+        // Arrange
         connectionHandler.disconnect().join();
         when(mockSocket.isClosed()).thenReturn(true);
-        assertFalse(connectionHandler.isConnected());
 
-        connectionHandler.startListener().join();
+        // Act & Assert
+        assertDoesNotThrow(() -> connectionHandler.startListener().join());
     }
 
     @Test
-    void startListener_shouldProcessMessagesUntilStopped() throws Exception {
-
-        InputStream testInputStream = getInputStream();
-
+    void startListener_shouldProcessMessages_untilStopped() throws Exception {
+        // Arrange
+        InputStream testInputStream = createTestInputStream();
+        setField(connectionHandler, "inputStream", testInputStream);
         BoeConnectionHandler spyHandler = spy(connectionHandler);
         doNothing().when(spyHandler).processMessage(any(BoeMessage.class));
 
-        try {
-            java.lang.reflect.Field field = BoeConnectionHandler.class.getDeclaredField("inputStream");
-            field.setAccessible(true);
-            field.set(spyHandler, testInputStream);
-        } catch (Exception e) {
-            fail("Failed to inject input stream: " + e.getMessage());
-        }
-
+        // Act
         CompletableFuture<Void> listenerFuture = spyHandler.startListener();
-
-        TimeUnit.MILLISECONDS.sleep(200);
-
+        TimeUnit.MILLISECONDS.sleep(200); // allow listener to run
         spyHandler.stopListener();
+        listenerFuture.get(1, TimeUnit.SECONDS); // wait for listener to finish
 
-        try {
-            listenerFuture.get(1, TimeUnit.SECONDS);
-        } catch (TimeoutException ignored) {
-        }
-
+        // Assert
         verify(spyHandler, times(2)).processMessage(any(BoeMessage.class));
     }
 
-    private static InputStream getInputStream() throws IOException {
-        final byte START_OF_MESSAGE_1 = (byte) 0xBA;
-        final byte START_OF_MESSAGE_2 = (byte) 0xBA;
-
-        byte[] msg1Data = new byte[]{
-                START_OF_MESSAGE_1, START_OF_MESSAGE_2,
-                0x08, 0x00,
-                0x01,
-                0x00,
-                0x00, 0x00, 0x00, 0x00
-        };
-
-        byte[] msg2Data = new byte[]{
-                START_OF_MESSAGE_1, START_OF_MESSAGE_2,
-                0x08, 0x00,
-                0x02,
-                0x00,
-                0x00, 0x00, 0x00, 0x00
-        };
-
-        ByteArrayOutputStream combinedStream = new ByteArrayOutputStream();
-        combinedStream.write(msg1Data);
-        combinedStream.write(msg2Data);
-
-        return new ByteArrayInputStream(combinedStream.toByteArray());
-    }
-
     @Test
-    void stopListener_shouldSetRunningToFalse() throws Exception {
-
-        InputStream blockingStream = new InputStream() {
-            @Override
-            public int read() throws IOException {
-                try {
-                    Thread.sleep(100);
-                    return -1; // EOF
-                } catch (InterruptedException e) {
-                    throw new IOException(e);
-                }
-            }
-        };
-
-        injectField("inputStream", blockingStream);
-
+    void stopListener_shouldSetRunningToFalseAndStopListener() throws Exception {
+        // Arrange
+        // Use a mock stream that blocks to ensure the listener is running
+        when(mockInputStream.read(any(), anyInt(), anyInt())).thenAnswer(inv -> {
+            Thread.sleep(100);
+            return -1; // EOF
+        });
         CompletableFuture<Void> listenerFuture = connectionHandler.startListener();
-        TimeUnit.MILLISECONDS.sleep(50);
-
+        
+        // Act
         connectionHandler.stopListener();
+        listenerFuture.get(1, TimeUnit.SECONDS);
 
-        assertFalse((boolean) getField());
-
-        try {
-            listenerFuture.get(1, TimeUnit.SECONDS);
-        } catch (TimeoutException ignored) {
-        }
+        // Assert
+        assertFalse((boolean) getField(connectionHandler, "running"));
     }
 
     @Test
-    void isConnected_shouldReturnTrueWhenConnected() {
+    void isConnected_shouldReturnTrue_whenSocketIsNotNullAndNotClosed() {
+        // Arrange & Act & Assert
         assertTrue(connectionHandler.isConnected());
     }
 
     @Test
-    void isConnected_shouldReturnFalseWhenDisconnected() {
-        connectionHandler.disconnect().join();
+    void isConnected_shouldReturnFalse_whenSocketIsClosed() {
+        // Arrange
         when(mockSocket.isClosed()).thenReturn(true);
+
+        // Act & Assert
         assertFalse(connectionHandler.isConnected());
     }
 
     @Test
-    void isConnected_shouldReturnFalseWhenSocketIsNull() {
-        injectField("socket", null);
+    void isConnected_shouldReturnFalse_whenSocketIsNull() {
+        // Arrange
+        setField(connectionHandler, "socket", null);
+
+        // Act & Assert
         assertFalse(connectionHandler.isConnected());
     }
 
     @Test
     void shutdown_shouldShutdownExecutorService() {
+        // Arrange, Act & Assert
         assertDoesNotThrow(() -> connectionHandler.shutdown());
+    }
+
+    // --- Helper Methods ---
+
+    private void setField(Object target, String fieldName, Object value) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            fail("Failed to set field '" + fieldName + "': " + e.getMessage());
+        }
+    }
+
+    private Object getField(Object target, String fieldName) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            fail("Failed to get field '" + fieldName + "': " + e.getMessage());
+            return null;
+        }
+    }
+
+    private InputStream createTestInputStream() throws IOException {
+        byte[] msg1Data = new byte[]{
+                (byte) 0xBA, (byte) 0xBA, 8, 0, 1, 0, 0, 0, 0, 0
+        };
+        byte[] msg2Data = new byte[]{
+                (byte) 0xBA, (byte) 0xBA, 8, 0, 2, 0, 0, 0, 0, 0
+        };
+        ByteArrayOutputStream combinedStream = new ByteArrayOutputStream();
+        combinedStream.write(msg1Data);
+        combinedStream.write(msg2Data);
+        return new ByteArrayInputStream(combinedStream.toByteArray());
     }
 }

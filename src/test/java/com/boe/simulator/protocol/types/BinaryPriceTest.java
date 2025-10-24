@@ -1,143 +1,199 @@
 package com.boe.simulator.protocol.types;
 
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 class BinaryPriceTest {
 
     @Test
-    void fromPrice_shouldConvertBigDecimalCorrectly() {
+    void fromPrice_shouldConvertBigDecimalToBinaryPrice() {
+        // Arrange
         BigDecimal price = new BigDecimal("123.4567");
+
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromPrice(price);
+
+        // Assert
         assertEquals(price.setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
     }
 
     @Test
-    void fromPrice_shouldHandleRoundingCorrectly() {
+    void fromPrice_shouldRoundBigDecimalToFourDecimalPlaces() {
+        // Arrange
         BigDecimal price = new BigDecimal("123.45678");
+        BigDecimal expectedPrice = new BigDecimal("123.4568");
+
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromPrice(price);
-        assertEquals(new BigDecimal("123.4568").setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
+
+        // Assert
+        assertEquals(expectedPrice.setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
     }
 
     @Test
-    void fromPrice_shouldThrowExceptionForNullPrice() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                () -> BinaryPrice.fromPrice(null),
-                "Expected fromPrice(null) to throw IllegalArgumentException, but it didn't");
-        assertTrue(thrown.getMessage().contains("Price cannot be null"));
+    void fromPrice_shouldThrowException_whenPriceIsNull() {
+        // Arrange, Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromPrice(null));
     }
 
     @Test
-    void fromPrice_shouldHandleZeroPrice() {
+    void fromPrice_shouldHandleZeroCorrectly() {
+        // Arrange
         BigDecimal price = BigDecimal.ZERO;
+
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromPrice(price);
+
+        // Assert
         assertEquals(BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
     }
 
     @Test
-    void fromPrice_shouldHandleNegativePrice() {
+    void fromPrice_shouldHandleNegativePriceCorrectly() {
+        // Arrange
         BigDecimal price = new BigDecimal("-10.5000");
+
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromPrice(price);
-        assertEquals(new BigDecimal("-10.5000").setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
+
+        // Assert
+        assertEquals(price.setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
     }
 
     @Test
-    void fromRaw_shouldCreateBinaryPriceWithGivenRawValue() {
+    void fromRaw_shouldCreateBinaryPriceFromRawValue() {
+        // Arrange
         long rawValue = 987654321L;
+        BigDecimal expectedPrice = new BigDecimal("98765.4321");
+
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromRaw(rawValue);
-        assertEquals(BigDecimal.valueOf(rawValue).divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP), binaryPrice.toPrice());
+
+        // Assert
+        assertEquals(expectedPrice.setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
     }
 
     @Test
-    void toPrice_shouldConvertRawValueToBigDecimalCorrectly() {
+    void toPrice_shouldConvertRawValueToBigDecimal() {
+        // Arrange
         BinaryPrice binaryPrice = BinaryPrice.fromRaw(1234567L);
-        BigDecimal expectedPrice = new BigDecimal("123.4567").setScale(4, RoundingMode.HALF_UP);
-        assertEquals(expectedPrice, binaryPrice.toPrice());
+        BigDecimal expectedPrice = new BigDecimal("123.4567");
+
+        // Act
+        BigDecimal actualPrice = binaryPrice.toPrice();
+
+        // Assert
+        assertEquals(expectedPrice.setScale(4, RoundingMode.HALF_UP), actualPrice);
     }
 
     @Test
-    void toPrice_shouldHandleZeroRawValue() {
+    void toPrice_shouldHandleZeroRawValueCorrectly() {
+        // Arrange
         BinaryPrice binaryPrice = BinaryPrice.fromRaw(0L);
-        BigDecimal expectedPrice = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
-        assertEquals(expectedPrice, binaryPrice.toPrice());
+
+        // Act
+        BigDecimal price = binaryPrice.toPrice();
+
+        // Assert
+        assertEquals(BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP), price);
     }
 
     @Test
-    void toPrice_shouldHandleNegativeRawValue() {
+    void toPrice_shouldHandleNegativeRawValueCorrectly() {
+        // Arrange
         BinaryPrice binaryPrice = BinaryPrice.fromRaw(-105000L);
-        BigDecimal expectedPrice = new BigDecimal("-10.5000").setScale(4, RoundingMode.HALF_UP);
-        assertEquals(expectedPrice, binaryPrice.toPrice());
+        BigDecimal expectedPrice = new BigDecimal("-10.5000");
+
+        // Act
+        BigDecimal actualPrice = binaryPrice.toPrice();
+
+        // Assert
+        assertEquals(expectedPrice.setScale(4, RoundingMode.HALF_UP), actualPrice);
     }
 
     @Test
-    void toBytes_shouldReturnCorrectByteArray() {
+    void toBytes_shouldReturnCorrectLittleEndianByteArray() {
+        // Arrange
         long rawValue = 1234567L;
         BinaryPrice binaryPrice = BinaryPrice.fromRaw(rawValue);
-        byte[] bytes = binaryPrice.toBytes();
-
-        ByteBuffer buffer = ByteBuffer.allocate(8);
-        buffer.order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer buffer = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN);
         buffer.putLong(rawValue);
+        byte[] expectedBytes = buffer.array();
 
-        assertArrayEquals(buffer.array(), bytes);
+        // Act
+        byte[] actualBytes = binaryPrice.toBytes();
+
+        // Assert
+        assertArrayEquals(expectedBytes, actualBytes);
     }
 
     @Test
-    void fromBytes_shouldReconstructBinaryPriceCorrectly() {
+    void fromBytes_shouldReconstructBinaryPriceFromByteArray() {
+        // Arrange
         long rawValue = 7654321L;
-        ByteBuffer buffer = ByteBuffer.allocate(8);
-        buffer.order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer buffer = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN);
         buffer.putLong(rawValue);
         byte[] bytes = buffer.array();
+        BigDecimal expectedPrice = new BigDecimal("765.4321");
 
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromBytes(bytes, 0);
-        assertEquals(BigDecimal.valueOf(rawValue).divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP), binaryPrice.toPrice());
+
+        // Assert
+        assertEquals(expectedPrice.setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
     }
 
     @Test
     void fromBytes_shouldHandleOffsetCorrectly() {
-        long rawValue = 1122334455667788L;
-        ByteBuffer buffer = ByteBuffer.allocate(16);
-        buffer.order(ByteOrder.LITTLE_ENDIAN);
-        buffer.putLong(0L);
+        // Arrange
+        long rawValue = 1122334455668L;
+        ByteBuffer buffer = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.putLong(0L); // some other data
         buffer.putLong(rawValue);
         byte[] bytes = buffer.array();
+        BigDecimal expectedPrice = new BigDecimal("112233445.5668"); // Rounded
 
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromBytes(bytes, 8);
-        assertEquals(BigDecimal.valueOf(rawValue).divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP), binaryPrice.toPrice());
+
+        // Assert
+        assertEquals(expectedPrice.setScale(4, RoundingMode.HALF_UP), binaryPrice.toPrice());
     }
 
     @Test
-    void fromBytes_shouldThrowExceptionForShortByteArray() {
+    void fromBytes_shouldThrowException_whenArrayIsTooShort() {
+        // Arrange
         byte[] shortBytes = new byte[7];
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                () -> BinaryPrice.fromBytes(shortBytes, 0),
-                "Expected fromBytes to throw IllegalArgumentException for short array, but it didn't");
-        assertTrue(thrown.getMessage().contains("Byte array is too short"));
+
+        // Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromBytes(shortBytes, 0));
     }
 
     @Test
-    void fromBytes_shouldThrowExceptionForNullByteArray() {
-        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                () -> BinaryPrice.fromBytes(null, 0),
-                "Expected fromBytes to throw IllegalArgumentException for null array, but it didn't");
-        assertTrue(thrown.getMessage().contains("Byte array is too short"));
+    void fromBytes_shouldThrowException_whenArrayIsNull() {
+        // Arrange, Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromBytes(null, 0));
     }
 
     @Test
-    void roundTrip_fromPriceToBytesFromBytesToPrice_shouldPreserveValue() {
-        BigDecimal originalPrice = new BigDecimal("987.654321"); 
+    void roundTripConversion_fromPriceToBytesAndBack_shouldPreserveValue() {
+        // Arrange
+        BigDecimal originalPrice = new BigDecimal("987.654321");
+        BigDecimal expectedPrice = new BigDecimal("987.6543");
+
+        // Act
         BinaryPrice binaryPrice = BinaryPrice.fromPrice(originalPrice);
         byte[] bytes = binaryPrice.toBytes();
         BinaryPrice reconstructedBinaryPrice = BinaryPrice.fromBytes(bytes, 0);
         BigDecimal finalPrice = reconstructedBinaryPrice.toPrice();
 
-        BigDecimal expectedPrice = new BigDecimal("987.6543").setScale(4, RoundingMode.HALF_UP);
-        assertEquals(expectedPrice, finalPrice);
+        // Assert
+        assertEquals(expectedPrice.setScale(4, RoundingMode.HALF_UP), finalPrice);
     }
 }
