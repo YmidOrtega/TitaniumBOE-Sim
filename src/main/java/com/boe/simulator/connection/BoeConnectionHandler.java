@@ -1,20 +1,20 @@
 package com.boe.simulator.connection;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import com.boe.simulator.protocol.message.BoeMessage;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 import com.boe.simulator.protocol.message.LogoutResponseMessage;
 import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
 import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
-
-import java.net.Socket;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.logging.Logger;
-import java.util.logging.Level;
 
 public class BoeConnectionHandler {
     private static final Logger LOGGER = Logger.getLogger(BoeConnectionHandler.class.getName());
@@ -48,7 +48,6 @@ public class BoeConnectionHandler {
                     inputStream = socket.getInputStream();
                     outputStream = socket.getOutputStream();
                     LOGGER.info("Connected to " + host + ":" + port);
-
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error connecting", e);
                     throw new RuntimeException(e);
@@ -96,12 +95,11 @@ public class BoeConnectionHandler {
             synchronized (this) {
                 try {
                     if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
-
+                    
                     byte[] data = serializer.serialize(message);
                     outputStream.write(data);
                     outputStream.flush();
                     LOGGER.fine("Message sent, length: " + message.getLength());
-
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
@@ -114,13 +112,12 @@ public class BoeConnectionHandler {
         return CompletableFuture.runAsync(() -> {
             synchronized (this) {
                 try {
-                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not " + "connected. Call connect() first.");
-
+                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
+                    
                     byte[] data = serializer.serialize(payload);
                     outputStream.write(data);
                     outputStream.flush();
                     LOGGER.fine("Message sent, length: " + data.length);
-
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
@@ -214,7 +211,7 @@ public class BoeConnectionHandler {
             LOGGER.fine("Received server heartbeat: " + heartbeat);
             
             if (messageListener != null) messageListener.onServerHeartbeat(heartbeat);
-
+            
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to parse server heartbeat", e);
             if (messageListener != null) messageListener.onMessageError((byte) 0x04, e);
@@ -241,7 +238,7 @@ public class BoeConnectionHandler {
             LogoutResponseMessage response = new LogoutResponseMessage(message.getData());
             LOGGER.info("Received logout response: " + response);
             if (messageListener != null) messageListener.onLogoutResponse(response);
-
+            
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to parse logout response", e);
             if (messageListener != null) messageListener.onMessageError((byte) 0x08, e);

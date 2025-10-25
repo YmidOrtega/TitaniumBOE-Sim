@@ -63,7 +63,7 @@ mvn compile
 
 ▶️ Ejecución
 
-mvn exec:java -Dexec.mainClass="com.boe.simulator.App"
+mvn exec:java -Dexec.mainClass="com.boe.simulator.ClientServer"
 
 📜 Licencia
 
