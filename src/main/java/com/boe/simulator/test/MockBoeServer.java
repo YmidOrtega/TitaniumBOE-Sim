@@ -7,17 +7,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
-/**
- * Mock BOE Server for testing purposes
- * Simulates a basic BOE server that accepts connections and responds to messages
- */
 public class MockBoeServer {
     private static final Logger LOGGER = Logger.getLogger(MockBoeServer.class.getName());
     private static final int DEFAULT_PORT = 12345;
@@ -65,7 +59,7 @@ public class MockBoeServer {
                 executor.submit(() -> handleClient(clientSocket));
 
             } catch (IOException e) {
-                if (running)LOGGER.log(Level.SEVERE, "Error accepting connection", e);
+                if (running) LOGGER.log(Level.SEVERE, "Error accepting connection", e);
             }
         }
     }
@@ -98,9 +92,7 @@ public class MockBoeServer {
                     }
 
                 } catch (IOException e) {
-                    if (running) {
-                        LOGGER.log(Level.WARNING, "Error reading message from client", e);
-                    }
+                    if (running) LOGGER.log(Level.WARNING, "Error reading message from client", e);
                     break;
                 }
             }
@@ -118,6 +110,7 @@ public class MockBoeServer {
         int bytesRead = input.read(startMarker);
 
         if (bytesRead < 0) return null; // End of stream
+        
         if (bytesRead < 2 || startMarker[0] != START_OF_MESSAGE_1 || startMarker[1] != START_OF_MESSAGE_2) {
             LOGGER.warning("Invalid start of message marker: " + (bytesRead >= 2 ? String.format("0x%02X%02X", startMarker[0], startMarker[1]) : "incomplete"));
             return null;
@@ -147,7 +140,7 @@ public class MockBoeServer {
         System.arraycopy(startMarker, 0, fullMessage, 0, 2);
         System.arraycopy(lengthBytes, 0, fullMessage, 2, 2);
         if (payloadLength > 0) System.arraycopy(payload, 0, fullMessage, 4, payloadLength);
-
+        
         return fullMessage;
     }
 
@@ -161,12 +154,13 @@ public class MockBoeServer {
     }
 
     private void processMessage(byte[] message, OutputStream output) throws IOException {
-        if (message.length < 5) {
-            LOGGER.warning("Message too short");
+        if (message == null || message.length < 5) {
+            LOGGER.warning("Message too short: " + (message != null ? message.length : 0) + " bytes");
             return;
         }
 
-        // Extract message type (index 4)
+        // Message structure: [0xBA 0xBA][Length:2][Type:1][...]
+        // MessageType is at index 4 (after StartOfMessage + MessageLength)
         byte messageType = message[4];
 
         LOGGER.info("Received message type: 0x" + String.format("%02X", messageType));
@@ -189,18 +183,24 @@ public class MockBoeServer {
     private void handleLoginRequest(byte[] message, OutputStream output) throws IOException {
         LOGGER.info("Processing Login Request...");
 
-        // Extract username (assuming offset 10, length 4)
-        if (message.length >= 14) {
-            String username = extractString(message, 10, 4);
+        // Extract username (offset 14, length 4)
+        if (message.length >= 18) {
+            String username = extractString(message, 14, 4);
             LOGGER.info("  Username: '" + username + "'");
+
+            // Extract password (offset 18, length 10)
+            if (message.length >= 28) {
+                String password = extractString(message, 18, 10);
+                LOGGER.info("  Password: '" + password + "'");
+            }
         }
 
-        // Send Login Response (simplified)
+        // Send Login Response
         byte[] response = createLoginResponse();
         output.write(response);
         output.flush();
 
-        LOGGER.info("✓ Login Response sent");
+        LOGGER.info("✓ Login Response sent (" + response.length + " bytes)");
     }
 
     private void handleLogoutRequest(byte[] message, OutputStream output) throws IOException {
@@ -260,7 +260,7 @@ public class MockBoeServer {
 
     private String extractString(byte[] data, int offset, int length) {
         if (offset + length > data.length) return "";
-
+        
         byte[] strBytes = new byte[length];
         System.arraycopy(data, offset, strBytes, 0, length);
 
@@ -274,7 +274,7 @@ public class MockBoeServer {
 
         try {
             if (serverSocket != null && !serverSocket.isClosed()) serverSocket.close();
-
+            
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Error closing server socket", e);
         }
