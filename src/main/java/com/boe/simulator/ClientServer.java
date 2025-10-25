@@ -1,13 +1,13 @@
 package com.boe.simulator;
 
-import com.boe.simulator.connection.BoeConnectionHandler;
-import com.boe.simulator.protocol.message.BoeSessionManager;
-
 import java.util.Scanner;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+
+import com.boe.simulator.connection.BoeConnectionHandler;
+import com.boe.simulator.protocol.message.BoeSessionManager;
 
 public class ClientServer {
     private static final Logger LOGGER = Logger.getLogger(ClientServer.class.getName());
