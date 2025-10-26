@@ -1,312 +1,240 @@
 package com.boe.simulator.test;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
-import java.util.logging.Level;
 
 public class MockBoeServer {
+
     private static final Logger LOGGER = Logger.getLogger(MockBoeServer.class.getName());
-    private static final int DEFAULT_PORT = 12345;
+    private static final int PORT = 12345;
 
-    // Message Types
-    private static final byte LOGIN_REQUEST = 0x37;
-    private static final byte LOGOUT_REQUEST = 0x02;
-    private static final byte HEARTBEAT = 0x03;
-    private static final byte LOGIN_RESPONSE = 0x07;  // Example response type
-
-    // Start of Message marker
+    // BOE Constants
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
 
-    private final int port;
-    private final ExecutorService executor;
-    private ServerSocket serverSocket;
-    private volatile boolean running;
+    private static final byte CLIENT_HEARTBEAT = 0x03;
+    private static final byte SERVER_HEARTBEAT = 0x04;
+    private static final byte LOGIN_REQUEST = 0x37;
+    private static final byte LOGIN_RESPONSE = 0x07;
+    private static final byte LOGOUT_REQUEST = 0x02;
 
-    public MockBoeServer() {
-        this(DEFAULT_PORT);
-    }
+    private final ExecutorService clientExecutor = Executors.newCachedThreadPool();
 
-    public MockBoeServer(int port) {
-        this.port = port;
-        this.executor = Executors.newCachedThreadPool();
-        this.running = false;
-    }
+    public void start() {
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            LOGGER.info("✅ MockBoeServer started on port " + PORT);
 
-    public void start() throws IOException {
-        serverSocket = new ServerSocket(port);
-        running = true;
-
-        LOGGER.info("╔════════════════════════════════════════════════╗");
-        LOGGER.info("║     Mock BOE Server Started                    ║");
-        LOGGER.info("║     Listening on port: " + port + "                   ║");
-        LOGGER.info("║     Press Ctrl+C to stop                       ║");
-        LOGGER.info("╚════════════════════════════════════════════════╝");
-
-        while (running) {
-            try {
+            while (true) {
                 Socket clientSocket = serverSocket.accept();
                 LOGGER.info("✓ Client connected: " + clientSocket.getRemoteSocketAddress());
-
-                executor.submit(() -> handleClient(clientSocket));
-
-            } catch (IOException e) {
-                if (running) LOGGER.log(Level.SEVERE, "Error accepting connection", e);
+                clientExecutor.submit(() -> handleClient(clientSocket));
             }
+        } catch (IOException e) {
+            LOGGER.severe("Server error: " + e.getMessage());
         }
     }
 
     private void handleClient(Socket clientSocket) {
-        boolean clientActive = true;
+        try (InputStream input = clientSocket.getInputStream();
+             OutputStream output = clientSocket.getOutputStream()) {
 
-        try (Socket socket = clientSocket) {
-            InputStream input = socket.getInputStream();
-            OutputStream output = socket.getOutputStream();
+            LOGGER.info("Client handler started for: " + clientSocket.getRemoteSocketAddress());
 
-            LOGGER.info("Client handler started for: " + socket.getRemoteSocketAddress());
+            while (!clientSocket.isClosed()) {
+                byte[] message = readMessage(input);
+                if (message == null || message.length == 0) continue;
 
-            while (!socket.isClosed() && running && clientActive) {
-                try {
-                    byte[] message = readMessage(input);
-
-                    if (message == null) {
-                        LOGGER.info("Client disconnected: " + socket.getRemoteSocketAddress());
-                        break;
-                    }
-
-                    // Check if it's a logout request
-                    if (message.length >= 5 && message[4] == LOGOUT_REQUEST) {
-                        processMessage(message, output);
-                        LOGGER.info("Client logout received, closing connection gracefully");
-                        clientActive = false; // Exit loop after logout
-                    } else {
-                        processMessage(message, output);
-                    }
-
-                } catch (IOException e) {
-                    if (running) LOGGER.log(Level.WARNING, "Error reading message from client", e);
-                    break;
-                }
+                LOGGER.info("Message received (" + message.length + " bytes): " + bytesToHex(message));
+                processMessage(message, output);
             }
 
-            LOGGER.info("Client handler finished for: " + socket.getRemoteSocketAddress());
-
+        } catch (EOFException eof) {
+            LOGGER.info("Client disconnected gracefully: " + clientSocket.getRemoteSocketAddress());
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Error handling client", e);
+            LOGGER.warning("Client connection error: " + e.getMessage());
+        } finally {
+            try {
+                clientSocket.close();
+            } catch (IOException ignored) {}
+            LOGGER.info("Client handler terminated for: " + clientSocket.getRemoteSocketAddress());
         }
     }
 
+    /**
+     * Reads a complete BOE message based on the protocol structure.
+     */
     private byte[] readMessage(InputStream input) throws IOException {
-        // Read Start of Message (2 bytes)
-        byte[] startMarker = new byte[2];
-        int bytesRead = input.read(startMarker);
+        // Buscar el marcador de inicio 0xBA 0xBA
+        int b1, b2;
+        while (true) {
+            b1 = input.read();
+            if (b1 == -1) return null;
+            if (b1 != 0xBA) continue;
 
-        if (bytesRead < 0) return null; // End of stream
-        
-        if (bytesRead < 2 || startMarker[0] != START_OF_MESSAGE_1 || startMarker[1] != START_OF_MESSAGE_2) {
-            LOGGER.warning("Invalid start of message marker: " + (bytesRead >= 2 ? String.format("0x%02X%02X", startMarker[0], startMarker[1]) : "incomplete"));
-            return null;
+            b2 = input.read();
+            if (b2 == -1) return null;
+            if (b2 == 0xBA) break;
         }
 
-        // Read Message Length (2 bytes)
-        byte[] lengthBytes = new byte[2];
-        readFully(input, lengthBytes, 0, 2);
+        // Leer longitud (2 bytes, little endian)
+        byte[] lenBytes = readFully(input, 2);
+        int payloadLength = ByteBuffer.wrap(lenBytes).order(ByteOrder.LITTLE_ENDIAN).getShort() & 0xFFFF;
 
-        ByteBuffer lengthBuffer = ByteBuffer.wrap(lengthBytes).order(ByteOrder.LITTLE_ENDIAN);
-        int messageLength = lengthBuffer.getShort() & 0xFFFF;
+        // Leer payload completo
+        byte[] payload = readFully(input, payloadLength);
 
-        if (messageLength < 2 || messageLength > 65535) {
-            LOGGER.warning("Invalid message length: " + messageLength);
-            return null;
-        }
+        // Armar mensaje completo (SOM + length + payload)
+        ByteBuffer buffer = ByteBuffer.allocate(4 + payloadLength);
+        buffer.put(START_OF_MESSAGE_1);
+        buffer.put(START_OF_MESSAGE_2);
+        buffer.put(lenBytes);
+        buffer.put(payload);
 
-        // MessageLength includes itself (2 bytes), so payload = messageLength - 2
-        int payloadLength = messageLength - 2;
-
-        // Read the payload
-        byte[] payload = new byte[payloadLength];
-        if (payloadLength > 0) readFully(input, payload, 0, payloadLength);
-
-        // Reconstruct full message: StartOfMessage(2) + MessageLength(2) + Payload
-        byte[] fullMessage = new byte[2 + messageLength];
-        System.arraycopy(startMarker, 0, fullMessage, 0, 2);
-        System.arraycopy(lengthBytes, 0, fullMessage, 2, 2);
-        if (payloadLength > 0) System.arraycopy(payload, 0, fullMessage, 4, payloadLength);
-        
-        return fullMessage;
+        LOGGER.info(String.format("✅ Received complete message (%d bytes)", buffer.array().length));
+        return buffer.array();
     }
 
-    private void readFully(InputStream input, byte[] buffer, int offset, int length) throws IOException {
-        int totalRead = 0;
-        while (totalRead < length) {
-            int count = input.read(buffer, offset + totalRead, length - totalRead);
-            if (count < 0) throw new IOException("Unexpected end of stream");
-            totalRead += count;
+    /**
+     * Reads exactly 'length' bytes from InputStream
+     */
+    private byte[] readFully(InputStream input, int length) throws IOException {
+        byte[] buffer = new byte[length];
+        int read = 0;
+        while (read < length) {
+            int n = input.read(buffer, read, length - read);
+            if (n == -1) throw new EOFException("Stream closed before reading fully");
+            read += n;
         }
+        return buffer;
     }
 
+    /**
+     * Process a BOE message by type.
+     */
     private void processMessage(byte[] message, OutputStream output) throws IOException {
-        if (message == null || message.length < 5) {
-            LOGGER.warning("Message too short: " + (message != null ? message.length : 0) + " bytes");
+        if (message.length < 5) {
+            LOGGER.warning("Message too short to process.");
             return;
         }
 
-        // Message structure: [0xBA 0xBA][Length:2][Type:1][...]
-        // MessageType is at index 4 (after StartOfMessage + MessageLength)
         byte messageType = message[4];
-
-        LOGGER.info("Received message type: 0x" + String.format("%02X", messageType));
+        LOGGER.info(String.format("Received message type: 0x%02X", messageType));
 
         switch (messageType) {
-            case LOGIN_REQUEST: handleLoginRequest(message, output);
-            break;
+            case LOGIN_REQUEST:
+                LOGGER.info("✅ Received Login Request");
+                sendLoginResponse(output);
+                break;
 
-            case LOGOUT_REQUEST: handleLogoutRequest(message, output);
-            break;
+            case CLIENT_HEARTBEAT:
+                LOGGER.info("💓 Received Client Heartbeat");
+                sendServerHeartbeat(output);
+                break;
 
-            case HEARTBEAT: handleHeartbeat(message, output);
-            break;
+            case LOGOUT_REQUEST:
+                LOGGER.info("👋 Received Logout Request");
+                break;
 
-            default: LOGGER.warning("Unknown message type: 0x" + String.format("%02X", messageType));
-            break;
+            default:
+                LOGGER.warning(String.format("Unknown message type: 0x%02X", messageType));
+                break;
         }
     }
 
-    private void handleLoginRequest(byte[] message, OutputStream output) throws IOException {
-        LOGGER.info("Processing Login Request...");
-
-        // Extract username (offset 14, length 4)
-        if (message.length >= 18) {
-            String username = extractString(message, 14, 4);
-            LOGGER.info("  Username: '" + username + "'");
-
-            // Extract password (offset 18, length 10)
-            if (message.length >= 28) {
-                String password = extractString(message, 18, 10);
-                LOGGER.info("  Password: '" + password + "'");
-            }
-        }
-
-        // Send Login Response
-        byte[] response = createLoginResponse();
+    private void sendLoginResponse(OutputStream output) throws IOException {
+        byte[] response = createLoginResponse();  // Usar el método correcto
         output.write(response);
         output.flush();
-
-        LOGGER.info("✓ Login Response sent (" + response.length + " bytes)");
+        LOGGER.info("✅ Sent Login Response (0x07) - " + response.length + " bytes: " + bytesToHex(response, 20));
     }
 
-    private void handleLogoutRequest(byte[] message, OutputStream output) throws IOException {
-        LOGGER.info("Processing Logout Request...");
-
-        // Send a simple logout acknowledgment (optional)
-        byte[] response = createLogoutResponse();
-        output.write(response);
+    private void sendServerHeartbeat(OutputStream output) throws IOException {
+        byte[] heartbeat = buildServerHeartbeat();
+        output.write(heartbeat);
         output.flush();
-
-        LOGGER.info("✓ Logout Response sent, client will disconnect");
+        LOGGER.info("✅ Sent Server Heartbeat (0x04): " + bytesToHex(heartbeat, heartbeat.length));
     }
 
-    private byte[] createLogoutResponse() {
-        // Simple Logout Response: StartOfMessage + Length + Type + MatchingUnit + SequenceNumber
-        int messageLength = 6; // Type(1) + MatchingUnit(1) + SequenceNumber(4)
-
-        ByteBuffer buffer = ByteBuffer.allocate(4 + messageLength);
+    private byte[] buildLoginResponse() {
+        int payloadLength = 6; // MessageType + MatchingUnit + SequenceNumber(4)
+        ByteBuffer buffer = ByteBuffer.allocate(4 + payloadLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
-
         buffer.put(START_OF_MESSAGE_1);
         buffer.put(START_OF_MESSAGE_2);
-        buffer.putShort((short) messageLength);
-        buffer.put((byte) 0x08); // Logout Response type (example)
-        buffer.put((byte) 0); // Matching Unit
-        buffer.putInt(1); // Sequence Number
-
+        buffer.putShort((short) payloadLength);
+        buffer.put(LOGIN_RESPONSE);  // Message Type
+        buffer.put((byte) 0x00);     // Matching Unit
+        buffer.putInt(1);            // Sequence Number
         return buffer.array();
     }
 
-    private void handleHeartbeat(byte[] message, OutputStream output) throws IOException {
-        LOGGER.fine("Processing Heartbeat...");
-
-        // Echo back a heartbeat response
-        output.write(message);
-        output.flush();
-
-        LOGGER.fine("✓ Heartbeat response sent");
-    }
-
-    private byte[] createLoginResponse() {
-        // Simple Login Response: StartOfMessage + Length + Type + MatchingUnit + SequenceNumber
-        int messageLength = 6; // Type(1) + MatchingUnit(1) + SequenceNumber(4)
-
-        ByteBuffer buffer = ByteBuffer.allocate(4 + messageLength);
+    private byte[] buildServerHeartbeat() {
+        int payloadLength = 6; // MessageType + MatchingUnit + SequenceNumber(4)
+        ByteBuffer buffer = ByteBuffer.allocate(4 + payloadLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
-
         buffer.put(START_OF_MESSAGE_1);
         buffer.put(START_OF_MESSAGE_2);
-        buffer.putShort((short) messageLength);
-        buffer.put(LOGIN_RESPONSE);
-        buffer.put((byte) 0); // Matching Unit
-        buffer.putInt(1); // Sequence Number
-
+        buffer.putShort((short) payloadLength);
+        buffer.put(SERVER_HEARTBEAT); // Message Type
+        buffer.put((byte) 0x00);      // Matching Unit
+        buffer.putInt(1);             // Sequence Number
         return buffer.array();
     }
 
-    private String extractString(byte[] data, int offset, int length) {
-        if (offset + length > data.length) return "";
-        
-        byte[] strBytes = new byte[length];
-        System.arraycopy(data, offset, strBytes, 0, length);
-
-        // Trim spaces and null bytes
-        String str = new String(strBytes).trim();
-        return str.replace("\0", "");
-    }
-
-    public void stop() {
-        running = false;
-
-        try {
-            if (serverSocket != null && !serverSocket.isClosed()) serverSocket.close();
-            
-        } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Error closing server socket", e);
-        }
-
-        executor.shutdown();
-        LOGGER.info("Mock BOE Server stopped");
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes)
+            sb.append(String.format("%02X ", b));
+        return sb.toString().trim();
     }
 
     public static void main(String[] args) {
-        int port = DEFAULT_PORT;
+        new MockBoeServer().start();
+    }
 
-        if (args.length > 0) {
-            try {
-                port = Integer.parseInt(args[0]);
-            } catch (NumberFormatException e) {
-                System.err.println("Invalid port number. Using default: " + DEFAULT_PORT);
-            }
+    private byte[] createLoginResponse() {
+        // Login Response structure según BOE spec
+        int payloadLength = 72;  // 1+1+4+1+60+4+1
+
+        ByteBuffer buffer = ByteBuffer.allocate(4 + payloadLength);
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+        buffer.put(START_OF_MESSAGE_1);
+        buffer.put(START_OF_MESSAGE_2);
+        buffer.putShort((short) payloadLength);
+        buffer.put(LOGIN_RESPONSE);
+        buffer.put((byte) 0);
+        buffer.putInt(1);
+        buffer.put((byte) 'A');
+
+        // Text (60 bytes)
+        String text = "Login successful";
+        byte[] textBytes = new byte[60];
+        java.util.Arrays.fill(textBytes, (byte) 0x20);
+        byte[] msgBytes = text.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(msgBytes, 0, textBytes, 0, Math.min(msgBytes.length, 60));
+        buffer.put(textBytes);
+
+        buffer.putInt(0);
+        buffer.put((byte) 1);
+
+        return buffer.array();
+    }
+
+    private String bytesToHex(byte[] bytes, int maxLength) {
+        StringBuilder sb = new StringBuilder();
+        int len = Math.min(bytes.length, maxLength);
+        for (int i = 0; i < len; i++) {
+            sb.append(String.format("%02X ", bytes[i]));
         }
-
-        MockBoeServer server = new MockBoeServer(port);
-
-        // Add shutdown hook
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("\nShutting down server...");
-            server.stop();
-        }));
-
-        try {
-            server.start();
-        } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Failed to start server", e);
-            System.exit(1);
+        if (bytes.length > maxLength) {
+            sb.append("...");
         }
+        return sb.toString().trim();
     }
 }

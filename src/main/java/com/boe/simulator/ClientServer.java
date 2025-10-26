@@ -1,13 +1,15 @@
 package com.boe.simulator;
 
+import com.boe.simulator.connection.BoeConnectionHandler;
+import com.boe.simulator.protocol.message.BoeSessionManager;
+import com.boe.simulator.protocol.message.SessionState;
+
 import java.util.Scanner;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 
-import com.boe.simulator.connection.BoeConnectionHandler;
-import com.boe.simulator.protocol.message.BoeSessionManager;
 
 public class ClientServer {
     private static final Logger LOGGER = Logger.getLogger(ClientServer.class.getName());
@@ -46,7 +48,8 @@ public class ClientServer {
         LOGGER.info("=== BOE Simulator Stopped ===");
     }
 
-    private static void runInteractiveMode(BoeSessionManager sessionManager, BoeConnectionHandler connectionHandler) {
+    private static void runInteractiveMode(BoeSessionManager sessionManager,
+                                           BoeConnectionHandler connectionHandler) {
         Scanner scanner = new Scanner(System.in);
         boolean running = true;
 
@@ -113,7 +116,8 @@ public class ClientServer {
         scanner.close();
     }
 
-    private static void handleLogin(BoeSessionManager sessionManager, BoeConnectionHandler connectionHandler) {
+    private static void handleLogin(BoeSessionManager sessionManager,
+                                    BoeConnectionHandler connectionHandler) {
         System.out.println("Attempting login...");
 
         sessionManager.login(USERNAME, PASSWORD)
@@ -122,16 +126,11 @@ public class ClientServer {
                     System.out.println("  Session ID: " + sessionManager.getSessionSubID());
                     System.out.println("  State: " + sessionManager.getSessionState());
                     System.out.println("  Waiting for server response...");
-
-                    // Start listener to receive responses
-                    connectionHandler.startListener()
-                            .thenRun(() -> LOGGER.info("Listener started successfully"));
                 })
                 .exceptionally(e -> {
                     System.err.println("✗ Login failed: " + e.getMessage());
                     return null;
-                })
-                .join();
+                });
     }
 
     private static void handleLogout(BoeSessionManager sessionManager) {
@@ -143,23 +142,27 @@ public class ClientServer {
         }
 
         sessionManager.logout()
-                .thenRun(() -> System.out.println("✓ Logout successful!"))
+                .thenRun(() -> System.out.println("✓ Logout request sent successfully!"))
                 .exceptionally(e -> {
                     System.err.println("✗ Logout failed: " + e.getMessage());
                     return null;
-                })
-                .join();
+                });
     }
 
-    private static void handleStatus(BoeSessionManager sessionManager, BoeConnectionHandler connectionHandler) {
+    private static void handleStatus(BoeSessionManager sessionManager,
+                                     BoeConnectionHandler connectionHandler) {
         System.out.println("\n=== Connection Status ===");
         System.out.println("Connected: " + connectionHandler.isConnected());
         System.out.println("Session State: " + sessionManager.getSessionState());
         System.out.println("Session Active: " + sessionManager.isActive());
-        System.out.println("Session ID: " + (sessionManager.getSessionSubID() != null ? sessionManager.getSessionSubID() : "N/A"));
-        System.out.println("Username: " + (sessionManager.getUsername() != null ? sessionManager.getUsername() : "N/A"));
+        System.out.println("Session ID: " +
+                (sessionManager.getSessionSubID() != null ? sessionManager.getSessionSubID() : "N/A"));
+        System.out.println("Username: " +
+                (sessionManager.getUsername() != null ? sessionManager.getUsername() : "N/A"));
 
-        if (sessionManager.getLastHeartbeatTime() != null) System.out.println("Last Heartbeat: " + sessionManager.getLastHeartbeatTime());
+        if (sessionManager.getLastHeartbeatTime() != null) {
+            System.out.println("Last Heartbeat: " + sessionManager.getLastHeartbeatTime());
+        }
         System.out.println("========================\n");
     }
 
@@ -178,8 +181,7 @@ public class ClientServer {
                 .exceptionally(e -> {
                     System.err.println("✗ Failed to send message: " + e.getMessage());
                     return null;
-                })
-                .join();
+                });
     }
 
     private static void handleStartListener(BoeConnectionHandler connectionHandler) {
@@ -227,7 +229,7 @@ public class ClientServer {
 
             if (sessionManager.isActive()) {
                 LOGGER.info("Logging out...");
-                sessionManager.logout().join();
+                sessionManager.logout();
             }
 
             sessionManager.shutdown();

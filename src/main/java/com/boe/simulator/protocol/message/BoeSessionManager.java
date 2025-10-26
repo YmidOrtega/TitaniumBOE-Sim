@@ -11,16 +11,18 @@ import java.util.logging.Level;
 
 import com.boe.simulator.connection.BoeConnectionHandler;
 import com.boe.simulator.connection.BoeMessageListener;
+import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
 
 public class BoeSessionManager {
     private static final Logger LOGGER = Logger.getLogger(BoeSessionManager.class.getName());
-    private static final long HEARTBEAT_INTERVAL_SECONDS = 10;
-    
+    private static final long HEARTBEAT_INTERVAL_SECONDS = 10; // Configurable, default 10s
+
     private final BoeConnectionHandler connectionHandler;
+    private final BoeMessageSerializer serializer;
     private final AtomicInteger sessionIdCounter = new AtomicInteger(1);
-    private final AtomicInteger sequenceNumber = new AtomicInteger(1);
+    private final AtomicInteger sequenceNumber = new AtomicInteger(1); // Global sequence counter
     private final ScheduledExecutorService heartbeatScheduler = Executors.newSingleThreadScheduledExecutor();
-    
+
     private Instant lastHeartbeatTime;
     private volatile SessionState sessionState;
     private String sessionSubID;
@@ -29,18 +31,21 @@ public class BoeSessionManager {
 
     public BoeSessionManager(BoeConnectionHandler handler) {
         this.connectionHandler = handler;
+        this.serializer = new BoeMessageSerializer();
         this.sessionState = SessionState.DISCONNECTED;
+
+        // Set up message listener
         this.connectionHandler.setMessageListener(new BoeMessageListener() {
             @Override
             public void onLoginResponse(LoginResponseMessage response) {
                 handleLoginResponse(response);
             }
-            
+
             @Override
             public void onLogoutResponse(LogoutResponseMessage response) {
                 handleLogoutResponse(response);
             }
-            
+
             @Override
             public void onServerHeartbeat(ServerHeartbeatMessage heartbeat) {
                 handleServerHeartbeat(heartbeat);
@@ -51,20 +56,27 @@ public class BoeSessionManager {
     public CompletableFuture<Void> login(String username, String password) {
         this.username = username;
         this.password = password;
-        
+
         return CompletableFuture.runAsync(() -> {
             try {
                 setSessionState(SessionState.CONNECTING);
                 connectionHandler.connect().get();
-                
+
+                // Start listener FIRST before sending login
+                connectionHandler.startListener();
+
+                // Give listener time to start
+                Thread.sleep(100);
+
                 setSessionState(SessionState.AUTHENTICATING);
                 sendLoginRequest();
 
+                // Give the server time to process and respond
                 Thread.sleep(100);
-                
+
                 setSessionState(SessionState.AUTHENTICATED);
                 startHeartbeat();
-                
+
                 LOGGER.info("Login successful for user: " + username);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -98,18 +110,18 @@ public class BoeSessionManager {
     private void sendLoginRequest() {
         try {
             LOGGER.info("Sending login request for user: " + username);
-            
+
             String sessionSubID = generateSessionSubID();
             LoginRequestMessage loginMessage = new LoginRequestMessage(
-                username, 
-                password, 
-                sessionSubID, 
-                (byte) 0
+                    username,
+                    password,
+                    sessionSubID,
+                    (byte) 0
             );
-            
+
             byte[] messageBytes = loginMessage.toBytes();
             connectionHandler.sendMessage(messageBytes).get();
-            
+
             LOGGER.info("Login request sent successfully: " + loginMessage);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to send login request", e);
@@ -120,11 +132,11 @@ public class BoeSessionManager {
     private void sendLogoutRequest() {
         try {
             LOGGER.info("Sending logout request");
-            
-            LogoutRequestMessage logoutRequestMessage = new LogoutRequestMessage();
-            byte[] messageBytes = logoutRequestMessage.toBytes();
+
+            LogoutRequestMessage logoutMessage = new LogoutRequestMessage();
+            byte[] messageBytes = logoutMessage.toBytes();
             connectionHandler.sendMessage(messageBytes).get();
-            
+
             LOGGER.info("Logout request sent successfully");
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to send logout request", e);
@@ -151,13 +163,15 @@ public class BoeSessionManager {
     private void sendHeartbeat() {
         try {
             LOGGER.fine("Sending heartbeat");
-            
+
             ClientHeartbeatMessage heartbeatMessage = new ClientHeartbeatMessage();
             heartbeatMessage.setSequenceNumber(sequenceNumber.getAndIncrement());
-            
+
             byte[] messageBytes = heartbeatMessage.toBytes();
-            connectionHandler.sendMessage(messageBytes).get();
-            
+
+            // Send directly without additional serialization
+            connectionHandler.sendMessageRaw(messageBytes).get();
+
             LOGGER.fine("Heartbeat sent successfully");
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to send heartbeat", e);
@@ -208,34 +222,38 @@ public class BoeSessionManager {
     }
 
     public boolean isActive() {
-        return sessionState == SessionState.ACTIVE || 
-               sessionState == SessionState.AUTHENTICATED;
+        return sessionState == SessionState.ACTIVE ||
+                sessionState == SessionState.AUTHENTICATED;
     }
 
     public void shutdown() {
         stopHeartbeat();
         connectionHandler.shutdown();
     }
-    
+
     private void handleLoginResponse(LoginResponseMessage response) {
         LOGGER.info("Handling login response: " + response);
-        
+
         if (response.isAccepted()) {
             setSessionState(SessionState.ACTIVE);
             LOGGER.info("Session active - Login accepted");
+            System.out.println("\n✓ Login successful! Session is now ACTIVE.");
         } else {
             setSessionState(SessionState.ERROR);
             LOGGER.warning("Login rejected: " + response.getLoginResponseText());
+            System.err.println("\n✗ Login rejected by server: " + response.getLoginResponseText());
         }
     }
-    
+
     private void handleLogoutResponse(LogoutResponseMessage response) {
         LOGGER.info("Handling logout response: " + response);
         setSessionState(SessionState.DISCONNECTED);
+        System.out.println("\n✓ Logout successful!");
     }
-    
+
     private void handleServerHeartbeat(ServerHeartbeatMessage heartbeat) {
         LOGGER.fine("Received server heartbeat - session alive");
+        // Update last heartbeat time if needed
         lastHeartbeatTime = Instant.now();
     }
 }
