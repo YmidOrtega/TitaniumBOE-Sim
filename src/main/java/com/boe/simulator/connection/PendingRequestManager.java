@@ -3,6 +3,7 @@ package com.boe.simulator.connection;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class PendingRequestManager {
@@ -32,26 +33,25 @@ public class PendingRequestManager {
         // Set timeout (30 seconds)
         future.orTimeout(30, TimeUnit.SECONDS)
                 .exceptionally(ex -> {
-                    LOGGER.warning("Request timeout for " + type);
+                    LOGGER.log(Level.WARNING, "Request timeout for {0}", type);
                     pendingRequests.remove(type);
                     return null;
                 });
 
-        LOGGER.fine("Registered pending request: " + type);
+        LOGGER.log(Level.FINE, "Registered pending request: {0}", type);
         return future;
     }
 
-    @SuppressWarnings("unchecked")
     public <T> boolean completeRequest(RequestType type, T response) {
         CompletableFuture<Object> future = pendingRequests.remove(type);
 
         if (future == null) {
-            LOGGER.warning("No pending request found for: " + type);
+            LOGGER.log(Level.WARNING, "No pending request found for: {0}", type);
             return false;
         }
 
         future.complete(response);
-        LOGGER.fine("Completed request: " + type);
+        LOGGER.log(Level.FINE, "Completed request: {0}", type);
         return true;
     }
 
@@ -59,12 +59,12 @@ public class PendingRequestManager {
         CompletableFuture<Object> future = pendingRequests.remove(type);
 
         if (future == null) {
-            LOGGER.warning("No pending request found to fail: " + type);
+            LOGGER.log(Level.WARNING, "No pending request found to fail: {0}", type);
             return false;
         }
 
         future.completeExceptionally(exception);
-        LOGGER.fine("Failed request: " + type);
+        LOGGER.log(Level.FINE, "Failed request: {0}", type);
         return true;
     }
 

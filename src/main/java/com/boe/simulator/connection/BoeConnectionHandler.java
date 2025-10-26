@@ -1,17 +1,21 @@
 package com.boe.simulator.connection;
 
-import com.boe.simulator.protocol.message.*;
-import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
-
-import java.net.Socket;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.Socket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.logging.Logger;
 import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import com.boe.simulator.protocol.message.BoeMessage;
+import com.boe.simulator.protocol.message.BoeMessageFactory;
+import com.boe.simulator.protocol.message.LoginResponseMessage;
+import com.boe.simulator.protocol.message.LogoutResponseMessage;
+import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
+import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
 
 public class BoeConnectionHandler {
     private static final Logger LOGGER = Logger.getLogger(BoeConnectionHandler.class.getName());
@@ -27,7 +31,6 @@ public class BoeConnectionHandler {
     private volatile boolean running = false;
 
     private BoeMessageListener messageListener;
-    private PendingRequestManager pendingRequestManager;
 
     public BoeConnectionHandler(String host, int port) {
         this.host = host;
@@ -45,7 +48,7 @@ public class BoeConnectionHandler {
                     socket = new Socket(host, port);
                     inputStream = socket.getInputStream();
                     outputStream = socket.getOutputStream();
-                    LOGGER.info("Connected to " + host + ":" + port);
+                    LOGGER.log(Level.INFO, "Connected to {0}:{1}", new Object[]{host, port});
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error connecting", e);
                     throw new RuntimeException(e);
@@ -83,7 +86,7 @@ public class BoeConnectionHandler {
                     }
                 }
 
-                LOGGER.info("Disconnected from " + host + ":" + port);
+                LOGGER.log(Level.INFO, "Disconnected from {0}:{1}", new Object[]{host, port});
             }
         }, executor);
     }
@@ -92,14 +95,12 @@ public class BoeConnectionHandler {
         return CompletableFuture.runAsync(() -> {
             synchronized (this) {
                 try {
-                    if (outputStream == null || socket == null || socket.isClosed()) {
-                        throw new IOException("Not connected. Call connect() first.");
-                    }
-
+                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
+                
                     byte[] data = serializer.serialize(message);
                     outputStream.write(data);
                     outputStream.flush();
-                    LOGGER.fine("Message sent, length: " + message.getLength());
+                    LOGGER.log(Level.FINE, "Message sent, length: {0}", message.getLength());
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
@@ -112,14 +113,12 @@ public class BoeConnectionHandler {
         return CompletableFuture.runAsync(() -> {
             synchronized (this) {
                 try {
-                    if (outputStream == null || socket == null || socket.isClosed()) {
-                        throw new IOException("Not connected. Call connect() first.");
-                    }
-
+                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
+                    
                     byte[] data = serializer.serialize(payload);
                     outputStream.write(data);
                     outputStream.flush();
-                    LOGGER.fine("Message sent, length: " + data.length);
+                    LOGGER.log(Level.FINE, "Message sent, length: {0}", data.length);
                 } catch (IOException e) {
                     LOGGER.log(Level.SEVERE, "Error sending message", e);
                     throw new RuntimeException(e);
@@ -128,20 +127,14 @@ public class BoeConnectionHandler {
         }, executor);
     }
 
-    /**
-     * Send raw message bytes without additional serialization
-     * Use this when the message already has BOE header (0xBABA + length)
-     */
     public CompletableFuture<Void> sendMessageRaw(byte[] messageBytes) {
         return CompletableFuture.runAsync(() -> {
             synchronized (this) {
                 try {
-                    if (outputStream == null || socket == null || socket.isClosed()) {
-                        throw new IOException("Not connected. Call connect() first.");
-                    }
-
-                    LOGGER.info("Sending raw message: " + messageBytes.length + " bytes");
-                    LOGGER.info("First 10 bytes: " + bytesToHex(messageBytes, Math.min(10, messageBytes.length)));
+                    if (outputStream == null || socket == null || socket.isClosed()) throw new IOException("Not connected. Call connect() first.");
+                
+                    LOGGER.log(Level.INFO, "Sending raw message: {0} bytes", messageBytes.length);
+                    LOGGER.log(Level.INFO, "First 10 bytes: {0}", bytesToHex(messageBytes, Math.min(10, messageBytes.length)));
 
                     outputStream.write(messageBytes);
                     outputStream.flush();
@@ -157,9 +150,7 @@ public class BoeConnectionHandler {
 
     private String bytesToHex(byte[] bytes, int length) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < length; i++) {
-            sb.append(String.format("%02X ", bytes[i]));
-        }
+        for (int i = 0; i < length; i++) sb.append(String.format("%02X ", bytes[i]));
         return sb.toString().trim();
     }
 
@@ -183,15 +174,12 @@ public class BoeConnectionHandler {
                         message = serializer.deserialize(inputStream);
                     }
 
-                    LOGGER.info("Received message: " + message);
+                    LOGGER.log(Level.INFO, "Received message: {0}", message);
                     processMessage(message);
 
                 } catch (IOException e) {
-                    if (!running) {
-                        LOGGER.info("Listener stopped.");
-                    } else {
-                        LOGGER.log(Level.SEVERE, "Error reading message", e);
-                    }
+                    if (!running) LOGGER.info("Listener stopped.");
+                    else LOGGER.log(Level.SEVERE, "Error reading message", e);
                     break;
                 }
             }
@@ -220,70 +208,52 @@ public class BoeConnectionHandler {
         byte messageType = message.getMessageType();
         String messageTypeName = BoeMessageFactory.getMessageTypeName(messageType);
 
-        LOGGER.info("Processing " + messageTypeName + ", length: " + message.getLength());
+        LOGGER.log(Level.INFO, "Processing {0}, length: {1}", new Object[]{messageTypeName, message.getLength()});
 
         try {
             // Use factory to create specific message object
             Object specificMessage = BoeMessageFactory.createMessage(message);
 
             if (specificMessage == null) {
-                LOGGER.warning("Could not deserialize message type: " + messageTypeName);
-                if (messageListener != null) {
-                    messageListener.onUnknownMessage(message);
-                }
+                LOGGER.log(Level.WARNING, "Could not deserialize message type: {0}", messageTypeName);
+                if (messageListener != null) messageListener.onUnknownMessage(message);
                 return;
             }
 
             // Dispatch to specific handler based on type
-            if (specificMessage instanceof ServerHeartbeatMessage) {
-                processServerHeartbeat((ServerHeartbeatMessage) specificMessage);
-            } else if (specificMessage instanceof LoginResponseMessage) {
-                processLoginResponse((LoginResponseMessage) specificMessage);
-            } else if (specificMessage instanceof LogoutResponseMessage) {
-                processLogoutResponse((LogoutResponseMessage) specificMessage);
-            } else {
-                LOGGER.warning("Unhandled message type: " + specificMessage.getClass().getName());
-                if (messageListener != null) {
-                    messageListener.onUnknownMessage(message);
-                }
+            if (specificMessage instanceof ServerHeartbeatMessage) processServerHeartbeat((ServerHeartbeatMessage) specificMessage);
+            else if (specificMessage instanceof LoginResponseMessage) processLoginResponse((LoginResponseMessage) specificMessage);
+            else if (specificMessage instanceof LogoutResponseMessage) processLogoutResponse((LogoutResponseMessage) specificMessage);
+            else {
+                LOGGER.log(Level.WARNING, "Unhandled message type: {0}", specificMessage.getClass().getName());
+                if (messageListener != null) messageListener.onUnknownMessage(message); 
             }
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error processing " + messageTypeName, e);
-            if (messageListener != null) {
-                messageListener.onMessageError(messageType, e);
-            }
+            if (messageListener != null) messageListener.onMessageError(messageType, e);
+            
         }
     }
 
     private void processServerHeartbeat(ServerHeartbeatMessage heartbeat) {
-        LOGGER.fine("Received server heartbeat: " + heartbeat);
-
-        if (messageListener != null) {
-            messageListener.onServerHeartbeat(heartbeat);
-        }
+        LOGGER.log(Level.FINE, "Received server heartbeat: {0}", heartbeat);
+        if (messageListener != null) messageListener.onServerHeartbeat(heartbeat);
+        
     }
 
     private void processLoginResponse(LoginResponseMessage response) {
-        LOGGER.info("Received login response: " + response);
+        LOGGER.log(Level.INFO, "Received login response: {0}", response);
+        if (response.isAccepted()) LOGGER.log(Level.INFO, "Login accepted: {0}", response.getLoginResponseText());
+        else if (response.isRejected()) LOGGER.log(Level.WARNING, "Login rejected: {0}", response.getLoginResponseText());
+        if (messageListener != null) messageListener.onLoginResponse(response);
 
-        if (response.isAccepted()) {
-            LOGGER.info("Login accepted: " + response.getLoginResponseText());
-        } else if (response.isRejected()) {
-            LOGGER.warning("Login rejected: " + response.getLoginResponseText());
-        }
-
-        if (messageListener != null) {
-            messageListener.onLoginResponse(response);
-        }
     }
 
     private void processLogoutResponse(LogoutResponseMessage response) {
-        LOGGER.info("Received logout response: " + response);
-
-        if (messageListener != null) {
-            messageListener.onLogoutResponse(response);
-        }
+        LOGGER.log(Level.INFO, "Received logout response: {0}", response);
+        if (messageListener != null) messageListener.onLogoutResponse(response);
+        
     }
 
     public void shutdown() {
