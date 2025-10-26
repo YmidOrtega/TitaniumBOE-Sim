@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -186,8 +187,11 @@ public class BoeConnectionHandler {
 
             try {
                 disconnect().get();
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Error disconnecting", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LOGGER.log(Level.WARNING, "Disconnection interrupted", e);
+            } catch (ExecutionException e) {
+                LOGGER.log(Level.SEVERE, "Error during disconnect", e);
             }
         }, executor);
     }
@@ -214,19 +218,18 @@ public class BoeConnectionHandler {
             // Use factory to create specific message object
             Object specificMessage = BoeMessageFactory.createMessage(message);
 
-            if (specificMessage == null) {
-                LOGGER.log(Level.WARNING, "Could not deserialize message type: {0}", messageTypeName);
-                if (messageListener != null) messageListener.onUnknownMessage(message);
-                return;
-            }
-
-            // Dispatch to specific handler based on type
-            if (specificMessage instanceof ServerHeartbeatMessage) processServerHeartbeat((ServerHeartbeatMessage) specificMessage);
-            else if (specificMessage instanceof LoginResponseMessage) processLoginResponse((LoginResponseMessage) specificMessage);
-            else if (specificMessage instanceof LogoutResponseMessage) processLogoutResponse((LogoutResponseMessage) specificMessage);
-            else {
-                LOGGER.log(Level.WARNING, "Unhandled message type: {0}", specificMessage.getClass().getName());
-                if (messageListener != null) messageListener.onUnknownMessage(message); 
+            switch (specificMessage) {
+                case null -> {
+                    LOGGER.log(Level.WARNING, "Could not deserialize message type: {0}", messageTypeName);
+                    if (messageListener != null) messageListener.onUnknownMessage(message);
+                }
+                case ServerHeartbeatMessage heartbeat -> processServerHeartbeat(heartbeat);
+                case LoginResponseMessage login -> processLoginResponse(login);
+                case LogoutResponseMessage logout -> processLogoutResponse(logout);
+                default -> {
+                    LOGGER.log(Level.WARNING, "Unhandled message type: {0}", specificMessage.getClass().getName());
+                    if (messageListener != null) messageListener.onUnknownMessage(message);
+                }
             }
 
         } catch (Exception e) {

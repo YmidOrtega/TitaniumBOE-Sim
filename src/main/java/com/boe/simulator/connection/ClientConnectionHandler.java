@@ -24,7 +24,6 @@ public class ClientConnectionHandler implements Runnable {
 
     private final Socket socket;
     private final ClientSession session;
-    private final ServerConfiguration config;
     private final BoeMessageSerializer serializer;
 
     private InputStream inputStream;
@@ -34,7 +33,6 @@ public class ClientConnectionHandler implements Runnable {
     public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config) {
         this.socket = socket;
         this.session = new ClientSession(connectionId, socket.getRemoteSocketAddress().toString());
-        this.config = config;
         this.serializer = new BoeMessageSerializer();
         this.running = false;
 
@@ -46,7 +44,7 @@ public class ClientConnectionHandler implements Runnable {
         try {
             initialize();
             messageLoop();
-        } catch (Exception e) {
+        } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Handler error", e);
         } finally {
             cleanup();
@@ -99,18 +97,16 @@ public class ClientConnectionHandler implements Runnable {
             // Create specific message object
             Object specificMessage = BoeMessageFactory.createMessage(message);
 
-            if (specificMessage == null) {
-                LOGGER.log(Level.WARNING, "[Session {0}] Unknown message type: 0x{1}", new Object[]{session.getConnectionId(), String.format("%02X", messageType)});
-                return;
-            }
-
             // Dispatch to appropriate handler
-            if (specificMessage instanceof LoginRequestMessage) handleLoginRequest((LoginRequestMessage) specificMessage);
-            else if (specificMessage instanceof LogoutRequestMessage) handleLogoutRequest((LogoutRequestMessage) specificMessage);
-            else if (specificMessage instanceof ClientHeartbeatMessage) handleClientHeartbeat((ClientHeartbeatMessage) specificMessage);
-            else LOGGER.log(Level.WARNING, "[Session {0}] Unhandled message type: {1}", new Object[]{session.getConnectionId(), specificMessage.getClass().getSimpleName()});
-
-
+            switch (specificMessage) {
+                case null -> {
+                    LOGGER.log(Level.WARNING, "[Session {0}] Unknown message type: 0x{1}", new Object[]{session.getConnectionId(), String.format("%02X", messageType)});
+                }
+                case LoginRequestMessage loginRequestMessage -> handleLoginRequest(loginRequestMessage);
+                case LogoutRequestMessage logoutRequestMessage -> handleLogoutRequest(logoutRequestMessage);
+                case ClientHeartbeatMessage clientHeartbeatMessage -> handleClientHeartbeat(clientHeartbeatMessage);
+                default -> LOGGER.log(Level.WARNING, "[Session {0}] Unhandled message type: {1}", new Object[]{session.getConnectionId(), specificMessage.getClass().getSimpleName()});
+            }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error processing message type 0x" +  String.format("%02X", messageType), e);
         }
@@ -151,7 +147,7 @@ public class ClientConnectionHandler implements Runnable {
     }
 
     public void sendMessage(byte[] messageBytes) throws IOException {
-        synchronized (outputStream) {
+        synchronized (this) {
             outputStream.write(messageBytes);
             outputStream.flush();
             session.incrementMessagesSent();
