@@ -6,6 +6,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -96,7 +97,7 @@ public class CboeServer {
     }
 
     private void handleClient(Socket socket, int connectionId) {
-        LOGGER.info("[Connection " + connectionId + "] Handler started");
+        LOGGER.log(Level.INFO, "[Connection {0}] Handler started", connectionId);
 
         try {
             ClientConnectionHandler handler = new ClientConnectionHandler(socket, connectionId, config);
@@ -106,7 +107,7 @@ public class CboeServer {
             LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
         } finally {
             activeConnections.decrementAndGet();
-            LOGGER.info("[Connection " + connectionId + "] Handler terminated (Active: " + activeConnections.get() + ")");
+            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})", new Object[]{connectionId, activeConnections.get()});
         }
     }
 
@@ -192,32 +193,42 @@ public class CboeServer {
         try {
             // Start server
             server.start();
-            
-            System.out.println("\n" +
-                    "╔════════════════════════════════════════════════════════════╗\n" +
-                    "║              CBOE Server - FASE 1 - RUNNING                ║\n" +
-                    "╠════════════════════════════════════════════════════════════╣\n" +
-                    "║  Server Address: " + config.getHost() + ":" + config.getPort() + "                              ║\n" +
-                    "║  Max Connections: " + config.getMaxConnections() + "                                       ║\n" +
-                    "║                                                            ║\n" +
-                    "║  Test with: telnet localhost " + config.getPort() + "                          ║\n" +
-                    "║  or use your BoeConnectionHandler client                   ║\n" +
-                    "║                                                            ║\n" +
-                    "║  Press Ctrl+C to stop the server                           ║\n" +
-                    "╚════════════════════════════════════════════════════════════╝\n");
+            System.out.printf("""
+                    ╔════════════════════════════════════════════════════════════╗
+                    ║              CBOE Server - FASE 1 - RUNNING                ║
+                    ╠════════════════════════════════════════════════════════════╣
+                    ║  Server Address: %s:%d                              ║
+                    ║  Max Connections: %d                                       ║
+                    ║                                                            ║
+                    ║  Test with: telnet localhost %d                          ║
+                    ║  or use your BoeConnectionHandler client                   ║
+                    ║                                                            ║
+                    ║  Press Ctrl+C to stop the server                           ║
+                    ╚════════════════════════════════════════════════════════════╝
+                    %n""", config.getHost(), config.getPort(), config.getMaxConnections(), config.getPort());
+
+            ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+            scheduler.scheduleAtFixedRate(() -> {
+                if (server.isRunning()) LOGGER.log(Level.INFO, "Server status - Active connections: {0}", server.getActiveConnections());
+            }, 0, 10, TimeUnit.SECONDS);
             
             // Keep main thread alive
             while (server.isRunning()) {
                 Thread.sleep(1000);
-                
-                // Print status every 10 seconds
-                if (System.currentTimeMillis() % 10000 < 1000) {
-                    LOGGER.log(Level.INFO, "Server status - Active connections: {0}", server.getActiveConnections());
-                }
             }
+
+            // Shutdown del scheduler al finalizar
+            scheduler.shutdownNow();
             
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Server error", e);
+        }catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOGGER.log(Level.WARNING, "Server thread interrupted", e);
+            server.shutdown();
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Server I/O error", e);
+            server.shutdown();
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.SEVERE, "Unexpected server runtime error", e);
             server.shutdown();
         }
     }
