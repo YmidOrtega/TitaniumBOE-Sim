@@ -25,13 +25,15 @@ public class LogoutRequestMessage {
 
     public byte[] toBytes() {
         // Calculate message length according to BOE spec:
-        // MessageLength = from MessageType to end 
         // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) = 6 bytes
-        int messageLength = 6;
-        
+        int payloadLength = 1 + 1 + 4;
+
+        // MessageLength = 2 (length field) + Payload(6) = 8
+        int messageLength = payloadLength + 2;
+
         // Total message = StartOfMessage(2) + MessageLength(2) + Payload(6) = 10 bytes
-        int totalLength = 2 + 2 + messageLength;
-        
+        int totalLength = 2 + messageLength;
+
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         

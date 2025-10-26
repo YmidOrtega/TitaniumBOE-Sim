@@ -49,11 +49,14 @@ public class LoginRequestMessage {
     public byte[] toBytes() {
         // Calculate message length:
         // Total payload (after MessageLength field) = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes
+        // MessageLength = Payload + 2 (for MessageLength field itself)
         int payloadLength = 1 + 1 + 4 + SESSION_SUB_ID_SIZE + USERNAME_SIZE + PASSWORD_SIZE + 1;
-        System.out.println(payloadLength);
+        
+        // MessageLength = Payload + 2 (the MessageLength field itself)
+        int messageLength = payloadLength + 2;
 
-        // Total buffer = StartOfMessage(2) + MessageLength(2) + Payload
-        int totalLength = 2 + 2 + payloadLength;
+        // Total length = StartOfMessage (2 bytes) + MessageLength
+        int totalLength = 2 + messageLength;
 
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -62,8 +65,8 @@ public class LoginRequestMessage {
         buffer.put(START_OF_MESSAGE_1);
         buffer.put(START_OF_MESSAGE_2);
 
-        // Message Length (2 bytes) - includes itself
-        buffer.putShort((short) payloadLength);
+        // Message Length (2 bytes) - includes itself and payload, not StartOfMessage
+        buffer.putShort((short) messageLength);
 
         // Message Type (1 byte)
         buffer.put(MESSAGE_TYPE);
