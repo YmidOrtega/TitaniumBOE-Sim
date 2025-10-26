@@ -1,200 +1,191 @@
-# BOE Protocol Specification - Quick Reference
+# BOE Protocol Specification — Quick Reference (Validated from PDF)
 
 ## Message Structure
-
-### Header Format
 
 ```
 [StartOfMessage: 2 bytes][MessageLength: 2 bytes][Payload: variable]
 ```
 
--  **StartOfMessage**: Always `0xBA 0xBA`
--  **MessageLength**: Length of the payload (from MessageType to the end). Does NOT include StartOfMessage or the MessageLength field itself.
-   -  Example: If payload is 25 bytes, MessageLength = 25
--  **Payload**: Message Type + Message Body
+* **StartOfMessage**: Always `0xBA 0xBA`
+* **MessageLength**:
+  Number of bytes **for the message**, **including this field (2 bytes)** but **not including** the two bytes for the `StartOfMessage` field.
 
-### All values are **Little Endian**
-
----
-
-## Message Types (Confirmed from PDF)
-
-| Message          | Type Code | Description               |
-| ---------------- | --------- | ------------------------- |
-| Login Request    | `0x37`    | Client → Server login     |
-| Logout Request   | `0x02`    | Client → Server logout    |
-| Client Heartbeat | `0x03`    | Client → Server keepalive |
-| Login Response   | `0x07`    | Server → Client login ack |
-| Server Heartbeat | `0x04`    | Server → Client keepalive |
+  > “Number of bytes for the message, including this field but not including the two bytes for the StartOfMessage field.”
+* **Payload**: `MessageType` + message body fields
+* **Byte order**: All multi-byte fields are **Little Endian**
 
 ---
 
-## Login Request Message (0x37)
+## Message Types (Confirmed)
+
+| Message Type     | Code (`hex`) | Direction       | Description          |
+| ---------------- | ------------ | --------------- | -------------------- |
+| Login Request    | `0x37`       | Client → Server | Initiates login      |
+| Logout Request   | `0x02`       | Client → Server | Terminates session   |
+| Client Heartbeat | `0x03`       | Client → Server | Keepalive signal     |
+| Login Response   | `0x07`       | Server → Client | Login acknowledgment |
+| Server Heartbeat | `0x04`       | Server → Client | Server keepalive     |
+
+---
+
+## Login Request Message (`0x37`)
 
 ### Structure
 
 ```
-Offset | Size | Field            | Type         | Notes
--------|------|------------------|--------------|---------------------------
-0      | 2    | StartOfMessage   | Binary       | 0xBA 0xBA
-2      | 2    | MessageLength    | Binary (LE)  | Length of payload (25)
-4      | 1    | MessageType      | Binary       | 0x37
-5      | 1    | MatchingUnit     | Binary       | Usually 0
-6      | 4    | SequenceNumber   | Binary (LE)  | Incremental counter
-10     | 4    | SessionSubID     | Alphanumeric | Padded with spaces (0x20)
-14     | 4    | Username         | Alphanumeric | Padded with spaces (0x20)
-18     | 10   | Password         | Alphanumeric | Padded with spaces (0x20)
-28     | 1    | NumParamGroups   | Binary       | Usually 0
+Offset | Size | Field           | Type         | Notes
+-------|------|-----------------|--------------|--------------------------------
+0      | 2    | StartOfMessage  | Binary       | Always 0xBA 0xBA
+2      | 2    | MessageLength   | Binary (LE)  | Bytes for message incl. this field, excl. StartOfMessage → 27
+4      | 1    | MessageType     | Binary       | 0x37
+5      | 1    | MatchingUnit    | Binary       | Typically 0
+6      | 4    | SequenceNumber  | Binary (LE)  | Incremental counter
+10     | 4    | SessionSubID    | Alphanumeric | Space-padded (0x20)
+14     | 4    | Username        | Alphanumeric | Space-padded (0x20)
+18     | 10   | Password        | Alphanumeric | Space-padded (0x20)
+28     | 1    | NumParamGroups  | Binary       | Usually 0
 ```
 
-**Total Payload**: 25 bytes
-**MessageLength**: 25
-**Total Message**: 29 bytes (2 + 2 + 25)
+✅ **Payload (from MessageType onward)** = 25 bytes
+✅ **MessageLength** = 25 (payload) + 2 (itself) = **27 bytes**
+✅ **Total bytes transmitted** = 2 (StartOfMessage) + 27 = **29 bytes**
 
 ---
 
-## Logout Request Message (0x02)
+## Logout Request Message (`0x02`)
 
 ### Structure
 
 ```
-Offset | Size | Field            | Type         | Notes
--------|------|------------------|--------------|---------------------------
-0      | 2    | StartOfMessage   | Binary       | 0xBA 0xBA
-2      | 2    | MessageLength    | Binary (LE)  | Always 6
-4      | 1    | MessageType      | Binary       | 0x02
-5      | 1    | MatchingUnit     | Binary       | Usually 0
-6      | 4    | SequenceNumber   | Binary (LE)  | Incremental counter
+Offset | Size | Field           | Type         | Notes
+-------|------|-----------------|--------------|--------------------------
+0      | 2    | StartOfMessage  | Binary       | 0xBA 0xBA
+2      | 2    | MessageLength   | Binary (LE)  | Includes this field (8 total)
+4      | 1    | MessageType     | Binary       | 0x02
+5      | 1    | MatchingUnit    | Binary       | Typically 0
+6      | 4    | SequenceNumber  | Binary (LE)  | Incremental counter
 ```
 
-**Total Payload**: 6 bytes
-**MessageLength**: 6
-**Total Message**: 10 bytes (2 + 2 + 6)
+✅ Payload (MessageType → SequenceNumber) = 6 bytes
+✅ MessageLength = 6 + 2 = **8**
+✅ Total message = 2 + 8 = **10 bytes**
 
 ---
 
-## Client Heartbeat Message (0x03)
+## Client Heartbeat Message (`0x03`)
 
 ### Structure
 
 ```
-Offset | Size | Field            | Type         | Notes
--------|------|------------------|--------------|---------------------------
-0      | 2    | StartOfMessage   | Binary       | 0xBA 0xBA
-2      | 2    | MessageLength    | Binary (LE)  | Always 6
-4      | 1    | MessageType      | Binary       | 0x03
-5      | 1    | MatchingUnit     | Binary       | Usually 0
-6      | 4    | SequenceNumber   | Binary (LE)  | Incremental counter
+Offset | Size | Field           | Type         | Notes
+-------|------|-----------------|--------------|--------------------------
+0      | 2    | StartOfMessage  | Binary       | 0xBA 0xBA
+2      | 2    | MessageLength   | Binary (LE)  | Includes this field (8 total)
+4      | 1    | MessageType     | Binary       | 0x03
+5      | 1    | MatchingUnit    | Binary       | Typically 0
+6      | 4    | SequenceNumber  | Binary (LE)  | Incremental counter
 ```
 
-**Total Payload**: 6 bytes
-**MessageLength**: 6
-**Total Message**: 10 bytes (2 + 2 + 6)
+✅ Payload = 6 bytes
+✅ MessageLength = 8
+✅ Total Message = 10 bytes
 
 ---
 
-## Important Rules
+## Protocol Rules
 
 ### Sequence Numbers
 
--  **MUST be sequential** across ALL message types
--  Start at 1 after login
--  Increment with each message sent (Login, Logout, Heartbeat, Orders, etc.)
--  Thread-safe: Use `AtomicInteger`
+* Sequential across **all** message types.
+* Start at **1** after successful login.
+* Increment by **1** for every sent message (Login, Logout, Heartbeat, Orders, etc.).
+* Use a **thread-safe counter (AtomicInteger)** if multithreaded.
 
 ### String Padding
 
--  All alphanumeric fields padded with **spaces (0x20)**, NOT nulls
--  Left-aligned, right-padded
--  Example: "test" in 4-byte field → `[0x74 0x65 0x73 0x74]` or with padding `[0x74 0x65 0x73 0x20]`
+* All alphanumeric fields are **space-padded** (`0x20`), **not null-padded**.
+* Left-aligned, right-padded.
+* Example: `"ABC"` in 4-byte field → `[0x41 0x42 0x43 0x20]`.
 
-### Heartbeat
+### Heartbeat Behavior
 
--  Default interval: **10 seconds** (configurable)
--  Client must send heartbeats to keep session alive
--  Server may respond with Server Heartbeat (0x04)
--  Missing heartbeats may trigger timeout
+* Default client heartbeat interval: **10 seconds** (configurable).
+* Server may reply with `Server Heartbeat (0x04)`.
+* Missed heartbeats beyond timeout ⇒ connection closed by server.
 
 ### Matching Unit
 
--  Usually `0` for inbound (client → server) messages
--  May be set by server in responses
+* For client-to-server messages → typically `0`.
+* For server responses → set by Cboe if applicable.
 
 ---
 
 ## Message Length Calculation Examples
 
-### Example 1: Login Request
+### Example 1 — Login Request
 
 ```
 Components:
-- StartOfMessage: 2 bytes (NOT in MessageLength)
-- MessageLength field: 2 bytes (NOT in MessageLength)
-- MessageType: 1 byte
-- MatchingUnit: 1 byte
-- SequenceNumber: 4 bytes
-- SessionSubID: 4 bytes
-- Username: 4 bytes
-- Password: 10 bytes
-- NumParamGroups: 1 byte
-
-Payload = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes
-MessageLength = 25 bytes
-Total Message = 2 (StartOfMessage) + 2 (MessageLength field) + 25 = 29 bytes
+MessageType (1) + MatchingUnit (1) + SequenceNumber (4) +
+SessionSubID (4) + Username (4) + Password (10) + NumParamGroups (1)
+= 25 bytes payload
 ```
 
-### Example 2: Logout/Heartbeat
+* MessageLength = 25 + 2 = **27**
+* Total Message = 2 (StartOfMessage) + 27 = **29 bytes**
+
+---
+
+### Example 2 — Logout / Heartbeat
 
 ```
 Components:
-- StartOfMessage: 2 bytes (NOT in MessageLength)
-- MessageLength field: 2 bytes (NOT in MessageLength)
-- MessageType: 1 byte
-- MatchingUnit: 1 byte
-- SequenceNumber: 4 bytes
-
-Payload = 1 + 1 + 4 = 6 bytes
-MessageLength = 6 bytes
-Total Message = 2 (StartOfMessage) + 2 (MessageLength field) + 6 = 10 bytes
+MessageType (1) + MatchingUnit (1) + SequenceNumber (4) = 6 bytes payload
 ```
+
+* MessageLength = 6 + 2 = **8**
+* Total Message = 2 (StartOfMessage) + 8 = **10 bytes**
 
 ---
 
 ## Common Pitfalls
 
-✅ **Correct**: MessageLength = payload only
-❌ **Wrong**: MessageLength = 2 + payload (includes the 2 bytes of length field)
-
-❌ **Wrong**: MessageLength includes StartOfMessage
-✅ **Correct**: MessageLength does NOT include StartOfMessage
-
-❌ **Wrong**: Padding with null bytes (0x00)
-✅ **Correct**: Padding with spaces (0x20)
-
-❌ **Wrong**: Independent sequence numbers per message type
-✅ **Correct**: Single global sequence counter for all messages
-
-❌ **Wrong**: Hardcoded sequence numbers
-✅ **Correct**: Incremental AtomicInteger
+| ✅ Correct                   | ❌ Incorrect                   |
+| --------------------------- | ----------------------------- |
+| MessageLength = payload + 2 | MessageLength = payload only  |
+| Excludes StartOfMessage     | Includes StartOfMessage       |
+| Padding with spaces (0x20)  | Padding with nulls (0x00)     |
+| Global incremental sequence | Independent counters per type |
+| Atomic counter              | Hardcoded numbers             |
 
 ---
 
 ## Testing Checklist
 
--  [ ] StartOfMessage is always `0xBA 0xBA`
--  [ ] MessageLength calculation is correct (payload only)
--  [ ] All numeric fields are Little Endian
--  [ ] Strings are padded with spaces (0x20)
--  [ ] Sequence numbers increment correctly
--  [ ] Heartbeats are sent at proper intervals
--  [ ] Messages can be deserialized correctly
--  [ ] Edge cases handled (minimum message, maximum message)
+* [ ] StartOfMessage always `0xBA 0xBA`
+* [ ] MessageLength = payload + 2
+* [ ] StartOfMessage **not** included in MessageLength
+* [ ] Numeric fields in **Little Endian**
+* [ ] Strings space-padded (0x20)
+* [ ] Sequence increments correctly
+* [ ] Heartbeats every 10 s
+* [ ] Deserialization verified
+* [ ] Edge cases (min/max message sizes) tested
 
 ---
 
 ## References
 
--  Source: `US_Options_BOE_Specification.pdf`
--  Protocol: Binary Order Entry (BOE)
--  Version: Check PDF for specific version details
--  Byte Order: Little Endian throughout
+* **Source:** *US_Options_BOE_Specification.pdf* (Cboe Global Markets)
+* **Relevant sections:**
+
+    * § 5.1 “Message Header” — defines MessageLength
+    * § 5.3 “Login Request”
+    * § 5.4 “Logout Request”
+    * § 5.5 “Client/Server Heartbeat”
+* **Quote:**
+
+  > “Number of bytes for the message, including this field but not including the two bytes for the StartOfMessage field.”
+* **Byte Order:** Little Endian throughout
+
+---
