@@ -82,12 +82,14 @@ public class LogoutResponseMessage {
 
     public byte[] toBytes() {
         // Calculate message length according to BOE spec:
-        // MessageLength = from MessageType to end
-        // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + LogoutReason(1) + LogoutReasonText(60) + LastReceivedSeq(4) + NumUnits(1) = 72 bytes
-        int messageLength = 1 + 1 + 4 + 1 + LOGOUT_REASON_SIZE + 4 + 1;
+        // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + LogoutReason(1) + LogoutText(60) + LastReceivedSeq(4) + NumUnits(1) = 72 bytesint messageLength = 1 + 1 + 4 + 1 + LOGOUT_REASON_SIZE + 4 + 1;
+        int payloadLength = 1 + 1 + 4 + 1 + LOGOUT_REASON_SIZE + 4 + 1;
+
+        // MessageLength = 2 (length field) + Payload(72) = 74
+        int messageLength = payloadLength + 2;
         
         // Total message = StartOfMessage(2) + MessageLength(2) + Payload(72) = 76 bytes
-        int totalLength = 2 + 2 + messageLength;
+        int totalLength = 2 + messageLength;
         
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
