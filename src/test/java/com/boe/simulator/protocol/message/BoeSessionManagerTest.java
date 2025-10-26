@@ -1,17 +1,24 @@
 package com.boe.simulator.protocol.message;
 
-import com.boe.simulator.connection.BoeConnectionHandler;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-
 import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import org.mockito.Mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.MockitoAnnotations;
+
+import com.boe.simulator.connection.BoeConnectionHandler;
 
 class BoeSessionManagerTest {
 
