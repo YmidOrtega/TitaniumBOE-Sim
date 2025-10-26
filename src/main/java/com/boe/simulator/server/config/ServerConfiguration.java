@@ -72,41 +72,31 @@ public class ServerConfiguration {
         }
         
         public Builder port(int port) {
-            if (port < 1 || port > 65535) {
-                throw new IllegalArgumentException("Port must be between 1 and 65535");
-            }
+            if (port < 1 || port > 65535) throw new IllegalArgumentException("Port must be between 1 and 65535");
             this.port = port;
             return this;
         }
         
         public Builder maxConnections(int maxConnections) {
-            if (maxConnections < 1) {
-                throw new IllegalArgumentException("Max connections must be at least 1");
-            }
+            if (maxConnections < 1) throw new IllegalArgumentException("Max connections must be at least 1");
             this.maxConnections = maxConnections;
             return this;
         }
         
         public Builder connectionTimeout(int connectionTimeout) {
-            if (connectionTimeout < 1000) {
-                throw new IllegalArgumentException("Connection timeout must be at least 1000ms");
-            }
+            if (connectionTimeout < 1000) throw new IllegalArgumentException("Connection timeout must be at least 1000ms");
             this.connectionTimeout = connectionTimeout;
             return this;
         }
         
         public Builder heartbeatIntervalSeconds(long seconds) {
-            if (seconds < 1) {
-                throw new IllegalArgumentException("Heartbeat interval must be at least 1 second");
-            }
+            if (seconds < 1) throw new IllegalArgumentException("Heartbeat interval must be at least 1 second");
             this.heartbeatIntervalSeconds = seconds;
             return this;
         }
         
         public Builder heartbeatTimeoutSeconds(long seconds) {
-            if (seconds < 5) {
-                throw new IllegalArgumentException("Heartbeat timeout must be at least 5 seconds");
-            }
+            if (seconds < 5) throw new IllegalArgumentException("Heartbeat timeout must be at least 5 seconds");
             this.heartbeatTimeoutSeconds = seconds;
             return this;
         }
