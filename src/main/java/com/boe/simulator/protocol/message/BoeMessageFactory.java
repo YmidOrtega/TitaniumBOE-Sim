@@ -1,5 +1,6 @@
 package com.boe.simulator.protocol.message;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class BoeMessageFactory {
@@ -25,11 +26,11 @@ public class BoeMessageFactory {
 
                 // Add more message types as needed
 
-                default: LOGGER.warning("Unknown message type: 0x" + String.format("%02X", messageType));
+                default: LOGGER.log(Level.WARNING, "Unknown message type: 0x{0}", String.format("%02X", messageType));
                 return null;
             }
         } catch (Exception e) {
-            LOGGER.severe("Failed to deserialize message type 0x" + String.format("%02X", messageType) + ": " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "Failed to deserialize message type 0x{0}: {1}", new Object[]{String.format("%02X", messageType), e.getMessage()});
             return null;
         }
     }
