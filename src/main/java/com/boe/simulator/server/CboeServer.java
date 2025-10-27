@@ -100,7 +100,7 @@ public class CboeServer {
     }
 
     private void handleClient(Socket socket, int connectionId) {
-        LOGGER.info("[Connection " + connectionId + "] Handler started");
+        LOGGER.log(Level.INFO, "[Connection {0}] Handler started", connectionId);
 
         try {
             ClientConnectionHandler handler = new ClientConnectionHandler(socket, connectionId, config, authService);
@@ -110,7 +110,7 @@ public class CboeServer {
             LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
         } finally {
             activeConnections.decrementAndGet();
-            LOGGER.info("[Connection " + connectionId + "] Handler terminated (Active: " + activeConnections.get() + ")");
+            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})", new Object[]{connectionId, activeConnections.get()});
         }
     }
 
