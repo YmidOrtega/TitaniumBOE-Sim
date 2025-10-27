@@ -14,6 +14,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.boe.simulator.connection.ClientConnectionHandler;
+import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 
 public class CboeServer {
@@ -23,6 +24,7 @@ public class CboeServer {
     private final ExecutorService clientExecutor;
     private final AtomicBoolean running;
     private final AtomicInteger activeConnections;
+    private final AuthenticationService authService;
     
     private ServerSocket serverSocket;
     private Thread acceptorThread;
@@ -32,7 +34,8 @@ public class CboeServer {
         this.clientExecutor = Executors.newFixedThreadPool(config.getMaxConnections());
         this.running = new AtomicBoolean(false);
         this.activeConnections = new AtomicInteger(0);
-        
+        this.authService = new AuthenticationService();
+
         // Configure logging
         LOGGER.setLevel(config.getLogLevel());
         
@@ -97,17 +100,17 @@ public class CboeServer {
     }
 
     private void handleClient(Socket socket, int connectionId) {
-        LOGGER.log(Level.INFO, "[Connection {0}] Handler started", connectionId);
+        LOGGER.info("[Connection " + connectionId + "] Handler started");
 
         try {
-            ClientConnectionHandler handler = new ClientConnectionHandler(socket, connectionId, config);
+            ClientConnectionHandler handler = new ClientConnectionHandler(socket, connectionId, config, authService);
             handler.run();
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
         } finally {
             activeConnections.decrementAndGet();
-            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})", new Object[]{connectionId, activeConnections.get()});
+            LOGGER.info("[Connection " + connectionId + "] Handler terminated (Active: " + activeConnections.get() + ")");
         }
     }
 
@@ -170,6 +173,10 @@ public class CboeServer {
     
     public ServerConfiguration getConfiguration() {
         return config;
+    }
+
+    public AuthenticationService getAuthService() {
+        return authService;
     }
     
 

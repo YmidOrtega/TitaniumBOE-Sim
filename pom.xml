@@ -73,6 +73,8 @@
         <configuration>
           <!-- Use release to ensure correct cross-compilation and standard library matching -->
           <release>21</release>
+            <source>15</source>
+            <target>15</target>
         </configuration>
       </plugin>
     </plugins>
