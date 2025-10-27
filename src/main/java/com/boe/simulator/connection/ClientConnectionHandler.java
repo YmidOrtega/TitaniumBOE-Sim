@@ -8,13 +8,10 @@ import java.net.SocketException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.boe.simulator.protocol.message.BoeMessage;
-import com.boe.simulator.protocol.message.BoeMessageFactory;
-import com.boe.simulator.protocol.message.ClientHeartbeatMessage;
-import com.boe.simulator.protocol.message.LoginRequestMessage;
-import com.boe.simulator.protocol.message.LogoutRequestMessage;
-import com.boe.simulator.protocol.message.SessionState;
+import com.boe.simulator.protocol.message.*;
 import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
+import com.boe.simulator.server.auth.AuthenticationResult;
+import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.session.ClientSession;
 
@@ -25,15 +22,17 @@ public class ClientConnectionHandler implements Runnable {
     private final Socket socket;
     private final ClientSession session;
     private final BoeMessageSerializer serializer;
+    private AuthenticationService authService;
 
     private InputStream inputStream;
     private OutputStream outputStream;
     private volatile boolean running;
 
-    public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config) {
+    public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService) {
         this.socket = socket;
         this.session = new ClientSession(connectionId, socket.getRemoteSocketAddress().toString());
         this.serializer = new BoeMessageSerializer();
+        this.authService = authService;
         this.running = false;
 
         LOGGER.log(Level.INFO, "[Session {0}] Handler created for {1}", new Object[]{connectionId, session.getRemoteAddress()});
@@ -121,19 +120,39 @@ public class ClientConnectionHandler implements Runnable {
         session.setMatchingUnit(request.getMatchingUnit());
         session.updateReceivedSequenceNumber(request.getSequenceNumber());
 
-        LOGGER.log(Level.INFO, "[Session {0}] Login request received - FASE 3 will send LoginResponse", session.getConnectionId());
+        AuthenticationResult authResult = authService.authenticate(
+                request.getUsername(),
+                request.getPassword(),
+                request.getSessionSubID()
+        );
 
+        // Create and send LoginResponse
+        sendLoginResponse(authResult, request.getSequenceNumber());
+
+        // Update session state based on result
+        if (authResult.isAccepted()) {
+            session.setState(SessionState.AUTHENTICATED);
+            LOGGER.info("[Session " + session.getConnectionId() + "] User authenticated successfully");
+        } else {
+            session.setState(SessionState.ERROR);
+            LOGGER.warning("[Session " + session.getConnectionId() + "] Authentication failed: " + authResult.getMessage());
+            // Close connection after rejected login
+            running = false;
+        }
     }
 
     private void handleLogoutRequest(LogoutRequestMessage request) {
-        LOGGER.log(Level.INFO, "[Session {0}] Processing logout request", session.getConnectionId());
+        LOGGER.info("[Session " + session.getConnectionId() + "] Processing logout request");
 
         session.updateReceivedSequenceNumber(request.getSequenceNumber());
         session.setState(SessionState.DISCONNECTING);
 
-        LOGGER.log(Level.INFO, "[Session {0}] Logout request received - FASE 3 will send LogoutResponse", session.getConnectionId());
+        if (session.getUsername() != null) authService.endSession(session.getUsername());
 
-        // Close connection
+        // Send LogoutResponse
+        sendLogoutResponse(request.getSequenceNumber());
+
+        // Close connection after logout
         running = false;
     }
 
@@ -178,6 +197,52 @@ public class ClientConnectionHandler implements Runnable {
             } catch (Exception e) {
                 // Ignore
             }
+        }
+    }
+
+    private void sendLoginResponse(AuthenticationResult authResult, int lastReceivedSeq) {
+        try {
+            LoginResponseMessage response = new LoginResponseMessage(
+                    authResult.toLoginResponseStatusByte(),
+                    authResult.getMessage(),
+                    lastReceivedSeq,
+                    1
+            );
+
+            // Set matching unit and sequence number
+            response.setMatchingUnit(session.getMatchingUnit());
+            response.setSequenceNumber(session.getNextSentSequenceNumber());
+
+            byte[] responseBytes = response.toBytes();
+            sendMessage(responseBytes);
+
+            LOGGER.info("[Session " + session.getConnectionId() + "] → Sent LoginResponse: status=" + (char)authResult.toLoginResponseStatusByte() + ", msg='" + authResult.getMessage() + "'");
+
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LoginResponse", e);
+        }
+    }
+
+    private void sendLogoutResponse(int lastReceivedSeq) {
+        try {
+            LogoutResponseMessage response = new LogoutResponseMessage(
+                    LogoutResponseMessage.REASON_USER_REQUESTED,
+                    "Logout successful",
+                    lastReceivedSeq,
+                    1
+            );
+
+            // Set matching unit and sequence number
+            response.setMatchingUnit(session.getMatchingUnit());
+            response.setSequenceNumber(session.getNextSentSequenceNumber());
+
+            byte[] responseBytes = response.toBytes();
+            sendMessage(responseBytes);
+
+            LOGGER.info("[Session " + session.getConnectionId() + "] → Sent LogoutResponse");
+
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LogoutResponse", e);
         }
     }
 
