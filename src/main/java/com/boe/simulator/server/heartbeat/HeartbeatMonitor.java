@@ -34,7 +34,7 @@ public class HeartbeatMonitor {
 
     public void start() {
         if (active) {
-            LOGGER.warning("[Session " + handler.getSession().getConnectionId() + "] Heartbeat already active");
+            LOGGER.log(Level.WARNING, "[Session {0}] Heartbeat already active", handler.getSession().getConnectionId());
             return;
         }
 
@@ -58,7 +58,7 @@ public class HeartbeatMonitor {
                 TimeUnit.SECONDS
         );
 
-        LOGGER.info("[Session " + handler.getSession().getConnectionId() + "] Heartbeat monitor started (send every " + sendInterval + "s, timeout " + config.getHeartbeatTimeoutSeconds() + "s)");
+        LOGGER.log(Level.INFO, "[Session {0}] Heartbeat monitor started (send every {1}s, timeout {2}s)", new Object[]{handler.getSession().getConnectionId(), sendInterval, config.getHeartbeatTimeoutSeconds()});
     }
 
     private void sendHeartbeat() {
@@ -74,9 +74,9 @@ public class HeartbeatMonitor {
 
             handler.getSession().updateHeartbeatSent();
 
-            LOGGER.fine("[Session " + handler.getSession().getConnectionId() + "] → Sent ServerHeartbeat (seq=" + heartbeat.getSequenceNumber() + ")");
+            LOGGER.log(Level.FINE, "[Session {0}] → Sent ServerHeartbeat (seq={1})", new Object[]{handler.getSession().getConnectionId(), heartbeat.getSequenceNumber()});
 
-        } catch (Exception e) {
+        } catch (IOException e) {
             LOGGER.log(Level.WARNING, "[Session " + handler.getSession().getConnectionId() + "] Error sending heartbeat", e);
             stop();
         }
@@ -94,7 +94,7 @@ public class HeartbeatMonitor {
         long timeoutSeconds = config.getHeartbeatTimeoutSeconds();
 
         if (timeSinceLastHeartbeat.getSeconds() > timeoutSeconds) {
-            LOGGER.warning("[Session " + handler.getSession().getConnectionId() + "] Client heartbeat timeout! Last received " + timeSinceLastHeartbeat.getSeconds() + "s ago (timeout=" + timeoutSeconds + "s)");
+            LOGGER.log(Level.WARNING, "[Session {0}] Client heartbeat timeout! Last received {1}s ago (timeout={2}s)", new Object[]{handler.getSession().getConnectionId(), timeSinceLastHeartbeat.getSeconds(), timeoutSeconds});
 
             // Disconnect client
             handler.stop();
@@ -109,7 +109,7 @@ public class HeartbeatMonitor {
 
         if (sendTask != null) sendTask.cancel(false);
         if (checkTask != null) checkTask.cancel(false);
-        LOGGER.info("[Session " + handler.getSession().getConnectionId() + "] Heartbeat monitor stopped");
+        LOGGER.log(Level.INFO, "[Session {0}] Heartbeat monitor stopped", handler.getSession().getConnectionId());
     }
 
     public void shutdown() {

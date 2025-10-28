@@ -38,8 +38,8 @@ public class ServerHeartbeatMessage {
         
         // Read MessageLength (2 bytes)
         int messageLength = buffer.getShort() & 0xFFFF;
-        
-        if (messageLength != 6) throw new IllegalArgumentException("Invalid message length for ServerHeartbeat: " + messageLength);
+
+        if (messageLength != 8) throw new IllegalArgumentException("Invalid message length for ServerHeartbeat: " + messageLength);
         
         // Read MessageType (1 byte)
         byte messageType = buffer.get();
@@ -57,9 +57,12 @@ public class ServerHeartbeatMessage {
         // MessageLength = from MessageType to end
         // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) = 6 bytes
         int payloadLength = 1 + 1 + 4;
-        
-        // Total message = StartOfMessage(2) + MessageLength(2) + Payload(6) = 10 bytes
-        int totalLength = 2 + 2 + payloadLength;
+
+        // MessageLength = Payload(6) + 2 (length field itself) = 8
+        int messageLength = payloadLength + 2;
+
+        // Total message = StartOfMessage(2) + MessageLength(8) = 10 bytes
+        int totalLength = 2 + messageLength;
         
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -69,7 +72,7 @@ public class ServerHeartbeatMessage {
         buffer.put(START_OF_MESSAGE_2);
         
         // Message Length (2 bytes)
-        buffer.putShort((short) payloadLength);
+        buffer.putShort((short) messageLength);
         
         // Message Type (1 byte)
         buffer.put(MESSAGE_TYPE);
