@@ -8,13 +8,21 @@ import java.net.SocketException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.boe.simulator.protocol.message.*;
+import com.boe.simulator.protocol.message.BoeMessage;
+import com.boe.simulator.protocol.message.BoeMessageFactory;
+import com.boe.simulator.protocol.message.ClientHeartbeatMessage;
+import com.boe.simulator.protocol.message.LoginRequestMessage;
+import com.boe.simulator.protocol.message.LoginResponseMessage;
+import com.boe.simulator.protocol.message.LogoutRequestMessage;
+import com.boe.simulator.protocol.message.LogoutResponseMessage;
+import com.boe.simulator.protocol.message.SessionState;
 import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
 import com.boe.simulator.server.auth.AuthenticationResult;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.heartbeat.HeartbeatMonitor;
 import com.boe.simulator.server.session.ClientSession;
+import com.boe.simulator.server.session.ClientSessionManager;
 
 
 public class ClientConnectionHandler implements Runnable {
@@ -25,18 +33,21 @@ public class ClientConnectionHandler implements Runnable {
     private final BoeMessageSerializer serializer;
     private final AuthenticationService authService;
     private final HeartbeatMonitor heartbeatMonitor;
+    private final ClientSessionManager sessionManager;
 
     private InputStream inputStream;
     private OutputStream outputStream;
     private volatile boolean running;
 
-    public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService) {
+    public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService, ClientSessionManager sessionManager) {
         this.socket = socket;
         this.session = new ClientSession(connectionId, socket.getRemoteSocketAddress().toString());
         this.serializer = new BoeMessageSerializer();
         this.authService = authService;
-        this.running = false;
         this.heartbeatMonitor = new HeartbeatMonitor(this, config);
+        this.sessionManager = sessionManager;
+        this.running = false;
+        
 
         LOGGER.log(Level.INFO, "[Session {0}] Handler created for {1}", new Object[]{connectionId, session.getRemoteAddress()});
     }
@@ -136,17 +147,20 @@ public class ClientConnectionHandler implements Runnable {
         if (authResult.isAccepted()) {
             session.setState(SessionState.AUTHENTICATED);
             heartbeatMonitor.start();
-            LOGGER.info("[Session " + session.getConnectionId() + "] User authenticated successfully");
+            sessionManager.registerUsername(this, request.getUsername());
+            sessionManager.getStatistics().incrementSuccessfulLogins();
+            
+            LOGGER.log(Level.INFO, "[Session {0}] User authenticated successfully", session.getConnectionId());
         } else {
             session.setState(SessionState.ERROR);
-            LOGGER.warning("[Session " + session.getConnectionId() + "] Authentication failed: " + authResult.getMessage());
-            // Close connection after rejected login
+            sessionManager.getStatistics().incrementFailedLogins();
+            LOGGER.log(Level.WARNING, "[Session {0}] Authentication failed: {1}", new Object[]{session.getConnectionId(), authResult.getMessage()});
             running = false;
         }
     }
 
     private void handleLogoutRequest(LogoutRequestMessage request) {
-        LOGGER.info("[Session " + session.getConnectionId() + "] Processing logout request");
+        LOGGER.log(Level.INFO, "[Session {0}] Processing logout request", session.getConnectionId());
 
         session.updateReceivedSequenceNumber(request.getSequenceNumber());
         session.setState(SessionState.DISCONNECTING);
@@ -162,12 +176,12 @@ public class ClientConnectionHandler implements Runnable {
     }
 
     private void handleClientHeartbeat(ClientHeartbeatMessage heartbeat) {
-        LOGGER.fine("[Session " + session.getConnectionId() + "] Client heartbeat received: seq=" + heartbeat.getSequenceNumber());
+        LOGGER.log(Level.FINE, "[Session {0}] Client heartbeat received: seq={1}", new Object[]{session.getConnectionId(), heartbeat.getSequenceNumber()});
 
         session.updateReceivedSequenceNumber(heartbeat.getSequenceNumber());
         session.updateHeartbeatReceived();
 
-        LOGGER.fine("[Session " + session.getConnectionId() + "] Heartbeat acknowledged");
+        LOGGER.log(Level.FINE, "[Session {0}] Heartbeat acknowledged", session.getConnectionId());
     }
 
     public void sendMessage(byte[] messageBytes) throws IOException {
@@ -176,7 +190,7 @@ public class ClientConnectionHandler implements Runnable {
             outputStream.flush();
             session.incrementMessagesSent();
 
-            LOGGER.fine("[Session " + session.getConnectionId() + "] → Sent message (" + messageBytes.length + " bytes)");
+            LOGGER.log(Level.FINE, "[Session {0}] \u2192 Sent message ({1} bytes)", new Object[]{session.getConnectionId(), messageBytes.length});
         }
     }
 
@@ -185,18 +199,15 @@ public class ClientConnectionHandler implements Runnable {
 
         if (heartbeatMonitor != null) heartbeatMonitor.shutdown();
 
-        LOGGER.info("[Session " + session.getConnectionId() + "] Cleaning up connection...");
-        LOGGER.info("[Session " + session.getConnectionId() + "] Statistics: " +
-                "Received=" + session.getMessagesReceived() + ", " +
-                "Sent=" + session.getMessagesSent() + ", " +
-                "Duration=" + java.time.Duration.between(session.getCreatedAt(), java.time.Instant.now()).getSeconds() + "s");
+        LOGGER.log(Level.INFO, "[Session {0}] Cleaning up connection...", session.getConnectionId());
+        LOGGER.log(Level.INFO, "[Session {0}] Statistics: Received={1}, Sent={2}, Duration={3}s", new Object[]{session.getConnectionId(), session.getMessagesReceived(), session.getMessagesSent(), java.time.Duration.between(session.getCreatedAt(), java.time.Instant.now()).getSeconds()});
 
         closeQuietly(inputStream);
         closeQuietly(outputStream);
         closeQuietly(socket);
 
         session.setState(SessionState.DISCONNECTED);
-        LOGGER.info("[Session " + session.getConnectionId() + "] Connection closed");
+        LOGGER.log(Level.INFO, "[Session {0}] Connection closed", session.getConnectionId());
     }
 
     private void closeQuietly(AutoCloseable closeable) {
@@ -225,9 +236,9 @@ public class ClientConnectionHandler implements Runnable {
             byte[] responseBytes = response.toBytes();
             sendMessage(responseBytes);
 
-            LOGGER.info("[Session " + session.getConnectionId() + "] → Sent LoginResponse: status=" + (char)authResult.toLoginResponseStatusByte() + ", msg='" + authResult.getMessage() + "'");
+            LOGGER.log(Level.INFO, "[Session {0}] \u2192 Sent LoginResponse: status={1}, msg=''{2}''", new Object[]{session.getConnectionId(), (char)authResult.toLoginResponseStatusByte(), authResult.getMessage()});
 
-        } catch (Exception e) {
+        }catch (IOException | IllegalStateException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LoginResponse", e);
         }
     }
@@ -248,9 +259,9 @@ public class ClientConnectionHandler implements Runnable {
             byte[] responseBytes = response.toBytes();
             sendMessage(responseBytes);
 
-            LOGGER.info("[Session " + session.getConnectionId() + "] → Sent LogoutResponse");
+            LOGGER.log(Level.INFO, "[Session {0}] \u2192 Sent LogoutResponse", session.getConnectionId());
 
-        } catch (Exception e) {
+        } catch (IOException | IllegalStateException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LogoutResponse", e);
         }
     }
