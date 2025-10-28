@@ -112,7 +112,7 @@ public class CboeServer {
     }
 
     private void handleClient(Socket socket, int connectionId) {
-        LOGGER.info("[Connection " + connectionId + "] Handler started");
+        LOGGER.log(Level.INFO, "[Connection {0}] Handler started", connectionId);
 
         ClientConnectionHandler handler = null;
         try {
@@ -129,7 +129,7 @@ public class CboeServer {
             if (handler != null) sessionManager.unregisterHandler(handler);
             activeConnections.decrementAndGet();
 
-            LOGGER.info("[Connection " + connectionId + "] Handler terminated (Active: " + activeConnections.get() + ")");
+            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})", new Object[]{connectionId, activeConnections.get()});
         }
     }
 
@@ -164,7 +164,7 @@ public class CboeServer {
     public void shutdown() {
         LOGGER.info("======= SERVER SHUTDOWN INITIATED =======");
         LOGGER.info(healthMetrics.getHealthSummary());
-        LOGGER.info("Error stats: Errors=" + errorHandler.getTotalErrors() + ", Warnings=" + errorHandler.getTotalWarnings() + ", Recoveries=" + errorHandler.getTotalRecoveries());
+        LOGGER.log(Level.INFO, "Error stats: Errors={0}, Warnings={1}, Recoveries={2}", new Object[]{errorHandler.getTotalErrors(), errorHandler.getTotalWarnings(), errorHandler.getTotalRecoveries()});
 
         sessionManager.printSessionSummary();
 
@@ -217,7 +217,6 @@ public class CboeServer {
     public HealthMetrics getHealthMetrics() {
         return healthMetrics;
     }
-    
 
     public static void main(String[] args) {
         // Create server with custom configuration
