@@ -14,6 +14,8 @@ import java.util.concurrent.ExecutorService;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.awaitility.Awaitility.await;
+import java.util.concurrent.TimeUnit;
 
 class CboeServerTest {
 
@@ -56,14 +58,7 @@ class CboeServerTest {
         cboeServer.start();
 
         // Assert that the server is running after start()
-        assertTrue(cboeServer.isRunning());
-
-        // Allow some time for the acceptor thread to run
-        try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        await().atMost(5, TimeUnit.SECONDS).until(cboeServer::isRunning);
 
         cboeServer.stop();
 
