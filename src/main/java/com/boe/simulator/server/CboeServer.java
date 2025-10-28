@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -16,6 +17,9 @@ import java.util.logging.Logger;
 import com.boe.simulator.connection.ClientConnectionHandler;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
+import com.boe.simulator.server.error.ErrorHandler;
+import com.boe.simulator.server.metrics.HealthMetrics;
+import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.ClientSessionManager;
 
 public class CboeServer {
@@ -27,6 +31,9 @@ public class CboeServer {
     private final AtomicInteger activeConnections;
     private final AuthenticationService authService;
     private final ClientSessionManager sessionManager;
+    private final ErrorHandler errorHandler;
+    private final RateLimiter rateLimiter;
+    private final HealthMetrics healthMetrics;
     
     private ServerSocket serverSocket;
     private Thread acceptorThread;
@@ -38,6 +45,9 @@ public class CboeServer {
         this.activeConnections = new AtomicInteger(0);
         this.authService = new AuthenticationService();
         this.sessionManager = new ClientSessionManager();
+        this.errorHandler = new ErrorHandler();
+        this.rateLimiter = new RateLimiter(100, Duration.ofMinutes(1));
+        this.healthMetrics = new HealthMetrics();
 
         // Configure logging
         LOGGER.setLevel(config.getLogLevel());
@@ -102,21 +112,24 @@ public class CboeServer {
     }
 
     private void handleClient(Socket socket, int connectionId) {
-        LOGGER.log(Level.INFO, "[Connection {0}] Handler started", connectionId);
+        LOGGER.info("[Connection " + connectionId + "] Handler started");
 
         ClientConnectionHandler handler = null;
         try {
-            handler = new ClientConnectionHandler(socket, connectionId, config, authService, sessionManager);
+            handler = new ClientConnectionHandler(socket, connectionId, config, authService, sessionManager, errorHandler, rateLimiter);
             sessionManager.registerHandler(handler);
+
+            healthMetrics.updatePeakConnections(activeConnections.get());
             handler.run();
 
         } catch (Exception e) {
+            errorHandler.handleError(connectionId, "Handler error", e);
             LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
         } finally {
             if (handler != null) sessionManager.unregisterHandler(handler);
-
             activeConnections.decrementAndGet();
-            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})", new Object[]{connectionId, activeConnections.get()});
+
+            LOGGER.info("[Connection " + connectionId + "] Handler terminated (Active: " + activeConnections.get() + ")");
         }
     }
 
@@ -149,10 +162,17 @@ public class CboeServer {
     }
 
     public void shutdown() {
-        LOGGER.info("Shutting down CBOE Server...");
-        
+        LOGGER.info("======= SERVER SHUTDOWN INITIATED =======");
+        LOGGER.info(healthMetrics.getHealthSummary());
+        LOGGER.info("Error stats: Errors=" + errorHandler.getTotalErrors() + ", Warnings=" + errorHandler.getTotalWarnings() + ", Recoveries=" + errorHandler.getTotalRecoveries());
+
+        sessionManager.printSessionSummary();
+
         stop();
-        
+
+        // Disconnect all sessions
+        sessionManager.disconnectAll();
+
         // Shutdown executor
         clientExecutor.shutdown();
         try {
@@ -164,10 +184,11 @@ public class CboeServer {
             Thread.currentThread().interrupt();
             clientExecutor.shutdownNow();
         }
-        
+
         LOGGER.info("✓ CBOE Server shutdown complete");
+        LOGGER.info("=========================================");
     }
-    
+
     // Status methods
     public boolean isRunning() {
         return running.get();
@@ -187,6 +208,14 @@ public class CboeServer {
 
     public ClientSessionManager getSessionManager() {
         return sessionManager;
+    }
+
+    public ErrorHandler getErrorHandler() {
+        return errorHandler;
+    }
+
+    public HealthMetrics getHealthMetrics() {
+        return healthMetrics;
     }
     
 
