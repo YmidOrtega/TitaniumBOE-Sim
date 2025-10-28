@@ -16,6 +16,7 @@ import java.util.logging.Logger;
 import com.boe.simulator.connection.ClientConnectionHandler;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
+import com.boe.simulator.server.session.ClientSessionManager;
 
 public class CboeServer {
     private static final Logger LOGGER = Logger.getLogger(CboeServer.class.getName());
@@ -25,6 +26,7 @@ public class CboeServer {
     private final AtomicBoolean running;
     private final AtomicInteger activeConnections;
     private final AuthenticationService authService;
+    private final ClientSessionManager sessionManager;
     
     private ServerSocket serverSocket;
     private Thread acceptorThread;
@@ -35,10 +37,10 @@ public class CboeServer {
         this.running = new AtomicBoolean(false);
         this.activeConnections = new AtomicInteger(0);
         this.authService = new AuthenticationService();
+        this.sessionManager = new ClientSessionManager();
 
         // Configure logging
         LOGGER.setLevel(config.getLogLevel());
-        
         LOGGER.log(Level.INFO, "CboeServer initialized with configuration: {0}", config);
     }
 
@@ -102,13 +104,17 @@ public class CboeServer {
     private void handleClient(Socket socket, int connectionId) {
         LOGGER.log(Level.INFO, "[Connection {0}] Handler started", connectionId);
 
+        ClientConnectionHandler handler = null;
         try {
-            ClientConnectionHandler handler = new ClientConnectionHandler(socket, connectionId, config, authService);
+            handler = new ClientConnectionHandler(socket, connectionId, config, authService, sessionManager);
+            sessionManager.registerHandler(handler);
             handler.run();
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
         } finally {
+            if (handler != null) sessionManager.unregisterHandler(handler);
+
             activeConnections.decrementAndGet();
             LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})", new Object[]{connectionId, activeConnections.get()});
         }
@@ -177,6 +183,10 @@ public class CboeServer {
 
     public AuthenticationService getAuthService() {
         return authService;
+    }
+
+    public ClientSessionManager getSessionManager() {
+        return sessionManager;
     }
     
 
