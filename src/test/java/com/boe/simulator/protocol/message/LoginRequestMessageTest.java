@@ -56,7 +56,7 @@ class LoginRequestMessageTest {
         message.setSequenceNumber(12345);
         byte[] expected = {
                 (byte) 0xBA, (byte) 0xBA,
-                0x19, 0x00,
+                0x1B, 0x00,
                 0x37,
                 0x01,
                 0x39, 0x30, 0x00, 0x00,

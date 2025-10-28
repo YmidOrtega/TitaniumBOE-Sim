@@ -36,7 +36,7 @@ class ServerHeartbeatMessageTest {
         // Arrange
         byte[] messageData = {
                 (byte) 0xBA, (byte) 0xBA,
-                0x06, 0x00,
+                0x08, 0x00,
                 0x04,
                 0x01,
                 0x39, 0x30, 0x00, 0x00
@@ -56,7 +56,7 @@ class ServerHeartbeatMessageTest {
         ServerHeartbeatMessage message = new ServerHeartbeatMessage((byte) 1, 12345);
         byte[] expected = {
                 (byte) 0xBA, (byte) 0xBA,
-                0x06, 0x00,
+                0x08, 0x00,
                 0x04,
                 0x01,
                 0x39, 0x30, 0x00, 0x00

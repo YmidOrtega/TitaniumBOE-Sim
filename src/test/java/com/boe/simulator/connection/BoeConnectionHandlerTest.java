@@ -154,6 +154,19 @@ class BoeConnectionHandlerTest {
     }
 
     @Test
+    void sendMessageRaw_shouldWriteRawBytesToOutputStream() throws IOException {
+        // Arrange
+        byte[] rawMessage = {0x01, 0x02, 0x03, 0x04, 0x05};
+
+        // Act
+        connectionHandler.sendMessageRaw(rawMessage).join();
+
+        // Assert
+        verify(mockOutputStream).write(rawMessage);
+        verify(mockOutputStream).flush();
+    }
+
+    @Test
     void startListener_shouldDoNothing_whenNotConnected() {
         // Arrange
         connectionHandler.disconnect().join();
@@ -221,6 +234,19 @@ class BoeConnectionHandlerTest {
 
         // Act & Assert
         assertFalse(connectionHandler.isConnected());
+    }
+
+    @Test
+    void startListener_shouldStopGracefully_whenIOExceptionOccurs() throws IOException {
+        // Arrange
+        when(mockInputStream.read(any(), anyInt(), anyInt())).thenThrow(new IOException("Test exception"));
+
+        // Act
+        CompletableFuture<Void> listenerFuture = connectionHandler.startListener();
+
+        // Assert
+        assertDoesNotThrow(() -> listenerFuture.get(1, TimeUnit.SECONDS));
+        assertFalse((boolean) getField(connectionHandler, "running"));
     }
 
     @Test
