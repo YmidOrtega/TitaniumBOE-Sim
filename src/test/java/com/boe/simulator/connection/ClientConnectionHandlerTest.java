@@ -1,48 +1,22 @@
 package com.boe.simulator.connection;
 
-import com.boe.simulator.server.auth.AuthenticationService;
-import com.boe.simulator.server.config.ServerConfiguration;
-import com.boe.simulator.server.error.ErrorHandler;
-import com.boe.simulator.server.ratelimit.RateLimiter;
-import com.boe.simulator.server.session.ClientSessionManager;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-
-import com.boe.simulator.protocol.message.BoeMessage;
-import com.boe.simulator.protocol.message.ClientHeartbeatMessage;
-import com.boe.simulator.protocol.message.LoginRequestMessage;
-import com.boe.simulator.protocol.message.LogoutRequestMessage;
-import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
-import com.boe.simulator.server.auth.AuthenticationResult;
-import com.boe.simulator.server.auth.AuthenticationService;
-import com.boe.simulator.server.config.ServerConfiguration;
-import com.boe.simulator.server.error.ErrorHandler;
-import com.boe.simulator.server.ratelimit.RateLimiter;
-import com.boe.simulator.server.session.ClientSessionManager;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.Socket;
-import java.net.SocketException;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.fail;
-import static org.mockito.Mockito.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mock;
+import static org.mockito.Mockito.when;
+import org.mockito.MockitoAnnotations;
 
-import com.boe.simulator.server.session.ClientSession;
+import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
+import com.boe.simulator.server.auth.AuthenticationService;
+import com.boe.simulator.server.config.ServerConfiguration;
+import com.boe.simulator.server.error.ErrorHandler;
+import com.boe.simulator.server.ratelimit.RateLimiter;
+import com.boe.simulator.server.session.ClientSessionManager;
 
 class ClientConnectionHandlerTest {
 
