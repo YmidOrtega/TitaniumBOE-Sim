@@ -37,7 +37,7 @@ class LogoutRequestMessageTest {
         LogoutRequestMessage message = new LogoutRequestMessage((byte) 1, 12345);
         byte[] expected = {
                 (byte) 0xBA, (byte) 0xBA,
-                0x06, 0x00,
+                0x08, 0x00,
                 0x02,
                 0x01,
                 0x39, 0x30, 0x00, 0x00

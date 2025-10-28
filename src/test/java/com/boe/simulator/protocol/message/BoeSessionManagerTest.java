@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.boe.simulator.connection.BoeConnectionHandler;
+import com.boe.simulator.connection.BoeMessageListener;
 
 class BoeSessionManagerTest {
 
@@ -33,6 +34,12 @@ class BoeSessionManagerTest {
     void setUp() {
         closeable = MockitoAnnotations.openMocks(this);
         sessionManager = new BoeSessionManager(mockConnectionHandler);
+    }
+
+    @Test
+    void constructor_shouldSetMessageListenerOnConnectionHandler() {
+        // Arrange
+        verify(mockConnectionHandler).setMessageListener(any(BoeMessageListener.class));
     }
 
     @AfterEach
@@ -144,6 +151,8 @@ class BoeSessionManagerTest {
         assertTrue(sessionManager.isActive());
     }
 
+    
+
     @Test
     void isActive_shouldReturnFalse_whenStateIsDisconnected() {
         // Arrange, Act & Assert
@@ -166,5 +175,11 @@ class BoeSessionManagerTest {
         when(mockConnectionHandler.connect()).thenReturn(CompletableFuture.completedFuture(null));
         when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
         sessionManager.login("user", "testPass").join();
+    }
+
+    private Object getField(Object target, String fieldName) throws NoSuchFieldException, IllegalAccessException {
+        java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(target);
     }
 }
