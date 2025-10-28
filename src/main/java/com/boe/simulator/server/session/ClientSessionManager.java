@@ -1,13 +1,14 @@
 package com.boe.simulator.server.session;
 
-import com.boe.simulator.connection.ClientConnectionHandler;
-
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+
+import com.boe.simulator.connection.ClientConnectionHandler;
 
 public class ClientSessionManager {
     private static final Logger LOGGER = Logger.getLogger(ClientSessionManager.class.getName());
@@ -82,9 +83,9 @@ public class ClientSessionManager {
             try {
                 handler.sendMessage(messageBytes);
                 successCount++;
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to broadcast to connection {0}: {1}", new Object[]{handler.getSession().getConnectionId(), e.getMessage()});
-            }
+            } catch (IOException | IllegalStateException e) {
+            LOGGER.log(Level.WARNING, "Failed to broadcast to connection {0}: {1}", new Object[]{handler.getSession().getConnectionId(), e.getMessage()});
+        }
         }
         
         LOGGER.log(Level.INFO, "Broadcast completed: {0}/{1} succeeded", new Object[]{successCount, authenticated.size()});
@@ -100,9 +101,9 @@ public class ClientSessionManager {
                 try {
                     handler.sendMessage(messageBytes);
                     successCount++;
-                } catch (Exception e) {
+                } catch (IOException | IllegalStateException e) {
                     LOGGER.log(Level.WARNING, "Failed to send to user {0}: {1}", new Object[]{username, e.getMessage()});
-                }
+            }
             }
         }
         
