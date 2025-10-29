@@ -10,9 +10,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.boe.simulator.connection.ClientConnectionHandler;
 import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
 import com.boe.simulator.server.config.ServerConfiguration;
+import com.boe.simulator.server.connection.ClientConnectionHandler;
 
 public class HeartbeatMonitor {
     private static final Logger LOGGER = Logger.getLogger(HeartbeatMonitor.class.getName());
@@ -40,7 +40,6 @@ public class HeartbeatMonitor {
 
         active = true;
 
-        // Task 1: Send ServerHeartbeat periodically
         long sendInterval = config.getHeartbeatIntervalSeconds();
         sendTask = scheduler.scheduleAtFixedRate(
                 this::sendHeartbeat,
@@ -49,8 +48,7 @@ public class HeartbeatMonitor {
                 TimeUnit.SECONDS
         );
 
-        // Task 2: Check for client heartbeat timeout
-        long checkInterval = 5; // Check every 5 seconds
+        long checkInterval = 5;
         checkTask = scheduler.scheduleAtFixedRate(
                 this::checkTimeout,
                 checkInterval,

@@ -8,7 +8,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import com.boe.simulator.connection.ClientConnectionHandler;
+import com.boe.simulator.server.connection.ClientConnectionHandler;
 
 public class ClientSessionManager {
     private static final Logger LOGGER = Logger.getLogger(ClientSessionManager.class.getName());

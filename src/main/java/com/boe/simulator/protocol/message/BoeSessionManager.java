@@ -9,8 +9,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.boe.simulator.connection.BoeConnectionHandler;
-import com.boe.simulator.connection.BoeMessageListener;
+import com.boe.simulator.client.connection.BoeConnectionHandler;
+import com.boe.simulator.client.listener.BoeMessageListener;
 
 public class BoeSessionManager {
     private static final Logger LOGGER = Logger.getLogger(BoeSessionManager.class.getName());

@@ -1,5 +1,6 @@
 package com.boe.simulator.connection;
 
+import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.protocol.message.BoeMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
