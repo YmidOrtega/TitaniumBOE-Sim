@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.boe.simulator.connection.ClientConnectionHandler;
+import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.error.ErrorHandler;

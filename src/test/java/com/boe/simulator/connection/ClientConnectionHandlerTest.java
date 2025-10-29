@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.Socket;
 
+import com.boe.simulator.server.connection.ClientConnectionHandler;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.fail;
 import org.junit.jupiter.api.BeforeEach;

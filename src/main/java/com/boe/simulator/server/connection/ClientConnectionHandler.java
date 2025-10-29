@@ -1,4 +1,4 @@
-package com.boe.simulator.connection;
+package com.boe.simulator.server.connection;
 
 import java.io.IOException;
 import java.io.InputStream;

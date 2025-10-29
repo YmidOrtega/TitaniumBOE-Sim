@@ -1,4 +1,4 @@
-package com.boe.simulator.connection;
+package com.boe.simulator.client.connection;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.boe.simulator.client.listener.BoeMessageListener;
 import com.boe.simulator.protocol.message.BoeMessage;
 import com.boe.simulator.protocol.message.BoeMessageFactory;
 import com.boe.simulator.protocol.message.LoginResponseMessage;

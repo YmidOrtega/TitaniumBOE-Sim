@@ -1,6 +1,6 @@
 package com.boe.simulator.server.session;
 
-import com.boe.simulator.connection.ClientConnectionHandler;
+import com.boe.simulator.server.connection.ClientConnectionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
