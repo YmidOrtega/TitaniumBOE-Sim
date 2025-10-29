@@ -1,12 +1,14 @@
 package com.boe.simulator.client;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.boe.simulator.client.config.BoeClientConfiguration;
 import com.boe.simulator.client.connection.BoeConnectionHandler;
+import com.boe.simulator.client.heartbeat.ClientHeartbeatManager;
 import com.boe.simulator.client.listener.BoeMessageListener;
 import com.boe.simulator.client.session.ClientSessionState;
 import com.boe.simulator.client.session.SessionEventListener;
@@ -22,6 +24,7 @@ public class BoeClient {
     private final BoeClientConfiguration config;
     private final BoeConnectionHandler connectionHandler;
     private final AtomicReference<ClientSessionState> state;
+    private final ClientHeartbeatManager heartbeatManager;
 
     private SessionEventListener sessionListener;
     private CompletableFuture<Void> listenerFuture;
@@ -30,11 +33,13 @@ public class BoeClient {
         this.config = config;
         this.connectionHandler = new BoeConnectionHandler(config.getHost(), config.getPort());
         this.state = new AtomicReference<>(ClientSessionState.DISCONNECTED);
+        this.heartbeatManager = new ClientHeartbeatManager(connectionHandler, config.getHeartbeatIntervalSeconds(), 30);
 
         LOGGER.setLevel(config.getLogLevel());
         LOGGER.log(Level.INFO, "BoeClient initialized: {0}", config);
 
         setupMessageListener();
+        setupHeartbeatTimeout();
     }
 
     private void setupMessageListener() {
@@ -51,8 +56,18 @@ public class BoeClient {
 
             @Override
             public void onServerHeartbeat(ServerHeartbeatMessage heartbeat) {
+                heartbeatManager.notifyServerHeartbeatReceived();
                 LOGGER.log(Level.FINE, "Server heartbeat received: seq={0}", heartbeat.getSequenceNumber());
             }
+        });
+    }
+
+    private void setupHeartbeatTimeout() {
+        heartbeatManager.setTimeoutListener(() -> {
+            LOGGER.severe("Server heartbeat timeout detected - connection lost");
+            setState(ClientSessionState.ERROR);
+
+            if (sessionListener != null) sessionListener.onError("heartbeat_timeout", new Exception("Server heartbeat timeout"));
         });
     }
 
@@ -92,18 +107,15 @@ public class BoeClient {
             try {
                 setState(ClientSessionState.DISCONNECTING);
 
+                if (heartbeatManager.isActive()) heartbeatManager.stop();
+
                 if (state.get().isAuthenticated()) {
-                    // Send logout if authenticated
                     sendLogout();
                     Thread.sleep(500);
                 }
 
-                // Stop listener
-                if (listenerFuture != null) {
-                    connectionHandler.stopListener();
-                }
+                if (listenerFuture != null) connectionHandler.stopListener();
 
-                // Disconnect
                 connectionHandler.disconnect().get();
                 setState(ClientSessionState.DISCONNECTED);
 
@@ -140,6 +152,11 @@ public class BoeClient {
 
             if (sessionListener != null) sessionListener.onLoginSuccess(response);
 
+            if (config.isAutoHeartbeat()) {
+                heartbeatManager.start();
+                LOGGER.info("Auto-heartbeat enabled");
+            }
+
         } else {
             setState(ClientSessionState.ERROR);
             LOGGER.log(Level.WARNING, "Login failed: {0}", response.getLoginResponseText());
@@ -154,6 +171,17 @@ public class BoeClient {
 
         if (sessionListener != null) sessionListener.onLogoutCompleted(response);
 
+    }
+
+    public void shutdown() {
+        try {
+            if (isConnected()) disconnect().get();
+
+            heartbeatManager.shutdown();
+        }catch (InterruptedException | ExecutionException | IllegalStateException e) {
+            LOGGER.log(Level.WARNING, "Shutdown error", e);
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+        }
     }
 
     public void setSessionListener(SessionEventListener listener) {
@@ -180,11 +208,16 @@ public class BoeClient {
         return connectionHandler;
     }
 
+    public ClientHeartbeatManager getHeartbeatManager() {
+        return heartbeatManager;
+    }
+
     private void setState(ClientSessionState newState) {
         ClientSessionState oldState = state.getAndSet(newState);
 
         if (oldState != newState) {
             LOGGER.log(Level.INFO, "State changed: {0} -> {1}", new Object[]{oldState, newState});
+
             if (sessionListener != null) sessionListener.onStateChanged(oldState, newState);
         }
     }

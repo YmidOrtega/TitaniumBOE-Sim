@@ -1,4 +1,4 @@
-package com.boe.simulator.connection;
+package com.boe.simulator.client.connection;
 
 import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.protocol.message.BoeMessage;
