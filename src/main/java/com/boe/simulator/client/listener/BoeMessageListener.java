@@ -1,4 +1,4 @@
-package com.boe.simulator.connection;
+package com.boe.simulator.client.listener;
 
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 import com.boe.simulator.protocol.message.LogoutResponseMessage;

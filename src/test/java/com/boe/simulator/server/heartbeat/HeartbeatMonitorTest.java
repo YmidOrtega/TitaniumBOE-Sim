@@ -1,6 +1,6 @@
 package com.boe.simulator.server.heartbeat;
 
-import com.boe.simulator.connection.ClientConnectionHandler;
+import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.session.ClientSession;
 import org.junit.jupiter.api.AfterEach;

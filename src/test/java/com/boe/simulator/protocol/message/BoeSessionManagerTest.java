@@ -18,8 +18,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
-import com.boe.simulator.connection.BoeConnectionHandler;
-import com.boe.simulator.connection.BoeMessageListener;
+import com.boe.simulator.client.connection.BoeConnectionHandler;
+import com.boe.simulator.client.listener.BoeMessageListener;
 
 class BoeSessionManagerTest {
 
