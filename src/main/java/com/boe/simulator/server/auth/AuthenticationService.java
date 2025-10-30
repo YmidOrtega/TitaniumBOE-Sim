@@ -1,54 +1,83 @@
 package com.boe.simulator.server.auth;
 
+import com.boe.simulator.server.persistence.RocksDBManager;
+import com.boe.simulator.server.persistence.model.PersistedUser;
+import com.boe.simulator.server.persistence.repository.UserRepository;
+import com.boe.simulator.server.persistence.service.UserRepositoryService;
+import com.boe.simulator.server.persistence.util.PasswordHasher;
+
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 public class AuthenticationService {
     private static final Logger LOGGER = Logger.getLogger(AuthenticationService.class.getName());
 
-    // In-memory user database (username -> password)
-    private final ConcurrentHashMap<String, String> users;
+    private final UserRepository userRepository;
 
-    // Track active sessions to prevent duplicates (username -> sessionSubID)
     private final ConcurrentHashMap<String, String> activeSessions;
 
-    public AuthenticationService() {
-        this.users = new ConcurrentHashMap<>();
+    public AuthenticationService(RocksDBManager dbManager) {
+        this.userRepository = new UserRepositoryService(dbManager);
         this.activeSessions = new ConcurrentHashMap<>();
 
-        // Initialize with some default users
         initializeDefaultUsers();
+
+        LOGGER.info("AuthenticationService initialized with persistent storage");
+    }
+
+    public AuthenticationService() {
+        this(RocksDBManager.getInstance());
     }
 
     private void initializeDefaultUsers() {
-        // Add some test users
-        users.put("USER", "PASS");
-        users.put("TRADER1", "PASS1");
-        users.put("TRADER2", "PASS2");
-        users.put("ADMIN", "ADMIN123");
-        users.put("TEST", "TEST");
+        long userCount = userRepository.count();
 
-        LOGGER.info("Initialized authentication service with " + users.size() + " users");
+        if (userCount == 0) {
+            LOGGER.info("No users found in database, creating default users...");
+
+            // Create default users
+            createUser("USER", "PASS");
+            createUser("TRADER1", "PASS1");
+            createUser("TRADER2", "PASS2");
+            createUser("ADMIN", "ADMIN123");
+            createUser("TEST", "TEST");
+
+            LOGGER.info("Created " + userRepository.count() + " default users");
+        } else {
+            LOGGER.info("Found " + userCount + " existing users in database");
+        }
+    }
+
+    public void createUser(String username, String plainPassword) {
+        String passwordHash = PasswordHasher.hash(plainPassword);
+        PersistedUser user = PersistedUser.create(username, passwordHash);
+        userRepository.save(user);
+
+        LOGGER.info("Created new user: " + username);
     }
 
     public AuthenticationResult authenticate(String username, String password, String sessionSubID) {
-        if (username == null || username.trim().isEmpty()) {
-            return AuthenticationResult.rejected("Username cannot be empty");
-        }
+        if (username == null || username.trim().isEmpty()) return AuthenticationResult.rejected("Username cannot be empty");
+        if (password == null || password.trim().isEmpty()) return AuthenticationResult.rejected("Password cannot be empty");
 
-        if (password == null || password.trim().isEmpty()) {
-            return AuthenticationResult.rejected("Password cannot be empty");
-        }
+        // Find user in database
+        var userOpt = userRepository.findByUsername(username);
 
-        // Check if user exists
-        if (!users.containsKey(username)) {
+        if (userOpt.isEmpty()) {
             LOGGER.warning("Login attempt for unknown user: " + username);
             return AuthenticationResult.rejected("Invalid username or password");
         }
 
-        // Check password
-        String expectedPassword = users.get(username);
-        if (!expectedPassword.equals(password)) {
+        PersistedUser user = userOpt.get();
+
+        // Check if user is active
+        if (!user.active()) {
+            LOGGER.warning("Login attempt for inactive user: " + username);
+            return AuthenticationResult.rejected("User account is inactive");
+        }
+
+        // Verify password
+        if (!PasswordHasher.verify(password, user.passwordHash())) {
             LOGGER.warning("Invalid password for user: " + username);
             return AuthenticationResult.rejected("Invalid username or password");
         }
@@ -62,39 +91,32 @@ public class AuthenticationService {
 
         // Authentication successful
         activeSessions.put(username, sessionSubID);
+        userRepository.updateLastLogin(username);
+
         LOGGER.info("User " + username + " authenticated successfully (session: " + sessionSubID + ")");
 
         return AuthenticationResult.accepted("Login successful");
     }
 
-    public void addUser(String username, String password) {
-        if (username == null || password == null) throw new IllegalArgumentException("Username and password cannot " +
-                "be" +  " null");
-        users.put(username, password);
-        LOGGER.info("Added new user: " + username);
-    }
-
-    public void removeUser(String username) {
-        users.remove(username);
-        activeSessions.remove(username);
-        LOGGER.info("Removed user: " + username);
-    }
-
     public void endSession(String username) {
         String sessionSubID = activeSessions.remove(username);
         if (sessionSubID != null) LOGGER.info("Ended session for user: " + username + " (session: " + sessionSubID + ")");
+
     }
 
     public boolean hasActiveSession(String username) {
         return activeSessions.containsKey(username);
     }
 
-
     public int getActiveSessionCount() {
         return activeSessions.size();
     }
 
-    public int getUserCount() {
-        return users.size();
+    public long getUserCount() {
+        return userRepository.count();
+    }
+
+    public UserRepository getUserRepository() {
+        return userRepository;
     }
 }
