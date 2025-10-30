@@ -176,10 +176,4 @@ class BoeSessionManagerTest {
         when(mockConnectionHandler.sendMessage(any(byte[].class))).thenReturn(CompletableFuture.completedFuture(null));
         sessionManager.login("user", "testPass").join();
     }
-
-    private Object getField(Object target, String fieldName) throws NoSuchFieldException, IllegalAccessException {
-        java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        return field.get(target);
-    }
 }
