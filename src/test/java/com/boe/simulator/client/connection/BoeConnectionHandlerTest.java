@@ -1,13 +1,5 @@
 package com.boe.simulator.client.connection;
 
-import com.boe.simulator.client.connection.BoeConnectionHandler;
-import com.boe.simulator.protocol.message.BoeMessage;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,9 +10,28 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import org.mockito.Mock;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.MockitoAnnotations;
+
+import com.boe.simulator.protocol.message.BoeMessage;
 
 class BoeConnectionHandlerTest {
 
@@ -139,8 +150,8 @@ class BoeConnectionHandlerTest {
         // Act & Assert
         CompletionException thrown = assertThrows(CompletionException.class,
                 () -> connectionHandler.sendMessage(payload).join());
-        assertInstanceOf(RuntimeException.class, thrown.getCause());
-        assertInstanceOf(IOException.class, thrown.getCause().getCause());
+        assertTrue(thrown.getCause() instanceof RuntimeException);
+        assertTrue(thrown.getCause().getCause() instanceof IOException);
         assertTrue(thrown.getCause().getCause().getMessage().contains("Not connected"));
     }
 
@@ -151,7 +162,10 @@ class BoeConnectionHandlerTest {
         doThrow(new IOException("Write error")).when(mockOutputStream).write(any(byte[].class));
 
         // Act & Assert
-        assertThrows(CompletionException.class, () -> connectionHandler.sendMessage(payload).join());
+        CompletionException thrown = assertThrows(CompletionException.class, () -> connectionHandler.sendMessage(payload).join());
+        assertTrue(thrown.getCause() instanceof RuntimeException);
+        assertTrue(thrown.getCause().getCause() instanceof IOException);
+        assertTrue(thrown.getCause().getCause().getMessage().contains("Write error"));
     }
 
     @Test
