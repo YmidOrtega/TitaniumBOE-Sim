@@ -14,14 +14,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
+import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.metrics.HealthMetrics;
+import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.ClientSessionManager;
-import com.boe.simulator.server.persistence.RocksDBManager;
 
 public class CboeServer {
     private static final Logger LOGGER = Logger.getLogger(CboeServer.class.getName());
@@ -59,7 +59,7 @@ public class CboeServer {
         LOGGER.setLevel(config.getLogLevel());
         LOGGER.log(Level.INFO, "CboeServer initialized with configuration: {0}", config);
         LOGGER.log(Level.INFO, "Database: {0}", dbManager.getDbPath());
-        LOGGER.log(Level.INFO, "RocksDB initialized at: " + dbManager.getDbPath());
+        LOGGER.log(Level.INFO, "RocksDB initialized at: {0}", dbManager.getDbPath());
         LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
     }
 
