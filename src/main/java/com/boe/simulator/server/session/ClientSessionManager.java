@@ -1,6 +1,7 @@
 package com.boe.simulator.server.session;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,21 +10,32 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.boe.simulator.server.connection.ClientConnectionHandler;
+import com.boe.simulator.server.persistence.model.PersistedSession;
+import com.boe.simulator.server.persistence.repository.SessionRepository;
 
 public class ClientSessionManager {
     private static final Logger LOGGER = Logger.getLogger(ClientSessionManager.class.getName());
 
     private final ConcurrentHashMap<Integer, ClientConnectionHandler> handlers;
     private final ConcurrentHashMap<String, ClientConnectionHandler> handlersByUsername;
-
     private final SessionStatistics statistics;
+
+    private final SessionRepository sessionRepository;
+    private final ConcurrentHashMap<Integer, PersistedSession> activeSessions;
     
-    public ClientSessionManager() {
+    public ClientSessionManager(SessionRepository sessionRepository) {
         this.handlers = new ConcurrentHashMap<>();
         this.handlersByUsername = new ConcurrentHashMap<>();
         this.statistics = new SessionStatistics();
+        this.sessionRepository = sessionRepository;
+        this.activeSessions = new ConcurrentHashMap<>();
         
         LOGGER.info("ClientSessionManager initialized");
+    }
+
+    public ClientSessionManager() {
+        this(null);
+        LOGGER.warning("ClientSessionManager initialized WITHOUT persistence");
     }
 
     public void registerHandler(ClientConnectionHandler handler) {
@@ -33,6 +45,20 @@ public class ClientSessionManager {
         LOGGER.log(Level.INFO, "Registered handler for connection {0} (Total active: {1})", new Object[]{connectionId, handlers.size()});
         
         statistics.incrementTotalConnections();
+
+        if (sessionRepository != null) {
+            ClientSession session = handler.getSession();
+            PersistedSession persistedSession = PersistedSession.createOnLogin(
+                connectionId,
+                session.getUsername() != null ? session.getUsername() : "unknown",
+                session.getSessionSubID() != null ? session.getSessionSubID() : "",
+                session.getRemoteAddress(),
+                session.getCreatedAt(),
+                false,
+                null
+            );
+            activeSessions.put(connectionId, persistedSession);
+        }
     }
 
     public void registerUsername(ClientConnectionHandler handler, String username) {
@@ -41,6 +67,45 @@ public class ClientSessionManager {
         LOGGER.log(Level.INFO, "Registered username ''{0}'' for connection {1}", new Object[]{username, handler.getSession().getConnectionId()});
         
         statistics.incrementSuccessfulLogins();
+
+        if (sessionRepository != null) {
+            int connectionId = handler.getSession().getConnectionId();
+            PersistedSession oldSession = activeSessions.get(connectionId);
+            
+            if (oldSession != null) {
+                PersistedSession updatedSession = PersistedSession.createOnLogin(
+                    connectionId,
+                    username,
+                    handler.getSession().getSessionSubID(),
+                    handler.getSession().getRemoteAddress(),
+                    handler.getSession().getCreatedAt(),
+                    true,
+                    null
+                );
+                activeSessions.put(connectionId, updatedSession);
+            }
+        }
+    }
+    
+    public void recordFailedLogin(int connectionId, String username, String reason) {
+        statistics.incrementFailedLogins();
+        
+        if (sessionRepository != null) {
+            PersistedSession oldSession = activeSessions.get(connectionId);
+            
+            if (oldSession != null) {
+                PersistedSession failedSession = PersistedSession.createOnLogin(
+                    connectionId,
+                    username,
+                    oldSession.sessionSubID(),
+                    oldSession.remoteAddress(),
+                    oldSession.startTime(),
+                    false,
+                    reason
+                );
+                activeSessions.put(connectionId, failedSession);
+            }
+        }
     }
 
     public void unregisterHandler(ClientConnectionHandler handler) {
@@ -48,11 +113,50 @@ public class ClientSessionManager {
         handlers.remove(connectionId);
         
         String username = handler.getSession().getUsername();
-        if (username != null) {
-            handlersByUsername.remove(username);
-        }
+        if (username != null) handlersByUsername.remove(username);
         
         LOGGER.log(Level.INFO, "Unregistered connection {0} (Total active: {1})", new Object[]{connectionId, handlers.size()});
+    
+        persistAndCloseSession(handler, "Connection closed");
+    }
+
+    private void persistAndCloseSession(ClientConnectionHandler handler, String disconnectReason) {
+        if (sessionRepository == null) return;
+        
+        try {
+            int connectionId = handler.getSession().getConnectionId();
+            PersistedSession activeSession = activeSessions.remove(connectionId);
+            
+            if (activeSession == null) {
+                LOGGER.log(Level.WARNING, "No active session found for connection {0}", connectionId);
+                return;
+            }
+            
+            ClientSession session = handler.getSession();
+
+            PersistedSession closedSession = activeSession.closeSession(
+                Instant.now(),
+                session.getMessagesReceived(),
+                session.getMessagesSent(),
+                0,
+                0,
+                disconnectReason
+            );
+            
+            closedSession = closedSession.withMetadata("finalState", session.getState().toString());
+            
+            sessionRepository.save(closedSession);
+            
+            LOGGER.log(Level.INFO, "✓ Persisted session {0} (user={1}, duration={2}s)", new Object[]{closedSession.sessionId(), closedSession.username(), closedSession.durationSeconds()});
+            
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Failed to persist session for connection " + handler.getSession().getConnectionId(), e);
+        }
+    }
+
+    public void disconnectAndPersist(ClientConnectionHandler handler, String reason) {
+        persistAndCloseSession(handler, reason);
+        handler.stop();
     }
 
     public ClientConnectionHandler getHandler(int connectionId) {
@@ -84,10 +188,9 @@ public class ClientSessionManager {
                 handler.sendMessage(messageBytes);
                 successCount++;
             } catch (IOException | IllegalStateException e) {
-            LOGGER.log(Level.WARNING, "Failed to broadcast to connection {0}: {1}", new Object[]{handler.getSession().getConnectionId(), e.getMessage()});
+                LOGGER.log(Level.WARNING, "Failed to broadcast to connection {0}: {1}", new Object[]{handler.getSession().getConnectionId(), e.getMessage()});
+            }
         }
-        }
-        
         LOGGER.log(Level.INFO, "Broadcast completed: {0}/{1} succeeded", new Object[]{successCount, authenticated.size()});
     }
     
@@ -161,5 +264,20 @@ public class ClientSessionManager {
         LOGGER.log(Level.INFO, "Successful logins: {0}", statistics.getSuccessfulLogins());
         LOGGER.log(Level.INFO, "Failed logins: {0}", statistics.getFailedLogins());
         LOGGER.info("=====================================");
+
+        if (sessionRepository != null) {
+            LOGGER.log(Level.INFO, "Persisted sessions (DB): {0}", sessionRepository.count());
+            LOGGER.log(Level.INFO, "Active sessions (memory): {0}", activeSessions.size());
+        }
+
+        LOGGER.info("=====================================");
+    }
+
+    public SessionRepository getSessionRepository() {
+        return sessionRepository;
+    }
+    
+    public boolean isPersistenceEnabled() {
+        return sessionRepository != null;
     }
 }
