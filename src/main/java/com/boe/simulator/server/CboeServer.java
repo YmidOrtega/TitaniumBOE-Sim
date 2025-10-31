@@ -20,6 +20,11 @@ import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.persistence.RocksDBManager;
+import com.boe.simulator.server.persistence.repository.SessionRepository;
+import com.boe.simulator.server.persistence.repository.StatisticsRepository;
+import com.boe.simulator.server.persistence.service.SessionRepositoryService;
+import com.boe.simulator.server.persistence.service.StatisticsGeneratorService;
+import com.boe.simulator.server.persistence.service.StatisticsRepositoryService;
 import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.ClientSessionManager;
 
@@ -36,6 +41,7 @@ public class CboeServer {
     private final ErrorHandler errorHandler;
     private final RateLimiter rateLimiter;
     private final HealthMetrics healthMetrics;
+    private final StatisticsGeneratorService statisticsGenerator;
 
     private ServerSocket serverSocket;
     private Thread acceptorThread;
@@ -49,11 +55,21 @@ public class CboeServer {
 
         LOGGER.info("Initializing persistence layer...");
 
+        SessionRepository sessionRepo = new SessionRepositoryService(dbManager);
+        StatisticsRepository statsRepo = new StatisticsRepositoryService(dbManager);
+
         this.authService = new AuthenticationService(dbManager);
-        this.sessionManager = new ClientSessionManager();
+        this.sessionManager = new ClientSessionManager(sessionRepo);
         this.errorHandler = new ErrorHandler();
         this.rateLimiter = new RateLimiter(100, Duration.ofMinutes(1));
         this.healthMetrics = new HealthMetrics();
+
+        this.statisticsGenerator = new StatisticsGeneratorService(
+            sessionRepo,
+            statsRepo,
+            sessionManager,
+            errorHandler
+        );
 
         // Configure logging
         LOGGER.setLevel(config.getLogLevel());
@@ -61,6 +77,7 @@ public class CboeServer {
         LOGGER.log(Level.INFO, "Database: {0}", dbManager.getDbPath());
         LOGGER.log(Level.INFO, "RocksDB initialized at: {0}", dbManager.getDbPath());
         LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
+        LOGGER.log(Level.INFO, "Session persistence: ENABLED");
     }
 
     public void start() throws IOException {
@@ -80,9 +97,13 @@ public class CboeServer {
         acceptorThread = new Thread(this::acceptConnections, "ServerAcceptor");
         acceptorThread.start();
 
-        LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}",
-                new Object[]{config.getHost(), config.getPort()});
+        LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}",new Object[]{
+            config.getHost(), config.getPort()
+        });
         LOGGER.log(Level.INFO, "✓ Ready to accept connections (max: {0})", config.getMaxConnections());
+
+        statisticsGenerator.start();
+        LOGGER.info("✓ Statistics generator started");
     }
 
     private void acceptConnections() {
@@ -95,8 +116,9 @@ public class CboeServer {
 
                 // Check connection limit
                 if (activeConnections.get() >= config.getMaxConnections()) {
-                    LOGGER.log(Level.WARNING, "Connection limit reached ({0}), rejecting connection from {1}",
-                            new Object[]{config.getMaxConnections(), clientSocket.getRemoteSocketAddress()});
+                    LOGGER.log(Level.WARNING, "Connection limit reached ({0}), rejecting connection from {1}", new Object[]{
+                        config.getMaxConnections(), clientSocket.getRemoteSocketAddress()
+                    });
                     clientSocket.close();
                     continue;
                 }
@@ -106,18 +128,15 @@ public class CboeServer {
                 clientSocket.setTcpNoDelay(true);
 
                 int connectionId = activeConnections.incrementAndGet();
-                LOGGER.log(Level.INFO, "✓ New connection accepted [ID: {0}] from {1} (Active: {2}/{3})",
-                        new Object[]{connectionId, clientSocket.getRemoteSocketAddress(),
-                                activeConnections.get(), config.getMaxConnections()});
+                LOGGER.log(Level.INFO, "✓ New connection accepted [ID: {0}] from {1} (Active: {2}/{3})", new Object[]{
+                    connectionId, clientSocket.getRemoteSocketAddress(), activeConnections.get(), config.getMaxConnections()
+                });
 
                 clientExecutor.submit(() -> handleClient(clientSocket, connectionId));
 
             } catch (SocketTimeoutException e) {
-                // Normal timeout, continue loop
             } catch (IOException e) {
-                if (running.get()) {
-                    LOGGER.log(Level.SEVERE, "Error accepting connection", e);
-                }
+                if (running.get()) LOGGER.log(Level.SEVERE, "Error accepting connection", e);
             }
         }
 
@@ -141,12 +160,12 @@ public class CboeServer {
             errorHandler.handleError(connectionId, "Handler error", e);
             LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
         } finally {
-            if (handler != null) {
-                sessionManager.unregisterHandler(handler);
-            }
+            if (handler != null) sessionManager.unregisterHandler(handler);
+            
             activeConnections.decrementAndGet();
-            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})",
-                    new Object[]{connectionId, activeConnections.get()});
+            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})",new Object[]{
+                connectionId, activeConnections.get()
+            });
         }
     }
 
@@ -161,9 +180,8 @@ public class CboeServer {
 
         // Close server socket
         try {
-            if (serverSocket != null && !serverSocket.isClosed()) {
-                serverSocket.close();
-            }
+            if (serverSocket != null && !serverSocket.isClosed()) serverSocket.close();
+            
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Error closing server socket", e);
         }
@@ -184,12 +202,20 @@ public class CboeServer {
     public void shutdown() {
         LOGGER.info("======= SERVER SHUTDOWN INITIATED =======");
 
-        // Print statistics
+        if (statisticsGenerator != null) {
+            LOGGER.info("Stopping statistics generator...");
+            statisticsGenerator.stop();
+        }
+
+        if (statisticsGenerator != null) {
+            LOGGER.info("Generating final statistics...");
+            statisticsGenerator.generateCurrentDayStatistics();
+        }
+
         LOGGER.info(healthMetrics.getHealthSummary());
-        LOGGER.log(Level.INFO, "Error stats: Errors={0}, Warnings={1}, Recoveries={2}",
-                new Object[]{errorHandler.getTotalErrors(),
-                        errorHandler.getTotalWarnings(),
-                        errorHandler.getTotalRecoveries()});
+        LOGGER.log(Level.INFO, "Error stats: Errors={0}, Warnings={1}, Recoveries={2}", new Object[]{
+            errorHandler.getTotalErrors(), errorHandler.getTotalWarnings(), errorHandler.getTotalRecoveries()
+        });
         LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
         sessionManager.printSessionSummary();
 
@@ -275,10 +301,12 @@ public class CboeServer {
             server.start();
             System.out.printf("""
                     ╔════════════════════════════════════════════════════════════╗
-                    ║              CBOE Server - FASE 1 - RUNNING                ║
+                    ║         CBOE Server - Con Persistencia - RUNNING           ║
                     ╠════════════════════════════════════════════════════════════╣
                     ║  Server Address: %s:%d                              ║
                     ║  Max Connections: %d                                       ║
+                    ║  Persistence: ENABLED                                      ║
+                    ║  Statistics: AUTO-GENERATED                                ║
                     ║                                                            ║
                     ║  Test with: telnet localhost %d                          ║
                     ║  or use your BoeConnectionHandler client                   ║
@@ -300,7 +328,7 @@ public class CboeServer {
             // Shutdown del scheduler al finalizar
             scheduler.shutdownNow();
 
-        }catch (InterruptedException e) {
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             LOGGER.log(Level.WARNING, "Server thread interrupted", e);
             server.shutdown();
