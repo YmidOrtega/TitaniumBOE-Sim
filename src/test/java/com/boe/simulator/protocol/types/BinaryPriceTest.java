@@ -40,7 +40,8 @@ class BinaryPriceTest {
     @Test
     void fromPrice_shouldThrowException_whenPriceIsNull() {
         // Arrange, Act & Assert
-        assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromPrice(null));
+        Throwable thrown = assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromPrice(null));
+        assertEquals(IllegalArgumentException.class, thrown.getClass());
     }
 
     @Test
@@ -173,13 +174,15 @@ class BinaryPriceTest {
         byte[] shortBytes = new byte[7];
 
         // Act & Assert
-        assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromBytes(shortBytes, 0));
+        Throwable thrown = assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromBytes(shortBytes, 0));
+        assertEquals(IllegalArgumentException.class, thrown.getClass());
     }
 
     @Test
     void fromBytes_shouldThrowException_whenArrayIsNull() {
         // Arrange, Act & Assert
-        assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromBytes(null, 0));
+        Throwable thrown = assertThrows(IllegalArgumentException.class, () -> BinaryPrice.fromBytes(null, 0));
+        assertEquals(IllegalArgumentException.class, thrown.getClass());
     }
 
     @Test

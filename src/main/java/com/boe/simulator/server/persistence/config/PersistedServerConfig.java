@@ -202,7 +202,7 @@ public record PersistedServerConfig(
             Level.parse(logLevel);
 
             return true;
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
             return false;
         }
     }
