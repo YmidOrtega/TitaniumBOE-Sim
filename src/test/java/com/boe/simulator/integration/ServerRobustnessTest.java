@@ -1,10 +1,14 @@
 package com.boe.simulator.integration;
 
+import java.util.concurrent.CompletableFuture;
+
 import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.client.listener.BoeMessageListener;
-import com.boe.simulator.protocol.message.*;
-
-import java.util.concurrent.CompletableFuture;
+import com.boe.simulator.protocol.message.LoginRequestMessage;
+import com.boe.simulator.protocol.message.LoginResponseMessage;
+import com.boe.simulator.protocol.message.LogoutRequestMessage;
+import com.boe.simulator.protocol.message.LogoutResponseMessage;
+import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
 
 public class ServerRobustnessTest {
     public static void main(String[] args) throws Exception {
