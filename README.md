@@ -38,16 +38,6 @@ sequenceDiagram
     Client->>Server: Logout Request
     Server-->>Client: Logout Response
 
-📂 Estructura del proyecto
-
-src/
- ├── main/java/com/boe/simulator/
- │    ├── client/        # Cliente BOE
- │    ├── server/        # Servidor simulado
- │    ├── protocol/      # Definiciones de mensajes y encabezados
- │    ├── util/          # Utilidades binario <-> objeto
- │    └── App.java       # Punto de entrada
- └── test/java/...       # Pruebas unitarias
 
 ⚙️ Requisitos
 
@@ -68,3 +58,4 @@ mvn exec:java -Dexec.mainClass="com.boe.simulator.ClientServer"
 📜 Licencia
 
 Este proyecto es solo para fines educativos y de simulación.No se conecta ni envía órdenes reales a Cboe.Licencia: MIT.
+
