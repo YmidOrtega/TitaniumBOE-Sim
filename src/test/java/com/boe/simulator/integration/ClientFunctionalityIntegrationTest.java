@@ -6,7 +6,7 @@ import com.boe.simulator.client.session.ClientSessionState;
 import com.boe.simulator.client.session.SessionEventListener;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 
-public class BoeClientTest {
+public class ClientFunctionalityIntegrationTest {
     
     public static void main(String[] args) throws Exception {
         System.out.println("╔════════════════════════════════════════════════════════╗");

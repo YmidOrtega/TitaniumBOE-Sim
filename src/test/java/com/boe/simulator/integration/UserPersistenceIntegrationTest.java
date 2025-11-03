@@ -11,7 +11,7 @@ import com.boe.simulator.server.persistence.repository.UserRepository;
 import com.boe.simulator.server.persistence.service.UserRepositoryService;
 import com.boe.simulator.server.persistence.util.PasswordHasher;
 
-public class PersistencePhase1Test {
+public class UserPersistenceIntegrationTest {
     
     public static void main(String[] args) {
         System.out.println("╔════════════════════════════════════════════════════════╗");

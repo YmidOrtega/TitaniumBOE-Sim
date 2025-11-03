@@ -13,7 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
-public class PersistencePhase3Test {
+public class ConfigurationPersistenceIntegrationTest {
 
     public static void main(String[] args) {
         System.out.println("╔════════════════════════════════════════════════════════╗");
