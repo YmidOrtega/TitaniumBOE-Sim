@@ -105,6 +105,54 @@ public class LoginRequestMessage {
         return result;
     }
 
+    public static LoginRequestMessage parseFromBytes(byte[] data) {
+        if (data == null || data.length < 29) throw new IllegalArgumentException("Invalid LoginRequest message data");
+
+        ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+
+        // Skip StartOfMessage (2 bytes)
+        buffer.position(2);
+
+        // MessageLength (2 bytes)
+        int messageLength = buffer.getShort() & 0xFFFF;
+
+        // MessageType (1 byte)
+        byte messageType = buffer.get();
+        if (messageType != 0x37) throw new IllegalArgumentException("Invalid message type: expected 0x37, got 0x" + String.format("%02X", messageType));
+
+        // MatchingUnit (1 byte)
+        byte matchingUnit = buffer.get();
+
+        // SequenceNumber (4 bytes)
+        int sequenceNumber = buffer.getInt();
+
+        // SessionSubID (4 bytes)
+        byte[] sessionSubIDBytes = new byte[4];
+        buffer.get(sessionSubIDBytes);
+        String sessionSubID = new String(sessionSubIDBytes, StandardCharsets.US_ASCII).trim();
+
+        // Username (4 bytes)
+        byte[] usernameBytes = new byte[4];
+        buffer.get(usernameBytes);
+        String username = new String(usernameBytes, StandardCharsets.US_ASCII).trim();
+
+        // Password (10 bytes)
+        byte[] passwordBytes = new byte[10];
+        buffer.get(passwordBytes);
+        String password = new String(passwordBytes, StandardCharsets.US_ASCII).trim();
+
+        // Create message
+        LoginRequestMessage msg = new LoginRequestMessage(username, password, sessionSubID, matchingUnit);
+        msg.setSequenceNumber(sequenceNumber);
+
+        // NumberOfParamGroups (1 byte) - if there are more bytes
+        if (buffer.remaining() > 0) {
+            int numberOfParamGroups = buffer.get() & 0xFF;
+        }
+
+        return msg;
+    }
+
     public void setMatchingUnit(byte matchingUnit) {
         this.matchingUnit = matchingUnit;
     }
