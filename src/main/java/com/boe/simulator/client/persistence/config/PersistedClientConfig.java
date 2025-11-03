@@ -2,6 +2,7 @@ package com.boe.simulator.client.persistence.config;
 
 import com.boe.simulator.server.persistence.config.ConfigVersion;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.HashMap;
@@ -213,26 +214,21 @@ public record PersistedClientConfig(
         );
     }
 
-    /**
-     * Valida la configuración
-     */
+    @JsonIgnore
     public boolean isValid() {
         try {
-            // Validar puerto
             if (port < 1 || port > 65535) return false;
 
-            // Validar timeouts
             if (connectionTimeout < 1000) return false;
+
             if (readTimeout < 1000) return false;
 
-            // Validar heartbeat
             if (heartbeatIntervalSeconds < 1) return false;
 
-            // Validar reconnect
             if (maxReconnectAttempts < 0) return false;
+
             if (reconnectDelaySeconds < 0) return false;
 
-            // Validar log level
             Level.parse(logLevel);
 
             return true;
