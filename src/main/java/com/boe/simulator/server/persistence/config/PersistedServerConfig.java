@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.logging.Level;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public record PersistedServerConfig(
@@ -183,6 +184,7 @@ public record PersistedServerConfig(
         );
     }
 
+    @JsonIgnore
     public boolean isValid() {
         try {
             // Validar puerto
