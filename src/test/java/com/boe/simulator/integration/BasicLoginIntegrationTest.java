@@ -3,7 +3,7 @@ package com.boe.simulator.integration;
 import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 
-public class SimpleLoginTest {
+public class BasicLoginIntegrationTest {
     public static void main(String[] args) throws Exception {
         // Connect to the server
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);

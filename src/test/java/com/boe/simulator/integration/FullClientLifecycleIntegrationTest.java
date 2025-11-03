@@ -7,7 +7,7 @@ import com.boe.simulator.client.session.SessionEventListener;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 import com.boe.simulator.protocol.message.LogoutResponseMessage;
 
-public class FinalClientTest {
+public class FullClientLifecycleIntegrationTest {
     
     public static void main(String[] args) throws Exception {
         System.out.println("╔════════════════════════════════════════════════════════╗");

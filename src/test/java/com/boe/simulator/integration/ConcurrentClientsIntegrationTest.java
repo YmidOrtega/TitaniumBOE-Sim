@@ -3,7 +3,7 @@ package com.boe.simulator.integration;
 import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 
-public class MultiClientTest {
+public class ConcurrentClientsIntegrationTest {
     public static void main(String[] args) throws Exception {
         // Cliente 1
         Thread t1 = new Thread(() -> {
