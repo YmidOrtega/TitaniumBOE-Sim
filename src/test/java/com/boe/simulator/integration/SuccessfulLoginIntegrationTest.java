@@ -5,7 +5,7 @@ import com.boe.simulator.client.listener.BoeMessageListener;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 
-public class LoginSuccessTest {
+public class SuccessfulLoginIntegrationTest {
     public static void main(String[] args) throws Exception {
         System.out.println("=== FASE 3 Test: Login Success ===\n");
 

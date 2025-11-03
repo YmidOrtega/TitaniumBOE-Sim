@@ -5,7 +5,7 @@ import com.boe.simulator.protocol.message.ClientHeartbeatMessage;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.LogoutRequestMessage;
 
-public class SequenceTest {
+public class MessageSequenceIntegrationTest {
     public static void main(String[] args) throws Exception {
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);
         client.connect().get();

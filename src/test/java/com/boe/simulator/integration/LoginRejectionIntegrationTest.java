@@ -5,7 +5,7 @@ import com.boe.simulator.client.listener.BoeMessageListener;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 
-public class LoginRejectedTest {
+public class LoginRejectionIntegrationTest {
     public static void main(String[] args) throws Exception {
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);
 

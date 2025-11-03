@@ -7,7 +7,7 @@ import com.boe.simulator.protocol.message.*;
 
 import java.util.concurrent.CompletableFuture;
 
-public class MultiUserSessionTest {
+public class ConcurrentSessionsIntegrationTest {
     public static void main(String[] args) throws Exception {
         System.out.println("=== PHASE 5 Test: Session Management ===\n");
 

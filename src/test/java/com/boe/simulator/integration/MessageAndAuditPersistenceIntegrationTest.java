@@ -17,11 +17,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class PersistencePhase4Test {
+public class MessageAndAuditPersistenceIntegrationTest {
 
     public static void main(String[] args) {
         System.out.println("╔════════════════════════════════════════════════════════╗");
-        System.out.println("║  Persistencia Fase 4: Mensajes y Auditoría            ║");
+        System.out.println("║  Persistencia Fase 4: Mensajes y Auditoría             ║");
         System.out.println("╚════════════════════════════════════════════════════════╝\n");
 
         try {
@@ -44,7 +44,7 @@ public class PersistencePhase4Test {
             testDataCleanup();
 
             System.out.println("\n╔════════════════════════════════════════════════════════╗");
-            System.out.println("║  ✓ Todos los Tests Pasaron Exitosamente               ║");
+            System.out.println("║  ✓ Todos los Tests Pasaron Exitosamente                ║");
             System.out.println("╚════════════════════════════════════════════════════════╝");
 
         } catch (Exception e) {

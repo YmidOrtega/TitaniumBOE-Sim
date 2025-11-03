@@ -7,7 +7,7 @@ import com.boe.simulator.protocol.message.LoginResponseMessage;
 import com.boe.simulator.protocol.message.LogoutRequestMessage;
 import com.boe.simulator.protocol.message.LogoutResponseMessage;
 
-public class LogoutTest {
+public class BasicLogoutIntegrationTest {
     public static void main(String[] args) throws Exception {
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);
 
