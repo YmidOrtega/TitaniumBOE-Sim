@@ -1,6 +1,7 @@
 package com.boe.simulator.integration;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.client.listener.BoeMessageListener;
@@ -88,7 +89,7 @@ public class ServerRobustnessTest {
             try {
                 clients[i].stopListener();
                 clients[i].disconnect().get();
-            } catch (Exception e) {
+            } catch (InterruptedException | ExecutionException e) {
                 // Some may already be disconnected
             }
         }

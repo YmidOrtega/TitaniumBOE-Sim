@@ -56,6 +56,33 @@ public class LogoutRequestMessage {
         return buffer.array();
     }
 
+    public static LogoutRequestMessage parseFromBytes(byte[] data) {
+        if (data == null || data.length < 10) throw new IllegalArgumentException("Invalid LogoutRequest message data");
+
+        ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+
+        // Skip StartOfMessage (2 bytes)
+        buffer.position(2);
+
+        // MessageLength (2 bytes)
+        int messageLength = buffer.getShort() & 0xFFFF;
+
+        // MessageType (1 byte)
+        byte messageType = buffer.get();
+        if (messageType != 0x02) throw new IllegalArgumentException("Invalid message type: expected 0x02, got 0x" + String.format("%02X", messageType));
+
+        // MatchingUnit (1 byte)
+        byte matchingUnit = buffer.get();
+
+        // SequenceNumber (4 bytes)
+        int sequenceNumber = buffer.getInt();
+
+        // Create message
+        LogoutRequestMessage msg = new LogoutRequestMessage(matchingUnit, sequenceNumber);
+
+        return msg;
+    }
+
     public void setMatchingUnit(byte matchingUnit) {
         this.matchingUnit = matchingUnit;
     }

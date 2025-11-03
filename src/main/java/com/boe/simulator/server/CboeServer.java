@@ -19,6 +19,7 @@ import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.metrics.HealthMetrics;
+import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.persistence.repository.SessionRepository;
 import com.boe.simulator.server.persistence.repository.StatisticsRepository;
@@ -42,6 +43,7 @@ public class CboeServer {
     private final RateLimiter rateLimiter;
     private final HealthMetrics healthMetrics;
     private final StatisticsGeneratorService statisticsGenerator;
+    private final OrderManager orderManager;
 
     private ServerSocket serverSocket;
     private Thread acceptorThread;
@@ -63,6 +65,7 @@ public class CboeServer {
         this.errorHandler = new ErrorHandler();
         this.rateLimiter = new RateLimiter(100, Duration.ofMinutes(1));
         this.healthMetrics = new HealthMetrics();
+        this.orderManager = new OrderManager(dbManager);
 
         this.statisticsGenerator = new StatisticsGeneratorService(
             sessionRepo,
@@ -78,6 +81,7 @@ public class CboeServer {
         LOGGER.log(Level.INFO, "RocksDB initialized at: {0}", dbManager.getDbPath());
         LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
         LOGGER.log(Level.INFO, "Session persistence: ENABLED");
+        LOGGER.log(Level.INFO, "OrderManager initialized");
     }
 
     public void start() throws IOException {
@@ -134,7 +138,7 @@ public class CboeServer {
 
                 clientExecutor.submit(() -> handleClient(clientSocket, connectionId));
 
-            } catch (SocketTimeoutException e) {
+            } catch (SocketTimeoutException ignored) {
             } catch (IOException e) {
                 if (running.get()) LOGGER.log(Level.SEVERE, "Error accepting connection", e);
             }
@@ -150,7 +154,8 @@ public class CboeServer {
         try {
             handler = new ClientConnectionHandler(
                     socket, connectionId, config, authService,
-                    sessionManager, errorHandler, rateLimiter
+                    sessionManager, errorHandler, rateLimiter,
+                    orderManager
             );
             sessionManager.registerHandler(handler);
             healthMetrics.updatePeakConnections(activeConnections.get());
@@ -161,11 +166,10 @@ public class CboeServer {
             LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
         } finally {
             if (handler != null) sessionManager.unregisterHandler(handler);
-            
+
             activeConnections.decrementAndGet();
-            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})",new Object[]{
-                connectionId, activeConnections.get()
-            });
+            LOGGER.log(Level.INFO, "[Connection {0}] Handler terminated (Active: {1})", new Object[]{
+                    connectionId, activeConnections.get()});
         }
     }
 
@@ -202,22 +206,17 @@ public class CboeServer {
     public void shutdown() {
         LOGGER.info("======= SERVER SHUTDOWN INITIATED =======");
 
-        if (statisticsGenerator != null) {
-            LOGGER.info("Stopping statistics generator...");
-            statisticsGenerator.stop();
-        }
-
-        if (statisticsGenerator != null) {
-            LOGGER.info("Generating final statistics...");
-            statisticsGenerator.generateCurrentDayStatistics();
-        }
-
+        // Print statistics
         LOGGER.info(healthMetrics.getHealthSummary());
         LOGGER.log(Level.INFO, "Error stats: Errors={0}, Warnings={1}, Recoveries={2}", new Object[]{
-            errorHandler.getTotalErrors(), errorHandler.getTotalWarnings(), errorHandler.getTotalRecoveries()
+                errorHandler.getTotalErrors(),
+                errorHandler.getTotalWarnings(),
+                errorHandler.getTotalRecoveries()
         });
         LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
         sessionManager.printSessionSummary();
+
+        orderManager.printStatistics();
 
         // Stop accepting connections
         stop();
@@ -278,6 +277,10 @@ public class CboeServer {
 
     public RocksDBManager getDatabaseManager() {
         return dbManager;
+    }
+
+    public OrderManager getOrderManager() {
+        return orderManager;
     }
 
     public static void main(String[] args) {
