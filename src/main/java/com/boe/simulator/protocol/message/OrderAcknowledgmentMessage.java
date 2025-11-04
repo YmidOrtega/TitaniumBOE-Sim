@@ -225,6 +225,93 @@ public class OrderAcknowledgmentMessage {
         return result;
     }
 
+    public static OrderAcknowledgmentMessage fromBytes(byte[] data) {
+        ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+
+        OrderAcknowledgmentMessage msg = new OrderAcknowledgmentMessage();
+
+        buffer.position(10);
+
+        msg.transactTime = buffer.getLong();
+
+        byte[] clOrdIDBytes = new byte[20];
+        buffer.get(clOrdIDBytes);
+        msg.clOrdID = new String(clOrdIDBytes, StandardCharsets.US_ASCII).trim();
+
+        msg.orderID = buffer.getLong();
+        msg.side = buffer.get();
+        msg.orderQty = buffer.getInt();
+        msg.leavesQty = buffer.getInt();
+        msg.ordType = buffer.get();
+        msg.workingPrice = buffer.get();
+
+        msg.numberOfBitfields = buffer.get();
+        msg.bitfields = new byte[msg.numberOfBitfields];
+        buffer.get(msg.bitfields);
+
+        if (msg.numberOfBitfields > 0) {
+            if ((msg.bitfields[0] & 0x01) != 0) {
+                byte[] clearingFirmBytes = new byte[4];
+                buffer.get(clearingFirmBytes);
+                msg.clearingFirm = new String(clearingFirmBytes, StandardCharsets.US_ASCII).trim();
+            }
+
+            if ((msg.bitfields[0] & 0x02) != 0) {
+                byte[] clearingAccountBytes = new byte[4];
+                buffer.get(clearingAccountBytes);
+                msg.clearingAccount = new String(clearingAccountBytes, StandardCharsets.US_ASCII).trim();
+            }
+
+            if ((msg.bitfields[0] & 0x04) != 0) {
+                byte[] priceBytes = new byte[8];
+                buffer.get(priceBytes);
+                msg.price = BinaryPrice.fromBytes(priceBytes).toPrice();
+            }
+
+            if ((msg.bitfields[0] & 0x40) != 0) {
+                byte[] symbolBytes = new byte[8];
+                buffer.get(symbolBytes);
+                msg.symbol = new String(symbolBytes, StandardCharsets.US_ASCII).trim();
+            }
+
+            if ((msg.bitfields[0] & 0x80) != 0) {
+                msg.capacity = buffer.get();
+            }
+        }
+
+        if (msg.numberOfBitfields > 1) {
+            if ((msg.bitfields[1] & 0x01) != 0) {
+                byte[] accountBytes = new byte[16];
+                buffer.get(accountBytes);
+                msg.account = new String(accountBytes, StandardCharsets.US_ASCII).trim();
+            }
+
+            if ((msg.bitfields[1] & 0x80) != 0) {
+                msg.openClose = buffer.get();
+            }
+        }
+
+        if (msg.numberOfBitfields > 2) {
+            if ((msg.bitfields[2] & 0x01) != 0) {
+                int maturityDateInt = buffer.getInt();
+                msg.maturityDate = Instant.ofEpochMilli(maturityDateInt * 86400000L);
+            }
+
+            if ((msg.bitfields[2] & 0x02) != 0) {
+                byte[] strikePriceBytes = new byte[8];
+                buffer.get(strikePriceBytes);
+                msg.strikePrice = BinaryPrice.fromBytes(strikePriceBytes).toPrice();
+            }
+
+            if ((msg.bitfields[2] & 0x04) != 0) {
+                msg.putOrCall = buffer.get();
+            }
+        }
+
+        return msg;
+    }
+
+
     // Getters
     public byte getMatchingUnit() { return matchingUnit; }
     public int getSequenceNumber() { return sequenceNumber; }

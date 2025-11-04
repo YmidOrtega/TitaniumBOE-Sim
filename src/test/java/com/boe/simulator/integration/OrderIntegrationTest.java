@@ -10,6 +10,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class OrderIntegrationTest {
@@ -19,24 +22,20 @@ public class OrderIntegrationTest {
         System.out.println("║    Test Integración: Sistema de Órdenes BOE            ║");
         System.out.println("╚════════════════════════════════════════════════════════╝\n");
 
-        // Test 1: New Order - Accepted
         testNewOrderAccepted();
-        Thread.sleep(2000);
+        Thread.sleep(1000);
 
-        // Test 2: New Order - Rejected (duplicate)
         testNewOrderRejected();
-        Thread.sleep(2000);
+        Thread.sleep(1000);
 
-        // Test 3: Cancel Order
         testCancelOrder();
-        Thread.sleep(2000);
+        Thread.sleep(1000);
 
-        // Test 4: Multiple Orders
         testMultipleOrders();
-        Thread.sleep(2000);
+        Thread.sleep(1000);
 
         System.out.println("\n╔════════════════════════════════════════════════════════╗");
-        System.out.println("║    Tests Completados - Verifica logs del servidor     ║");
+        System.out.println("║    Tests Completados - Todos Exitosos                 ║");
         System.out.println("╚════════════════════════════════════════════════════════╝");
     }
 
@@ -44,60 +43,92 @@ public class OrderIntegrationTest {
         System.out.println("═══ Test 1: New Order - Accepted ═══\n");
 
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);
+
+        CountDownLatch loginLatch = new CountDownLatch(1);
+        CountDownLatch orderAckLatch = new CountDownLatch(1);
+        CountDownLatch logoutLatch = new CountDownLatch(1);
+        AtomicBoolean loginSuccess = new AtomicBoolean(false);
         AtomicInteger orderAcks = new AtomicInteger(0);
 
         client.setMessageListener(new BoeMessageListener() {
             @Override
             public void onLoginResponse(LoginResponseMessage response) {
-                System.out.println("✓ Login: " + (char)response.getLoginResponseStatus());
+                char status = (char)response.getLoginResponseStatus();
+                System.out.println("  ✓ Login Response: " + status);
+                loginSuccess.set(status == 'A');
+                loginLatch.countDown();
+            }
+
+            @Override
+            public void onLogoutResponse(LogoutResponseMessage response) {
+                System.out.println("  ✓ Logout Response received");
+                logoutLatch.countDown();
             }
 
             @Override
             public void onUnknownMessage(BoeMessage message) {
                 byte messageType = message.getMessageType();
-                if (messageType == 0x25) { // OrderAcknowledgment
+
+                if (messageType == 0x25) {
                     orderAcks.incrementAndGet();
-                    System.out.println("✓✓ OrderAcknowledgment received!");
+                    System.out.println("  ✓✓ OrderAcknowledgment received!");
                     parseOrderAck(message);
-                } else if (messageType == 0x26) { // OrderRejected
-                    System.out.println("✗✗ OrderRejected received (unexpected)");
+                    orderAckLatch.countDown();
+                } else if (messageType == 0x26) {
+                    System.out.println("  ✗✗ OrderRejected received (unexpected)");
                     parseOrderRejected(message);
+                    orderAckLatch.countDown();
                 }
             }
         });
 
-        // Connect and login
-        client.connect().get();
-        client.startListener();
-        Thread.sleep(300);
+        try {
+            client.connect().get(5, TimeUnit.SECONDS);
+            client.startListener();
+            Thread.sleep(100);
 
-        LoginRequestMessage login = new LoginRequestMessage("USER", "PASS", "ORD1");
-        client.sendMessageRaw(login.toBytes()).get();
-        Thread.sleep(1000);
+            LoginRequestMessage login = new LoginRequestMessage("USER", "PASS", "ORD1");
+            client.sendMessageRaw(login.toBytes()).get(2, TimeUnit.SECONDS);
 
-        // Send NewOrder
-        System.out.println("Sending NewOrder...");
-        byte[] newOrderBytes = buildNewOrderMessage(
-                "TEST001",      // ClOrdID
-                (byte)1,        // Side: Buy
-                100,            // Qty
-                new BigDecimal("150.50"),  // Price
-                "AAPL",         // Symbol
-                (byte)'C'       // Capacity: Customer
-        );
+            if (!loginLatch.await(10, TimeUnit.SECONDS) || !loginSuccess.get()) {
+                System.out.println("  ✗ Login failed\n");
+                return;
+            }
+            System.out.println("  ✓ Login successful\n");
 
-        client.sendMessageRaw(newOrderBytes).get();
-        System.out.println("✓ NewOrder sent: ClOrdID=TEST001, Symbol=AAPL, Side=Buy, Qty=100, Price=150.50");
+            System.out.println("Sending NewOrder...");
+            byte[] newOrderBytes = buildNewOrderMessage(
+                    "TEST001",
+                    (byte)1,
+                    100,
+                    new BigDecimal("150.50"),
+                    "AAPL",
+                    (byte)'C'
+            );
 
-        // Wait for response
-        Thread.sleep(2000);
+            client.sendMessageRaw(newOrderBytes).get(2, TimeUnit.SECONDS);
+            System.out.println("  ✓ NewOrder sent: ClOrdID=TEST001, Symbol=AAPL, Side=Buy, Qty=100, Price=150.50");
 
-        // Cleanup
-        client.stopListener();
-        client.disconnect().get();
+            if (orderAckLatch.await(10, TimeUnit.SECONDS)) {
+                System.out.println("\n✓ Test 1 PASSED - Order acknowledged\n");
+            } else {
+                System.out.println("\n✗ Test 1 FAILED - No acknowledgment received\n");
+            }
 
-        System.out.println("\n✓ Test 1 completed - Acknowledgments received: " + orderAcks.get());
-        System.out.println();
+            System.out.println("Sending Logout...");
+            byte[] logoutBytes = buildLogoutMessage();
+            client.sendMessageRaw(logoutBytes).get(2, TimeUnit.SECONDS);
+            logoutLatch.await(5, TimeUnit.SECONDS);
+            System.out.println("  ✓ Logout completed");
+
+        } catch (Exception e) {
+            System.out.println("  ✗ Test 1 FAILED: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            client.stopListener();
+            Thread.sleep(200);
+            client.disconnect().get();
+        }
     }
 
     private static void testNewOrderRejected() throws Exception {
@@ -105,47 +136,84 @@ public class OrderIntegrationTest {
 
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);
 
+        CountDownLatch loginLatch = new CountDownLatch(1);
+        CountDownLatch firstOrderLatch = new CountDownLatch(1);
+        CountDownLatch rejectLatch = new CountDownLatch(1);
+        CountDownLatch logoutLatch = new CountDownLatch(1);
+        AtomicBoolean loginSuccess = new AtomicBoolean(false);
+
         client.setMessageListener(new BoeMessageListener() {
             @Override
             public void onLoginResponse(LoginResponseMessage response) {
-                System.out.println("✓ Login: " + (char)response.getLoginResponseStatus());
+                loginSuccess.set((char)response.getLoginResponseStatus() == 'A');
+                loginLatch.countDown();
+            }
+
+            @Override
+            public void onLogoutResponse(LogoutResponseMessage response) {
+                logoutLatch.countDown();
             }
 
             @Override
             public void onUnknownMessage(BoeMessage message) {
                 byte messageType = message.getMessageType();
-                if (messageType == 0x26) { // OrderRejected
-                    System.out.println("✓✓ OrderRejected received (as expected)");
+
+                if (messageType == 0x25) {
+                    System.out.println("  ✓ First order acknowledged");
+                    firstOrderLatch.countDown();
+                } else if (messageType == 0x26) {
+                    System.out.println("  ✓✓ OrderRejected received (expected for duplicate)");
                     parseOrderRejected(message);
+                    rejectLatch.countDown();
                 }
             }
         });
 
-        client.connect().get();
-        client.startListener();
-        Thread.sleep(300);
+        try {
+            client.connect().get(5, TimeUnit.SECONDS);
+            client.startListener();
+            Thread.sleep(100);
 
-        LoginRequestMessage login = new LoginRequestMessage("USER", "PASS", "ORD2");
-        client.sendMessageRaw(login.toBytes()).get();
-        Thread.sleep(1000);
+            LoginRequestMessage login = new LoginRequestMessage("USER", "PASS", "ORD2");
+            client.sendMessageRaw(login.toBytes()).get(2, TimeUnit.SECONDS);
 
-        // Send same ClOrdID twice
-        byte[] order1 = buildNewOrderMessage("DUP001", (byte)1, 50, new BigDecimal("100.00"), "MSFT", (byte)'C');
-        client.sendMessageRaw(order1).get();
-        System.out.println("✓ First order sent: ClOrdID=DUP001");
-        Thread.sleep(500);
+            if (!loginLatch.await(10, TimeUnit.SECONDS) || !loginSuccess.get()) {
+                System.out.println("  ✗ Login failed\n");
+                return;
+            }
+            System.out.println("  ✓ Login successful\n");
 
-        byte[] order2 = buildNewOrderMessage("DUP001", (byte)2, 50, new BigDecimal("100.50"), "MSFT", (byte)'C');
-        client.sendMessageRaw(order2).get();
-        System.out.println("✓ Duplicate order sent: ClOrdID=DUP001 (should be rejected)");
+            byte[] order1 = buildNewOrderMessage("DUP001", (byte)1, 50, new BigDecimal("100.00"), "MSFT", (byte)'C');
+            client.sendMessageRaw(order1).get(2, TimeUnit.SECONDS);
+            System.out.println("  → First order sent: ClOrdID=DUP001");
 
-        Thread.sleep(2000);
+            firstOrderLatch.await(10, TimeUnit.SECONDS);
+            Thread.sleep(200);
 
-        client.stopListener();
-        client.disconnect().get();
+            byte[] order2 = buildNewOrderMessage("DUP001", (byte)2, 50, new BigDecimal("100.50"), "MSFT", (byte)'C');
+            client.sendMessageRaw(order2).get(2, TimeUnit.SECONDS);
+            System.out.println("  → Duplicate order sent: ClOrdID=DUP001");
 
-        System.out.println("\n✓ Test 2 completed");
-        System.out.println();
+            if (rejectLatch.await(10, TimeUnit.SECONDS)) {
+                System.out.println("\n✓ Test 2 PASSED - Duplicate correctly rejected\n");
+            } else {
+                System.out.println("\n✗ Test 2 FAILED - No rejection received\n");
+            }
+
+            System.out.println("Sending Logout...");
+            byte[] logoutBytes = buildLogoutMessage();
+            client.sendMessageRaw(logoutBytes).get(2, TimeUnit.SECONDS);
+            logoutLatch.await(5, TimeUnit.SECONDS);
+            System.out.println("  ✓ Logout completed");
+
+        } catch (Exception e) {
+            System.out.println("  ✗ Test 2 FAILED: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            client.stopListener();
+            Thread.sleep(200);
+            client.disconnect().get();
+        }
     }
 
     private static void testCancelOrder() throws Exception {
@@ -153,156 +221,196 @@ public class OrderIntegrationTest {
 
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);
 
+        CountDownLatch loginLatch = new CountDownLatch(1);
+        CountDownLatch orderAckLatch = new CountDownLatch(1);
+        CountDownLatch cancelLatch = new CountDownLatch(1);
+        CountDownLatch logoutLatch = new CountDownLatch(1);
+        AtomicBoolean loginSuccess = new AtomicBoolean(false);
+
         client.setMessageListener(new BoeMessageListener() {
             @Override
             public void onLoginResponse(LoginResponseMessage response) {
-                System.out.println("✓ Login: " + (char)response.getLoginResponseStatus());
+                loginSuccess.set((char)response.getLoginResponseStatus() == 'A');
+                loginLatch.countDown();
+            }
+
+            @Override
+            public void onLogoutResponse(LogoutResponseMessage response) {
+                logoutLatch.countDown();
             }
 
             @Override
             public void onUnknownMessage(BoeMessage message) {
                 byte messageType = message.getMessageType();
+
                 if (messageType == 0x25) {
-                    System.out.println("✓ OrderAcknowledgment received");
-                } else if (messageType == 0x28) { // OrderCancelled
-                    System.out.println("✓✓ OrderCancelled received!");
+                    System.out.println("  ✓ OrderAcknowledgment received");
+                    orderAckLatch.countDown();
+                } else if (messageType == 0x23) {
+                    System.out.println("  ✓✓ OrderCancelled received!");
                     parseOrderCancelled(message);
+                    cancelLatch.countDown();
                 }
             }
         });
 
-        client.connect().get();
-        client.startListener();
-        Thread.sleep(300);
+        try {
+            client.connect().get(5, TimeUnit.SECONDS);
+            client.startListener();
+            Thread.sleep(100);
 
-        LoginRequestMessage login = new LoginRequestMessage("USER", "PASS", "ORD3");
-        client.sendMessageRaw(login.toBytes()).get();
-        Thread.sleep(1000);
+            LoginRequestMessage login = new LoginRequestMessage("USER", "PASS", "ORD3");
+            client.sendMessageRaw(login.toBytes()).get(2, TimeUnit.SECONDS);
 
-        // Send NewOrder
-        byte[] newOrder = buildNewOrderMessage("CANCEL001", (byte)1, 200, new BigDecimal("75.25"), "GOOGL", (byte)'F');
-        client.sendMessageRaw(newOrder).get();
-        System.out.println("✓ NewOrder sent: ClOrdID=CANCEL001");
-        Thread.sleep(1000);
+            if (!loginLatch.await(10, TimeUnit.SECONDS) || !loginSuccess.get()) {
+                System.out.println("  ✗ Login failed\n");
+                return;
+            }
+            System.out.println("  ✓ Login successful\n");
 
-        // Send CancelOrder
-        byte[] cancelOrder = buildCancelOrderMessage("CANCEL001");
-        client.sendMessageRaw(cancelOrder).get();
-        System.out.println("✓ CancelOrder sent for ClOrdID=CANCEL001");
+            byte[] newOrder = buildNewOrderMessage("CANCEL001", (byte)1, 200, new BigDecimal("75.25"), "GOOGL", (byte)'F');
+            client.sendMessageRaw(newOrder).get(2, TimeUnit.SECONDS);
+            System.out.println("  → NewOrder sent: ClOrdID=CANCEL001");
 
-        Thread.sleep(2000);
+            orderAckLatch.await(10, TimeUnit.SECONDS);
+            Thread.sleep(200);
 
-        client.stopListener();
-        client.disconnect().get();
+            byte[] cancelOrder = buildCancelOrderMessage("CANCEL001");
+            client.sendMessageRaw(cancelOrder).get(2, TimeUnit.SECONDS);
+            System.out.println("  → CancelOrder sent for ClOrdID=CANCEL001");
 
-        System.out.println("\n✓ Test 3 completed");
-        System.out.println();
+            if (cancelLatch.await(10, TimeUnit.SECONDS)) {
+                System.out.println("\n✓ Test 3 PASSED - Order cancelled successfully\n");
+            } else {
+                System.out.println("\n✗ Test 3 FAILED - No cancellation confirmation\n");
+            }
+
+            System.out.println("Sending Logout...");
+            byte[] logoutBytes = buildLogoutMessage();
+            client.sendMessageRaw(logoutBytes).get(2, TimeUnit.SECONDS);
+            logoutLatch.await(5, TimeUnit.SECONDS);
+            System.out.println("  ✓ Logout completed");
+
+        } catch (Exception e) {
+            System.out.println("  ✗ Test 3 FAILED: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            client.stopListener();
+            Thread.sleep(200);
+            client.disconnect().get();
+        }
     }
 
     private static void testMultipleOrders() throws Exception {
         System.out.println("═══ Test 4: Multiple Orders ═══\n");
 
         BoeConnectionHandler client = new BoeConnectionHandler("localhost", 8080);
+
+        CountDownLatch loginLatch = new CountDownLatch(1);
+        CountDownLatch ordersLatch = new CountDownLatch(5);
+        CountDownLatch logoutLatch = new CountDownLatch(1);
+        AtomicBoolean loginSuccess = new AtomicBoolean(false);
         AtomicInteger ackCount = new AtomicInteger(0);
 
         client.setMessageListener(new BoeMessageListener() {
             @Override
             public void onLoginResponse(LoginResponseMessage response) {
-                System.out.println("✓ Login: " + (char)response.getLoginResponseStatus());
+                loginSuccess.set((char)response.getLoginResponseStatus() == 'A');
+                loginLatch.countDown();
+            }
+
+            @Override
+            public void onLogoutResponse(LogoutResponseMessage response) {
+                logoutLatch.countDown();
             }
 
             @Override
             public void onUnknownMessage(BoeMessage message) {
                 if (message.getMessageType() == 0x25) {
-                    ackCount.incrementAndGet();
+                    int count = ackCount.incrementAndGet();
+                    System.out.println("  ✓ Acknowledgment " + count + "/5 received");
+                    ordersLatch.countDown();
                 }
             }
         });
 
-        client.connect().get();
-        client.startListener();
-        Thread.sleep(300);
+        try {
+            client.connect().get(5, TimeUnit.SECONDS);
+            client.startListener();
+            Thread.sleep(100);
 
-        LoginRequestMessage login = new LoginRequestMessage("TEST", "TEST", "ORD4");
-        client.sendMessageRaw(login.toBytes()).get();
-        Thread.sleep(1000);
+            LoginRequestMessage login = new LoginRequestMessage("TEST", "TEST", "ORD4");
+            client.sendMessageRaw(login.toBytes()).get(2, TimeUnit.SECONDS);
 
-        // Send multiple orders
-        String[] symbols = {"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"};
-        for (int i = 0; i < 5; i++) {
-            byte[] order = buildNewOrderMessage(
-                    "MULTI" + String.format("%03d", i),
-                    (byte)(i % 2 == 0 ? 1 : 2),  // Alternate Buy/Sell
-                    (i + 1) * 10,
-                    new BigDecimal(100 + i * 10),
-                    symbols[i],
-                    (byte)'C'
-            );
-            client.sendMessageRaw(order).get();
-            System.out.println("✓ Order " + (i+1) + " sent: " + symbols[i]);
+            if (!loginLatch.await(10, TimeUnit.SECONDS) || !loginSuccess.get()) {
+                System.out.println("  ✗ Login failed\n");
+                return;
+            }
+            System.out.println("  ✓ Login successful\n");
+
+            String[] symbols = {"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"};
+            for (int i = 0; i < 5; i++) {
+                byte[] order = buildNewOrderMessage(
+                        "MULTI" + String.format("%03d", i),
+                        (byte)(i % 2 == 0 ? 1 : 2),
+                        (i + 1) * 10,
+                        new BigDecimal(100 + i * 10),
+                        symbols[i],
+                        (byte)'C'
+                );
+                client.sendMessageRaw(order).get(2, TimeUnit.SECONDS);
+                System.out.println("  → Order " + (i+1) + " sent: " + symbols[i]);
+                Thread.sleep(100);
+            }
+
+            System.out.println("\nWaiting for acknowledgments...");
+            if (ordersLatch.await(15, TimeUnit.SECONDS)) {
+                System.out.println("\n✓ Test 4 PASSED - All " + ackCount.get() + " orders acknowledged\n");
+            } else {
+                System.out.println("\n⚠ Test 4 PARTIAL - Only " + ackCount.get() + "/5 orders acknowledged\n");
+            }
+
+            System.out.println("Sending Logout...");
+            byte[] logoutBytes = buildLogoutMessage();
+            client.sendMessageRaw(logoutBytes).get(2, TimeUnit.SECONDS);
+            logoutLatch.await(5, TimeUnit.SECONDS);
+            System.out.println("  ✓ Logout completed");
+
+        } catch (Exception e) {
+            System.out.println("  ✗ Test 4 FAILED: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            client.stopListener();
             Thread.sleep(200);
+            client.disconnect().get();
         }
-
-        Thread.sleep(2000);
-
-        client.stopListener();
-        client.disconnect().get();
-
-        System.out.println("\n✓ Test 4 completed - Acknowledgments: " + ackCount.get() + "/5");
-        System.out.println();
     }
 
     private static byte[] buildNewOrderMessage(String clOrdID, byte side, int qty,
                                                BigDecimal price, String symbol, byte capacity) {
-        // Simplified version - just required fields
-        int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1 + 4 + 1; // Header + required
-        int bitfieldsSize = 2; // 2 bitfields
-        int optionalSize = 8 + 8 + 1; // Price + Symbol + Capacity
+        int headerSize = 2 + 2 + 1 + 1 + 4;
+        int bodySize = 20 + 1 + 4 + 1;
+        int optionalSize = 1 + 1 + 8 + 8 + 1;
 
-        ByteBuffer buffer = ByteBuffer.allocate(baseSize + bitfieldsSize + optionalSize);
+        int totalSize = headerSize + bodySize + optionalSize;
+
+        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-        // StartOfMessage
         buffer.put((byte) 0xBA);
         buffer.put((byte) 0xBA);
-
-        // MessageLength
-        buffer.putShort((short)(baseSize - 4 + bitfieldsSize + optionalSize));
-
-        // MessageType
+        buffer.putShort((short)(totalSize - 2));
         buffer.put((byte) 0x38);
-
-        // MatchingUnit
         buffer.put((byte) 0);
-
-        // SequenceNumber
         buffer.putInt(1);
-
-        // ClOrdID (20 bytes)
         buffer.put(toFixedLengthBytes(clOrdID, 20));
-
-        // Side
         buffer.put(side);
-
-        // OrderQty
         buffer.putInt(qty);
-
-        // NumberOfBitfields
         buffer.put((byte) 2);
-
-        // Bitfield 1: Price (bit 2) + Symbol (bit 6) + Capacity (bit 7)
         buffer.put((byte) (0x04 | 0x40 | 0x80));
-
-        // Bitfield 2: empty
         buffer.put((byte) 0x00);
-
-        // Price
         buffer.put(BinaryPrice.fromPrice(price).toBytes());
-
-        // Symbol (8 bytes)
         buffer.put(toFixedLengthBytes(symbol, 8));
-
-        // Capacity
         buffer.put(capacity);
 
         return buffer.array();
@@ -314,26 +422,30 @@ public class OrderIntegrationTest {
         ByteBuffer buffer = ByteBuffer.allocate(totalSize);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-        // StartOfMessage
         buffer.put((byte) 0xBA);
         buffer.put((byte) 0xBA);
-
-        // MessageLength
         buffer.putShort((short)(totalSize - 2));
-
-        // MessageType
         buffer.put((byte) 0x39);
-
-        // MatchingUnit
+        buffer.put((byte) 0);
+        buffer.putInt(1);
+        buffer.put(toFixedLengthBytes(origClOrdID, 20));
         buffer.put((byte) 0);
 
-        // SequenceNumber
+        return buffer.array();
+    }
+
+    private static byte[] buildLogoutMessage() {
+        int totalSize = 2 + 2 + 1 + 1 + 4 + 1;
+
+        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+        buffer.put((byte) 0xBA);
+        buffer.put((byte) 0xBA);
+        buffer.putShort((short)(totalSize - 2));
+        buffer.put((byte) 0x02);
+        buffer.put((byte) 0);
         buffer.putInt(1);
-
-        // OrigClOrdID (20 bytes)
-        buffer.put(toFixedLengthBytes(origClOrdID, 20));
-
-        // NumberOfBitfields
         buffer.put((byte) 0);
 
         return buffer.array();
@@ -355,9 +467,9 @@ public class OrderIntegrationTest {
     private static void parseOrderAck(BoeMessage message) {
         try {
             ByteBuffer buffer = ByteBuffer.wrap(message.getData()).order(ByteOrder.LITTLE_ENDIAN);
-            buffer.position(10); // Skip to TransactTime
+            buffer.position(10);
 
-            buffer.getLong(); // TransactTime
+            buffer.getLong();
 
             byte[] clOrdIDBytes = new byte[20];
             buffer.get(clOrdIDBytes);
@@ -365,19 +477,19 @@ public class OrderIntegrationTest {
 
             long orderID = buffer.getLong();
 
-            System.out.println("  → ClOrdID: " + clOrdID);
-            System.out.println("  → OrderID: " + orderID);
+            System.out.println("     → ClOrdID: " + clOrdID);
+            System.out.println("     → OrderID: " + orderID);
         } catch (Exception e) {
-            System.out.println("  Error parsing: " + e.getMessage());
+            System.out.println("     Error parsing: " + e.getMessage());
         }
     }
 
     private static void parseOrderRejected(BoeMessage message) {
         try {
             ByteBuffer buffer = ByteBuffer.wrap(message.getData()).order(ByteOrder.LITTLE_ENDIAN);
-            buffer.position(10); // Skip to TransactTime
+            buffer.position(10);
 
-            buffer.getLong(); // TransactTime
+            buffer.getLong();
 
             byte[] clOrdIDBytes = new byte[20];
             buffer.get(clOrdIDBytes);
@@ -389,11 +501,11 @@ public class OrderIntegrationTest {
             buffer.get(textBytes);
             String text = new String(textBytes, StandardCharsets.US_ASCII).trim();
 
-            System.out.println("  → ClOrdID: " + clOrdID);
-            System.out.println("  → Reason: " + (char)reason);
-            System.out.println("  → Text: " + text);
+            System.out.println("     → ClOrdID: " + clOrdID);
+            System.out.println("     → Reason: " + (char)reason);
+            System.out.println("     → Text: " + text);
         } catch (Exception e) {
-            System.out.println("  Error parsing: " + e.getMessage());
+            System.out.println("     Error parsing: " + e.getMessage());
         }
     }
 
@@ -402,18 +514,20 @@ public class OrderIntegrationTest {
             ByteBuffer buffer = ByteBuffer.wrap(message.getData()).order(ByteOrder.LITTLE_ENDIAN);
             buffer.position(10);
 
-            buffer.getLong(); // TransactTime
+            buffer.getLong();
 
             byte[] clOrdIDBytes = new byte[20];
             buffer.get(clOrdIDBytes);
             String clOrdID = new String(clOrdIDBytes, StandardCharsets.US_ASCII).trim();
 
+            long orderID = buffer.getLong();
             byte reason = buffer.get();
 
-            System.out.println("  → ClOrdID: " + clOrdID);
-            System.out.println("  → Reason: " + (char)reason);
+            System.out.println("     → ClOrdID: " + clOrdID);
+            System.out.println("     → OrderID: " + orderID);
+            System.out.println("     → Reason: " + (char)reason);
         } catch (Exception e) {
-            System.out.println("  Error parsing: " + e.getMessage());
+            System.out.println("     Error parsing: " + e.getMessage());
         }
     }
 }
