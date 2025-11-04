@@ -41,4 +41,9 @@ public class BinaryPrice {
         long rawValue = buffer.getLong();
         return new BinaryPrice(rawValue);
     }
+
+    public static BinaryPrice fromBytes(byte[] bytes) {
+        return fromBytes(bytes, 0);
+    }
+
 }
