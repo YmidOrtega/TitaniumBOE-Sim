@@ -21,12 +21,25 @@ public class BoeMessageFactory {
     public static final byte ORDER_REJECTED = 0x26;
     public static final byte ORDER_CANCELLED = 0x28;
 
+    public enum Context {
+        CLIENT,
+        SERVER
+    }
+
     public static Object createMessage(BoeMessage message) {
+        byte messageType = message.getMessageType();
+
+        Context context = isRequest(messageType) ? Context.SERVER : Context.CLIENT;
+
+        return createMessage(message, context);
+    }
+
+    public static Object createMessage(BoeMessage message, Context context) {
         byte messageType = message.getMessageType();
         byte[] data = message.getData();
 
-        LOGGER.log(Level.FINE, "Creating message type 0x{0} ({1})",
-                new Object[]{String.format("%02X", messageType), getMessageTypeName(messageType)});
+        LOGGER.log(Level.FINE, "Creating message type 0x{0} ({1}) in {2} context",
+                new Object[]{String.format("%02X", messageType), getMessageTypeName(messageType), context});
 
         try {
             return switch (messageType) {
@@ -38,13 +51,34 @@ public class BoeMessageFactory {
                 case LOGOUT_REQUEST -> parseLogoutRequest(data);
                 case CLIENT_HEARTBEAT -> parseClientHeartbeat(data);
 
-                // Order messages (inbound from client)
+                // Order messages (inbound from client - server receives these)
                 case NEW_ORDER -> NewOrderMessage.parse(data);
                 case CANCEL_ORDER -> CancelOrderMessage.parse(data);
 
-                // Order messages (outbound to client - shouldn't be parsed by server)
-                case ORDER_ACKNOWLEDGMENT, ORDER_REJECTED, ORDER_CANCELLED -> {
-                    LOGGER.warning("Received outbound-only message type: " + getMessageTypeName(messageType));
+                // Order messages (outbound to client - client receives these)
+                case ORDER_ACKNOWLEDGMENT -> {
+                    if (context == Context.SERVER) {
+                        LOGGER.warning("Server received outbound-only message: OrderAcknowledgment");
+                        yield null;
+                    }
+                    yield OrderAcknowledgmentMessage.fromBytes(data);
+                }
+
+                case ORDER_REJECTED -> {
+                    if (context == Context.SERVER) {
+                        LOGGER.warning("Server received outbound-only message: OrderRejected");
+                        yield null;
+                    }
+                    yield OrderRejectedMessage.fromBytes(data);
+                }
+
+                case ORDER_CANCELLED -> {
+                    if (context == Context.SERVER) {
+                        LOGGER.warning("Server received outbound-only message: OrderCancelled");
+                        yield null;
+                    }
+                    // TODO: Implement OrderCancelledMessage.fromBytes()
+                    LOGGER.warning("OrderCancelledMessage.fromBytes() not yet implemented");
                     yield null;
                 }
 

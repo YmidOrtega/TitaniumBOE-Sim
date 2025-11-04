@@ -92,6 +92,30 @@ public class OrderRejectedMessage {
         return result;
     }
 
+    public static OrderRejectedMessage fromBytes(byte[] data) {
+        ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+
+        buffer.position(10);
+
+        long transactTime = buffer.getLong();
+
+        byte[] clOrdIDBytes = new byte[20];
+        buffer.get(clOrdIDBytes);
+        String clOrdID = new String(clOrdIDBytes, StandardCharsets.US_ASCII).trim();
+
+        byte reason = buffer.get();
+
+        byte[] textBytes = new byte[60];
+        buffer.get(textBytes);
+        String text = new String(textBytes, StandardCharsets.US_ASCII).trim();
+
+        OrderRejectedMessage msg = new OrderRejectedMessage(clOrdID, reason, text);
+        msg.transactTime = transactTime;
+
+        return msg;
+    }
+
+
     // Setters
     public void setMatchingUnit(byte matchingUnit) {
         this.matchingUnit = matchingUnit;
