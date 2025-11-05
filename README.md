@@ -375,17 +375,10 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - **RocksDB** team for the embedded database
 - **OpenJDK** community for Java
 
----
-
-## 📧 Contact
-
-**Project Link**: [https://github.com/YOUR_USERNAME/TitaniumBOE-Sim](https://github.com/YOUR_USERNAME/TitaniumBOE-Sim)
-
----
 
 <div align="center">
 
-**Built with ☕ and 📈 by [Your Name]**
+**Built with ☕ and 📈 by [Ymid Ortega]**
 
 *If you found this project useful, consider giving it a ⭐!*
 
