@@ -121,7 +121,8 @@ public class CboeServer {
                 // Check connection limit
                 if (activeConnections.get() >= config.getMaxConnections()) {
                     LOGGER.log(Level.WARNING, "Connection limit reached ({0}), rejecting connection from {1}", new Object[]{
-                        config.getMaxConnections(), clientSocket.getRemoteSocketAddress()
+                        config.getMaxConnections(),
+                            clientSocket.getRemoteSocketAddress()
                     });
                     clientSocket.close();
                     continue;
