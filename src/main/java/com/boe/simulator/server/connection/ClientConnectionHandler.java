@@ -15,7 +15,6 @@ import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.heartbeat.HeartbeatMonitor;
-import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.ClientSession;
@@ -255,50 +254,13 @@ public class ClientConnectionHandler implements Runnable {
 
         OrderManager.OrderResponse response = orderManager.processNewOrder(newOrder, session);
 
-        if (response.isAcknowledged()) {
-            sendOrderAcknowledgment(response.getOrder());
-            if (response.hasExecutions()) {
-                var matchResult = response.getMatchResult();
-                LOGGER.log(Level.INFO, "[Session {0}] Order had {1} executions", new Object[]{
-                        session.getConnectionId(),
-                        matchResult.getTrades().size()
-                });
-
-                for (var trade : matchResult.getTrades()) {
-                    if (trade.getAggressorOrder().getUsername().equals(session.getUsername())) sendOrderExecution(trade, true);
-                }
-            }
-        } else {
+        if (response.isAcknowledged()) sendOrderAcknowledgment(response.getOrder());
+        else {
             sendOrderRejected(
                     response.getClOrdID(),
                     response.getRejectReason(),
                     response.getRejectText()
             );
-        }
-    }
-
-    private void sendOrderExecution(MatchingEngine.Trade trade, boolean isAggressor) {
-        try {
-            OrderExecutionMessage execution = OrderExecutionMessage.fromTrade(trade, isAggressor);
-            execution.setMatchingUnit(session.getMatchingUnit());
-            execution.setSequenceNumber(session.getNextSentSequenceNumber());
-
-            byte[] executionBytes = execution.toBytes();
-            sendMessage(executionBytes);
-
-            var order = isAggressor ? trade.getAggressorOrder() : trade.getPassiveOrder();
-
-            LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderExecution: ClOrdID={1}, ExecType={2}, Qty={3} @ {4}",
-                    new Object[]{
-                            session.getConnectionId(),
-                            order.getClOrdID(),
-                            (char)execution.getExecType(),
-                            execution.getLastShares(),
-                            execution.getLastPx()
-                    });
-
-        } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending OrderExecution", e);
         }
     }
 
