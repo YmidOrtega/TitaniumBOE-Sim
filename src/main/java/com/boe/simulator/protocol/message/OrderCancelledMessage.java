@@ -134,6 +134,31 @@ public class OrderCancelledMessage {
         return result;
     }
 
+    public static OrderCancelledMessage fromBytes(byte[] data) {
+        if (data == null || data.length < 10) throw new IllegalArgumentException("Invalid OrderCancelled message data");
+        if (data[0] != START_OF_MESSAGE_1 || data[1] != START_OF_MESSAGE_2) throw new IllegalArgumentException("Invalid start of message marker");
+
+        OrderCancelledMessage msg = new OrderCancelledMessage();
+        ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.position(10); // Skip
+        msg.transactTime = buffer.getLong();
+        msg.clOrdID = new String(buffer.array(), buffer.position(), 20, StandardCharsets.US_ASCII);
+        buffer.position(buffer.position() + 20);
+        msg.orderID = buffer.getLong();
+        msg.cancelReason = buffer.get();
+        msg.leavesQty = buffer.getInt();
+        msg.numberOfBitfields = buffer.get();
+        if (msg.numberOfBitfields > 0) {
+            msg.bitfields = new byte[msg.numberOfBitfields];
+            buffer.get(msg.bitfields);
+        }
+        if (msg.numberOfBitfields > 1 && (msg.bitfields[1] & 0x01) != 0) {
+            msg.massCancelId = new String(buffer.array(), buffer.position(), 20, StandardCharsets.US_ASCII);
+            buffer.position(buffer.position() + 20);
+        }
+        return msg;
+    }
+
     // Setters
     public void setMatchingUnit(byte matchingUnit) {
         this.matchingUnit = matchingUnit;
