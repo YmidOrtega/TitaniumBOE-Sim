@@ -1,6 +1,7 @@
 package com.boe.simulator.server.order;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -219,7 +220,7 @@ public class Order {
         private byte openClose = 'N';
         private byte routingInst = 'B'; // Default: Book only
         private int receivedSequence;
-        private Map<String, Object> optionalFields = new HashMap<>();
+        private final Map<String, Object> optionalFields = new HashMap<>();
         private byte matchingUnit = 0;
 
         public Builder matchingUnit(byte matchingUnit) {
