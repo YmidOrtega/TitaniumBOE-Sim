@@ -17,6 +17,7 @@ public class BoeMessageFactory {
     // Message type constants - Order messages
     public static final byte NEW_ORDER = 0x38;
     public static final byte CANCEL_ORDER = 0x39;
+    public static final byte ORDER_EXECUTED = 0x21;  // ⭐ NUEVO
     public static final byte ORDER_ACKNOWLEDGMENT = 0x25;
     public static final byte ORDER_REJECTED = 0x26;
     public static final byte ORDER_CANCELLED = 0x28;
@@ -28,9 +29,7 @@ public class BoeMessageFactory {
 
     public static Object createMessage(BoeMessage message) {
         byte messageType = message.getMessageType();
-
         Context context = isRequest(messageType) ? Context.SERVER : Context.CLIENT;
-
         return createMessage(message, context);
     }
 
@@ -56,6 +55,14 @@ public class BoeMessageFactory {
                 case CANCEL_ORDER -> CancelOrderMessage.parse(data);
 
                 // Order messages (outbound to client - client receives these)
+                case ORDER_EXECUTED -> {
+                    if (context == Context.SERVER) {
+                        LOGGER.warning("Server received outbound-only message: OrderExecuted");
+                        yield null;
+                    }
+                    yield OrderExecutedMessage.fromBytes(data);
+                }
+
                 case ORDER_ACKNOWLEDGMENT -> {
                     if (context == Context.SERVER) {
                         LOGGER.warning("Server received outbound-only message: OrderAcknowledgment");
@@ -77,9 +84,7 @@ public class BoeMessageFactory {
                         LOGGER.warning("Server received outbound-only message: OrderCancelled");
                         yield null;
                     }
-                    // TODO: Implement OrderCancelledMessage.fromBytes()
-                    LOGGER.warning("OrderCancelledMessage.fromBytes() not yet implemented");
-                    yield null;
+                    yield OrderCancelledMessage.fromBytes(data);
                 }
 
                 default -> {
@@ -119,6 +124,7 @@ public class BoeMessageFactory {
             // Order messages
             case NEW_ORDER -> "NewOrder";
             case CANCEL_ORDER -> "CancelOrder";
+            case ORDER_EXECUTED -> "OrderExecuted";
             case ORDER_ACKNOWLEDGMENT -> "OrderAcknowledgment";
             case ORDER_REJECTED -> "OrderRejected";
             case ORDER_CANCELLED -> "OrderCancelled";
@@ -139,6 +145,7 @@ public class BoeMessageFactory {
         return messageType == LOGIN_RESPONSE ||
                 messageType == LOGOUT_RESPONSE ||
                 messageType == SERVER_HEARTBEAT ||
+                messageType == ORDER_EXECUTED ||
                 messageType == ORDER_ACKNOWLEDGMENT ||
                 messageType == ORDER_REJECTED ||
                 messageType == ORDER_CANCELLED;
@@ -147,6 +154,7 @@ public class BoeMessageFactory {
     public static boolean isOrderMessage(byte messageType) {
         return messageType == NEW_ORDER ||
                 messageType == CANCEL_ORDER ||
+                messageType == ORDER_EXECUTED ||
                 messageType == ORDER_ACKNOWLEDGMENT ||
                 messageType == ORDER_REJECTED ||
                 messageType == ORDER_CANCELLED;

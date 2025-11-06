@@ -193,6 +193,10 @@ public class Order {
         return new Builder();
     }
 
+    public byte getMatchingUnit() {
+        return (byte) (ordType == 1 ? 1 : 2);
+    }
+
     public static class Builder {
         private String clOrdID;
         private long orderID;

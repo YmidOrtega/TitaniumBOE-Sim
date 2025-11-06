@@ -66,12 +66,13 @@ public class CboeServer {
         this.rateLimiter = new RateLimiter(100, Duration.ofMinutes(1));
         this.healthMetrics = new HealthMetrics();
         this.orderManager = new OrderManager(dbManager);
+        this.orderManager.setSessionManager(sessionManager);
 
         this.statisticsGenerator = new StatisticsGeneratorService(
-            sessionRepo,
-            statsRepo,
-            sessionManager,
-            errorHandler
+                sessionRepo,
+                statsRepo,
+                sessionManager,
+                errorHandler
         );
 
         // Configure logging
@@ -81,7 +82,7 @@ public class CboeServer {
         LOGGER.log(Level.INFO, "RocksDB initialized at: {0}", dbManager.getDbPath());
         LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
         LOGGER.log(Level.INFO, "Session persistence: ENABLED");
-        LOGGER.log(Level.INFO, "OrderManager initialized");
+        LOGGER.log(Level.INFO, "OrderManager with MatchingEngine: ENABLED");
     }
 
     public void start() throws IOException {
@@ -216,7 +217,6 @@ public class CboeServer {
         });
         LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
         sessionManager.printSessionSummary();
-
         orderManager.printStatistics();
 
         // Stop accepting connections
