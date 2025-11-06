@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.boe.simulator.api.RestApiServer;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
@@ -44,6 +45,7 @@ public class CboeServer {
     private final HealthMetrics healthMetrics;
     private final StatisticsGeneratorService statisticsGenerator;
     private final OrderManager orderManager;
+    private RestApiServer restApiServer;
 
     private ServerSocket serverSocket;
     private Thread acceptorThread;
@@ -67,6 +69,15 @@ public class CboeServer {
         this.healthMetrics = new HealthMetrics();
         this.orderManager = new OrderManager(dbManager);
         this.orderManager.setSessionManager(sessionManager);
+
+        this.restApiServer = new RestApiServer(
+                9090,
+                orderManager,
+                new com.boe.simulator.server.order.OrderRepository(dbManager),
+                new com.boe.simulator.server.matching.TradeRepositoryService(dbManager),
+                authService,
+                orderManager.getMatchingEngine()
+        );
 
         this.statisticsGenerator = new StatisticsGeneratorService(
                 sessionRepo,
@@ -93,9 +104,16 @@ public class CboeServer {
 
         LOGGER.info("Starting CBOE Server...");
 
+        // Start a REST API server
+        restApiServer.start();
+
+        LOGGER.info("✓ CBOE Server started successfully on " + config.getHost() + ":" + config.getPort());
+        LOGGER.info("✓ REST API available on http://localhost:9090");
+
+
         // Create server socket
         serverSocket = new ServerSocket(config.getPort());
-        serverSocket.setSoTimeout(1000); // 1 second timeout for accept()
+        serverSocket.setSoTimeout(1000); // 1-second timeout for accept()
         running.set(true);
 
         // Start acceptor thread
@@ -219,6 +237,9 @@ public class CboeServer {
         sessionManager.printSessionSummary();
         orderManager.printStatistics();
 
+        // Stop REST API server
+        if (restApiServer != null) restApiServer.stop();
+
         // Stop accepting connections
         stop();
 
@@ -284,6 +305,10 @@ public class CboeServer {
         return orderManager;
     }
 
+    public RestApiServer getRestApiServer() {
+        return restApiServer;
+    }
+
     public static void main(String[] args) {
         ServerConfiguration config = ServerConfiguration.builder()
                 .host("0.0.0.0")
@@ -301,23 +326,22 @@ public class CboeServer {
         }));
 
         try {
-            // Start server
             server.start();
             System.out.printf("""
                     ╔════════════════════════════════════════════════════════════╗
-                    ║         CBOE Server - Con Persistencia - RUNNING           ║
+                    ║         CBOE Server + REST API - RUNNING                   ║
                     ╠════════════════════════════════════════════════════════════╣
-                    ║  Server Address: %s:%d                              ║
+                    ║  BOE Protocol: %s:%d                               ║
+                    ║  REST API: http://localhost:9090                           ║
                     ║  Max Connections: %d                                       ║
                     ║  Persistence: ENABLED                                      ║
-                    ║  Statistics: AUTO-GENERATED                                ║
+                    ║  Matching Engine: ENABLED                                  ║
                     ║                                                            ║
-                    ║  Test with: telnet localhost %d                          ║
-                    ║  or use your BoeConnectionHandler client                   ║
+                    ║  API Documentation: http://localhost:9090/api/health       ║
                     ║                                                            ║
                     ║  Press Ctrl+C to stop the server                           ║
                     ╚════════════════════════════════════════════════════════════╝
-                    %n""", config.getHost(), config.getPort(), config.getMaxConnections(), config.getPort());
+                    %n""", config.getHost(), config.getPort(), config.getMaxConnections());
 
             ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
             scheduler.scheduleAtFixedRate(() -> {
