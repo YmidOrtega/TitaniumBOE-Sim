@@ -152,6 +152,7 @@ public class OrderManager {
                     .openClose(message.getOpenClose() != 0 ? message.getOpenClose() : (byte)'N')
                     .routingInst(message.getRoutingInst() != 0 ? message.getRoutingInst() : (byte)'B')
                     .receivedSequence(message.getSequenceNumber())
+                    .matchingUnit(message.getMatchingUnit())
                     .build();
 
             // 4. Acknowledge orden
