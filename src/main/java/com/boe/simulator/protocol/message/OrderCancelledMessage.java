@@ -57,7 +57,7 @@ public class OrderCancelledMessage {
         msg.leavesQty = totalCancelled;
         msg.massCancelId = massCancelId;
 
-        // Setup bitfields for massCancelId
+        // Set up bitfields for massCancelId
         msg.numberOfBitfields = 1;
         msg.bitfields = new byte[1];
         msg.bitfields[0] = 0x01; // Bit 0 = massCancelId present
@@ -136,26 +136,48 @@ public class OrderCancelledMessage {
 
     public static OrderCancelledMessage fromBytes(byte[] data) {
         if (data == null || data.length < 10) throw new IllegalArgumentException("Invalid OrderCancelled message data");
+
         if (data[0] != START_OF_MESSAGE_1 || data[1] != START_OF_MESSAGE_2) throw new IllegalArgumentException("Invalid start of message marker");
 
         OrderCancelledMessage msg = new OrderCancelledMessage();
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
-        buffer.position(10); // Skip
+
+        // Skip header: StartOfMessage(2) + MessageLength(2) + MessageType(1) + MatchingUnit(1) + SeqNum(4) = 10
+        buffer.position(10);
+
+        // TransactTime (8 bytes)
         msg.transactTime = buffer.getLong();
-        msg.clOrdID = new String(buffer.array(), buffer.position(), 20, StandardCharsets.US_ASCII);
-        buffer.position(buffer.position() + 20);
+
+        // ClOrdID (20 bytes) - ✅ CORREGIDO: usar trim()
+        byte[] clOrdIDBytes = new byte[20];
+        buffer.get(clOrdIDBytes);
+        msg.clOrdID = new String(clOrdIDBytes, StandardCharsets.US_ASCII).trim();
+
+        // OrderID (8 bytes)
         msg.orderID = buffer.getLong();
+
+        // CancelReason (1 byte)
         msg.cancelReason = buffer.get();
+
+        // LeavesQty (4 bytes)
         msg.leavesQty = buffer.getInt();
-        msg.numberOfBitfields = buffer.get();
+
+        // NumberOfBitfields (1 byte)
+        msg.numberOfBitfields = buffer.get() & 0xFF;
+
+        // Bitfields
         if (msg.numberOfBitfields > 0) {
             msg.bitfields = new byte[msg.numberOfBitfields];
             buffer.get(msg.bitfields);
+
+            // ✅ CORREGIDO: Bitfield 0, bit 0 = massCancelId
+            if ((msg.bitfields[0] & 0x01) != 0) {
+                byte[] massCancelIdBytes = new byte[20];
+                buffer.get(massCancelIdBytes);
+                msg.massCancelId = new String(massCancelIdBytes, StandardCharsets.US_ASCII).trim();
+            }
         }
-        if (msg.numberOfBitfields > 1 && (msg.bitfields[1] & 0x01) != 0) {
-            msg.massCancelId = new String(buffer.array(), buffer.position(), 20, StandardCharsets.US_ASCII);
-            buffer.position(buffer.position() + 20);
-        }
+
         return msg;
     }
 
