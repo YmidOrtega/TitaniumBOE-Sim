@@ -34,7 +34,8 @@ public class Order {
     private final String account;
     private final String clearingFirm;
     private final String clearingAccount;
-    private final byte openClose;           // O=Open, C=Close, N=None
+    private final byte openClose;
+    private final byte matchingUnit;// O=Open, C=Close, N=None
 
     // Estado y timestamps
     private OrderState state;
@@ -78,6 +79,7 @@ public class Order {
         this.receivedSequence = builder.receivedSequence;
         this.lastSentSequence = 0;
         this.optionalFields = new HashMap<>(builder.optionalFields);
+        this.matchingUnit = builder.matchingUnit;
     }
 
     // State transitions
@@ -218,6 +220,12 @@ public class Order {
         private byte routingInst = 'B'; // Default: Book only
         private int receivedSequence;
         private Map<String, Object> optionalFields = new HashMap<>();
+        private byte matchingUnit = 0;
+
+        public Builder matchingUnit(byte matchingUnit) {
+            this.matchingUnit = matchingUnit;
+            return this;
+        }
 
         public Builder clOrdID(String clOrdID) {
             this.clOrdID = clOrdID;
