@@ -17,16 +17,20 @@ public class AuthenticationService {
     private final ConcurrentHashMap<String, String> activeSessions;
 
     public AuthenticationService(RocksDBManager dbManager) {
-        this.userRepository = new UserRepositoryService(dbManager);
+        this(new UserRepositoryService(dbManager));
+    }
+
+    public AuthenticationService() {
+        this(RocksDBManager.getInstance());
+    }
+
+    public AuthenticationService(UserRepository userRepository) {
+        this.userRepository = userRepository;
         this.activeSessions = new ConcurrentHashMap<>();
 
         initializeDefaultUsers();
 
         LOGGER.info("AuthenticationService initialized with persistent storage");
-    }
-
-    public AuthenticationService() {
-        this(RocksDBManager.getInstance());
     }
 
     private void initializeDefaultUsers() {

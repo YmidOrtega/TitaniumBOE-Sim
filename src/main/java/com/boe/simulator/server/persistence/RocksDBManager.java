@@ -210,7 +210,7 @@ public class RocksDBManager {
 
     public synchronized void close() {
         if (db != null) {
-            // Close column family handles
+
             for (ColumnFamilyHandle handle : columnFamilyHandles.values()) {
                 handle.close();
             }
@@ -229,6 +229,10 @@ public class RocksDBManager {
 
     public boolean isOpen() {
         return db != null;
+    }
+
+    public boolean isClosed() {
+        return db == null;
     }
 
     // Nested record for batch operations

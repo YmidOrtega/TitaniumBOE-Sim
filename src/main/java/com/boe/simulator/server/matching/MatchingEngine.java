@@ -101,13 +101,18 @@ public class MatchingEngine {
             // FIFO: take the first order from the level
             Order passiveOrder = passiveOrders.get(0);
 
+            String aggressiveUsername = aggressiveOrder.getUsername();
+            String passiveUsername = passiveOrder.getUsername();
+
             // Verify self-trade
-            if (!allowSelfTrade && aggressiveOrder.getUsername().equals(passiveOrder.getUsername())) {
-                LOGGER.log(Level.WARNING, "Self-trade prevented: {0}", aggressiveOrder.getUsername());
-                book.removeOrder(passiveOrder);
-                passiveOrder.cancel();
-                orderRepository.save(passiveOrder);
-                continue;
+            if (!allowSelfTrade && aggressiveUsername != null && passiveUsername != null) {
+                if (aggressiveUsername.equals(passiveUsername)) {
+                    LOGGER.log(Level.WARNING, "Self-trade prevented: {0}", aggressiveUsername);
+                    book.removeOrder(passiveOrder);
+                    passiveOrder.cancel();
+                    orderRepository.save(passiveOrder);
+                    continue;
+                }
             }
 
             // Calculate quantity to be executed

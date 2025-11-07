@@ -6,8 +6,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jetbrains.annotations.NotNull;
 
 public record PersistedSession(
         @JsonProperty("sessionId") String sessionId,
@@ -134,6 +134,7 @@ public record PersistedSession(
         return String.format("session:%s:%s:%s", date, username, sessionId);
     }
 
+    @NotNull
     @Override
     public String toString() {
         return "PersistedSession{" +

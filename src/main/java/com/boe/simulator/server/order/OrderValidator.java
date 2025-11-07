@@ -1,14 +1,15 @@
 package com.boe.simulator.server.order;
 
-import com.boe.simulator.protocol.message.NewOrderMessage;
-
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.boe.simulator.protocol.message.NewOrderMessage;
+
 public class OrderValidator {
+    @SuppressWarnings("unused")
     private static final Logger LOGGER = Logger.getLogger(OrderValidator.class.getName());
 
     // Límites del sistema

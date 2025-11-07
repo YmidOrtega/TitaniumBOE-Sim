@@ -1,12 +1,12 @@
 package com.boe.simulator.api.middleware;
 
-import com.boe.simulator.api.dto.ApiResponse;
-import io.javalin.http.Context;
-import io.javalin.http.ExceptionHandler;
-import io.javalin.http.HttpStatus;
-
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.boe.simulator.api.dto.ApiResponse;
+
+import io.javalin.http.ExceptionHandler;
+import io.javalin.http.HttpStatus;
 
 public class ErrorHandler {
     private static final Logger LOGGER = Logger.getLogger(ErrorHandler.class.getName());
