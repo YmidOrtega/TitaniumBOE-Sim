@@ -10,58 +10,82 @@ import static org.junit.jupiter.api.Assertions.*;
 class RateLimiterTest {
 
     private RateLimiter rateLimiter;
+    private final int MAX_MESSAGES = 3;
+    private final Duration WINDOW_DURATION = Duration.ofMillis(100);
 
     @BeforeEach
     void setUp() {
-        rateLimiter = new RateLimiter(10, Duration.ofSeconds(1));
+        rateLimiter = new RateLimiter(MAX_MESSAGES, WINDOW_DURATION);
     }
 
     @Test
-    void allowMessage_shouldReturnTrue_whenLimitIsNotExceeded() {
-        // Act & Assert
-        for (int i = 0; i < 10; i++) {
-            assertTrue(rateLimiter.allowMessage(1));
-        }
+    void allowMessage_whenWithinLimit_returnsTrue() {
+        int connectionId = 1;
+        assertTrue(rateLimiter.allowMessage(connectionId), "First message should be allowed");
+        assertTrue(rateLimiter.allowMessage(connectionId), "Second message should be allowed");
+        assertTrue(rateLimiter.allowMessage(connectionId), "Third message should be allowed");
     }
 
     @Test
-    void allowMessage_shouldReturnFalse_whenLimitIsExceeded() {
-        // Arrange
-        for (int i = 0; i < 10; i++) {
-            rateLimiter.allowMessage(1);
-        }
-
-        // Act & Assert
-        assertFalse(rateLimiter.allowMessage(1));
+    void allowMessage_whenLimitExceeded_returnsFalse() {
+        int connectionId = 2;
+        rateLimiter.allowMessage(connectionId); // 1
+        rateLimiter.allowMessage(connectionId); // 2
+        rateLimiter.allowMessage(connectionId); // 3
+        assertFalse(rateLimiter.allowMessage(connectionId), "Fourth message should be rejected");
     }
 
     @Test
-    void allowMessage_shouldResetAfterWindow() throws InterruptedException {
-        // Arrange
-        for (int i = 0; i < 10; i++) {
-            rateLimiter.allowMessage(1);
-        }
-        assertFalse(rateLimiter.allowMessage(1));
+    void allowMessage_whenLimitExceededThenWindowResets_returnsTrue() throws InterruptedException {
+        int connectionId = 3;
+        rateLimiter.allowMessage(connectionId); // 1
+        rateLimiter.allowMessage(connectionId); // 2
+        rateLimiter.allowMessage(connectionId); // 3
+        assertFalse(rateLimiter.allowMessage(connectionId), "Fourth message should be rejected");
 
-        // Act
-        Thread.sleep(1100);
+        Thread.sleep(WINDOW_DURATION.toMillis() + 10); // Wait for window to reset
 
-        // Assert
-        assertTrue(rateLimiter.allowMessage(1));
+        assertTrue(rateLimiter.allowMessage(connectionId), "Message after window reset should be allowed");
     }
 
     @Test
-    void clearConnection_shouldResetRateLimitForConnection() {
-        // Arrange
-        for (int i = 0; i < 10; i++) {
-            rateLimiter.allowMessage(1);
-        }
-        assertFalse(rateLimiter.allowMessage(1));
+    void allowMessage_multipleConnections_areIndependent() {
+        int connectionId1 = 4;
+        int connectionId2 = 5;
 
-        // Act
-        rateLimiter.clearConnection(1);
+        // Fill up connection 1
+        rateLimiter.allowMessage(connectionId1);
+        rateLimiter.allowMessage(connectionId1);
+        rateLimiter.allowMessage(connectionId1);
+        assertFalse(rateLimiter.allowMessage(connectionId1), "Connection 1 should be rate limited");
 
-        // Assert
-        assertTrue(rateLimiter.allowMessage(1));
+        // Connection 2 should still be allowed
+        assertTrue(rateLimiter.allowMessage(connectionId2), "Connection 2 first message should be allowed");
+        assertTrue(rateLimiter.allowMessage(connectionId2), "Connection 2 second message should be allowed");
+    }
+
+    @Test
+    void clearConnection_removesRateLimitForConnection() {
+        int connectionId = 6;
+        rateLimiter.allowMessage(connectionId); // 1
+        rateLimiter.allowMessage(connectionId); // 2
+        rateLimiter.allowMessage(connectionId); // 3
+        assertFalse(rateLimiter.allowMessage(connectionId), "Should be rate limited initially");
+
+        rateLimiter.clearConnection(connectionId);
+
+        assertTrue(rateLimiter.allowMessage(connectionId), "Should be allowed after clearing connection");
+    }
+
+    @Test
+    void allowMessage_whenWindowDurationIsZero_behavesCorrectly() {
+        RateLimiter zeroWindowRateLimiter = new RateLimiter(MAX_MESSAGES, Duration.ZERO);
+        int connectionId = 7;
+
+        // All messages should be allowed as window resets immediately
+        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
+        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
+        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
+        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
     }
 }
