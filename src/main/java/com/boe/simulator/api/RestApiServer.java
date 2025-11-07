@@ -53,11 +53,15 @@ public class RestApiServer {
 
         LOGGER.log(Level.INFO, "Starting REST API Server on port {0}...", port);
 
+        // Seed market data
+        MarketDataSeeder seeder = new MarketDataSeeder(matchingEngine, orderRepository);
+        seeder.seedMarket();
+
         // Create services
-        SymbolService symbolService = new SymbolService();
         OrderService orderService = new OrderService(orderManager, orderRepository);
         PositionService positionService = new PositionService(tradeRepository);
         TradeService tradeService = new TradeService(tradeRepository);
+        SymbolService symbolService = new SymbolService();
 
         // Create controllers
         OrderController orderController = new OrderController(orderService);
@@ -80,7 +84,7 @@ public class RestApiServer {
         // Configure error handlers
         ErrorHandler.configure(app);
 
-        // Public routes (no auth)
+        // Public routes
         app.get("/api/health", ctx -> {
             ctx.json(new HealthResponse(
                     "healthy",
@@ -91,10 +95,8 @@ public class RestApiServer {
         });
 
         app.get("/api/symbols", symbolController::getSymbols);
-        app.get("/api/symbols/{symbol}", symbolController::getSymbol);
-        app.get("/api/symbols/{symbol}/book", symbolController::getOrderBook);
 
-        // Protected routes (require authentication)
+        // Protected routes
         app.before("/api/orders*", authFilter);
         app.before("/api/positions*", authFilter);
         app.before("/api/trades*", authFilter);
@@ -113,9 +115,6 @@ public class RestApiServer {
         app.get("/api/trades/recent", tradeController::getRecentTrades);
         app.get("/api/trades/symbol/{symbol}", tradeController::getTradesBySymbol);
         app.get("/api/trades/my", tradeController::getUserTrades);
-
-        MarketDataSeeder seeder = new MarketDataSeeder(orderManager);
-        seeder.seedMarket();
 
         // Start server
         app.start(port);

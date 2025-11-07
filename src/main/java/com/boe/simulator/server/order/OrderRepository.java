@@ -1,19 +1,23 @@
 package com.boe.simulator.server.order;
 
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import static java.util.Optional.empty;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import org.rocksdb.RocksDBException;
+
 import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.persistence.util.SerializationUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.rocksdb.RocksDBException;
-
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.*;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class OrderRepository {
     private static final Logger LOGGER = Logger.getLogger(OrderRepository.class.getName());
@@ -37,7 +41,7 @@ public class OrderRepository {
 
             dbManager.put(CF_ORDERS, key.getBytes(), value);
             LOGGER.log(Level.FINE, "Saved order: {0}", order.getClOrdID());
-        } catch (Exception e) {
+        } catch (RocksDBException e) {
             LOGGER.log(Level.SEVERE, "Failed to save order: " + order.getClOrdID(), e);
             throw new RuntimeException("Failed to save order", e);
         }
@@ -54,7 +58,7 @@ public class OrderRepository {
 
             PersistedOrder persistedOrder = serializer.deserialize(data, PersistedOrder.class);
             return Optional.of(persistedOrder.toOrder());
-        } catch (Exception e) {
+        } catch (RocksDBException e) {
             LOGGER.log(Level.SEVERE, "Failed to find order: " + clOrdID, e);
             return Optional.empty();
         }
@@ -70,25 +74,43 @@ public class OrderRepository {
             }
 
             return Optional.empty();
-        } catch (Exception e) {
+        } catch (RocksDBException e) {
             LOGGER.log(Level.SEVERE, "Failed to find order by OrderID: " + orderID, e);
-            return Optional.empty();
+            return empty();
         }
     }
 
     public List<Order> findByUsername(String username) {
-        try {
-            Map<byte[], byte[]> allData = dbManager.getAll(CF_ORDERS);
-            List<Order> orders = new ArrayList<>();
+        if (username == null) {
+            LOGGER.warning("findByUsername called with null username");
+            return new ArrayList<>();
+        }
 
-            for (byte[] data : allData.values()) {
-                PersistedOrder persistedOrder = serializer.deserialize(data, PersistedOrder.class);
-                if (username.equals(persistedOrder.username())) orders.add(persistedOrder.toOrder());
+        try {
+            String prefix = "order:username:" + username + ":";
+            List<byte[]> keys = dbManager.getKeysWithPrefix(CF_ORDERS, prefix.getBytes());
+
+            List<Order> orders = new ArrayList<>();
+            for (byte[] key : keys) {
+                try {
+                    byte[] data = dbManager.get(CF_ORDERS, key);
+                    if (data != null) {
+                        Order order = serializer.deserialize(data, Order.class);
+                        if (order != null && username.equals(order.getUsername())) {
+                            orders.add(order);
+                        }
+                    }
+                } catch (RocksDBException e) {
+                    String keyStr = new String(key);
+                    LOGGER.log(Level.WARNING, "Failed to deserialize order: {0}, skipping...", keyStr);
+                }
             }
 
+            LOGGER.log(Level.FINE, "Found {0} orders for user: {1}", new Object[]{orders.size(), username});
             return orders;
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find orders for user: " + username, e);
+
+        } catch (RocksDBException | IllegalArgumentException e) {
+            LOGGER.log(Level.SEVERE, "Failed to find orders by username: " + username, e);
             return new ArrayList<>();
         }
     }
@@ -97,7 +119,7 @@ public class OrderRepository {
         Map<byte[], byte[]> allData;
         try {
             allData = dbManager.getAll(CF_ORDERS);
-        } catch (Exception e) {
+        } catch (RocksDBException e) {
             LOGGER.log(Level.SEVERE, "Failed to get orders from database", e);
             return new ArrayList<>();
         }
@@ -135,7 +157,7 @@ public class OrderRepository {
             String key = buildKey(clOrdID);
             dbManager.delete(CF_ORDERS, key.getBytes());
             LOGGER.log(Level.INFO, "Deleted order: {0}", clOrdID);
-        } catch (Exception e) {
+        } catch (RocksDBException e) {
             LOGGER.log(Level.SEVERE, "Failed to delete order: " + clOrdID, e);
             throw new RuntimeException("Failed to delete order", e);
         }
@@ -145,7 +167,7 @@ public class OrderRepository {
         try {
             String key = buildKey(clOrdID);
             return dbManager.exists(CF_ORDERS, key.getBytes());
-        } catch (Exception e) {
+        } catch (RocksDBException | IllegalArgumentException e) {
             LOGGER.log(Level.WARNING, "Failed to check if order exists: " + clOrdID, e);
             return false;
         }
@@ -155,7 +177,7 @@ public class OrderRepository {
         try {
             Map<byte[], byte[]> allData = dbManager.getAll(CF_ORDERS);
             return allData.size();
-        } catch (Exception e) {
+        } catch (RocksDBException e) {
             LOGGER.log(Level.WARNING, "Failed to count orders", e);
             return 0;
         }
@@ -281,7 +303,7 @@ public class OrderRepository {
                 lastModifiedField.set(order, Instant.parse(lastModified));
 
                 order.setLastSentSequence(lastSentSequence);
-            } catch (Exception e) {
+            } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException | SecurityException e) {
                 LOGGER.log(Level.WARNING, "Failed to restore order state", e);
             }
 

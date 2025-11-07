@@ -1,7 +1,5 @@
 package com.boe.simulator.protocol.message;
 
-import com.boe.simulator.protocol.types.BinaryPrice;
-
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -10,6 +8,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
+
+import com.boe.simulator.protocol.types.BinaryPrice;
 
 public class NewOrderMessage {
     private static final byte MESSAGE_TYPE = 0x38;

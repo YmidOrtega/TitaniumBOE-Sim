@@ -26,11 +26,9 @@ public class OrderManager {
 
     private ClientSessionManager sessionManager;
 
-    // In-memory cache of active orders for fast access
     private final ConcurrentHashMap<String, Order> activeOrdersByClOrdID;
     private final ConcurrentHashMap<Long, Order> activeOrdersByOrderID;
 
-    // OrderID generator
     private final AtomicLong orderIDGenerator;
 
     // Statistics
@@ -41,11 +39,13 @@ public class OrderManager {
     private final AtomicLong totalOrdersFilled;
 
     public OrderManager(RocksDBManager dbManager) {
-        this.orderRepository = new OrderRepository(dbManager);
-        this.orderValidator = new OrderValidator();
+        this(new OrderRepository(dbManager), new OrderValidator(), new MatchingEngine(new OrderRepository(dbManager), new TradeRepositoryService(dbManager), false));
+    }
 
-        TradeRepositoryService tradeRepository = new TradeRepositoryService(dbManager);
-        this.matchingEngine = new MatchingEngine(orderRepository, tradeRepository, false);
+    public OrderManager(OrderRepository orderRepository, OrderValidator orderValidator, MatchingEngine matchingEngine) {
+        this.orderRepository = orderRepository;
+        this.orderValidator = orderValidator;
+        this.matchingEngine = matchingEngine;
         this.activeOrdersByClOrdID = new ConcurrentHashMap<>();
         this.activeOrdersByOrderID = new ConcurrentHashMap<>();
         this.orderIDGenerator = new AtomicLong(1000000);
@@ -56,10 +56,7 @@ public class OrderManager {
         this.totalOrdersCancelled = new AtomicLong(0);
         this.totalOrdersFilled = new AtomicLong(0);
 
-        // Setup matching engine listener
         setupMatchingEngineListeners();
-
-        // Load active orders from database on startup
         loadActiveOrders();
 
         LOGGER.info("OrderManager initialized with MatchingEngine");
@@ -78,10 +75,8 @@ public class OrderManager {
 
             @Override
             public void onOrderAdded(Order order, OrderBook book) {
-                LOGGER.log(Level.FINE, "Order added to book: {0} @ {1}", new Object[]{
-                        order.getClOrdID(),
-                        order.getPrice()
-                });
+                LOGGER.log(Level.FINE, "Order added to book: {0} @ {1}",
+                        new Object[]{order.getClOrdID(), order.getPrice()});
             }
 
             @Override
@@ -91,21 +86,29 @@ public class OrderManager {
         });
     }
 
+    // ========== TCP/BOE Entry Point ==========
     public OrderResponse processNewOrder(NewOrderMessage message, ClientSession session) {
+        OrderExecutionContext context = OrderExecutionContext.fromTcpSession(session);
+        return processNewOrderInternal(message, context);
+    }
+
+    // ========== REST API Entry Point ==========
+    public OrderResponse processNewOrder(NewOrderMessage message, String username) {
+        OrderExecutionContext context = OrderExecutionContext.fromRestApi(username);
+        return processNewOrderInternal(message, context);
+    }
+
+    private OrderResponse processNewOrderInternal(NewOrderMessage message, OrderExecutionContext context) {
         totalOrdersReceived.incrementAndGet();
 
-        LOGGER.log(Level.INFO, "[Session {0}] Processing NewOrder: {1}", new Object[]{
-                session.getConnectionId(),
-                message.getClOrdID()
-        });
+        LOGGER.log(Level.INFO, "[{0}] Processing NewOrder: {1}",
+                new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
 
         // 1. Validate message
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
         if (!validation.isValid()) {
-            LOGGER.log(Level.WARNING, "[Session {0}] Order rejected - validation failed: {1}", new Object[]{
-                    session.getConnectionId(),
-                    validation.getErrorMessage()
-            });
+            LOGGER.log(Level.WARNING, "[{0}] Order rejected - validation failed: {1}",
+                    new Object[]{context.getSessionIdentifier(), validation.getErrorMessage()});
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
@@ -116,10 +119,8 @@ public class OrderManager {
 
         // 2. Verify duplicate ClOrdID
         if (activeOrdersByClOrdID.containsKey(message.getClOrdID())) {
-            LOGGER.log(Level.WARNING, "[Session {0}] Order rejected - duplicate ClOrdID: {1}", new Object[]{
-                    session.getConnectionId(),
-                    message.getClOrdID()
-            });
+            LOGGER.log(Level.WARNING, "[{0}] Order rejected - duplicate ClOrdID: {1}",
+                    new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
@@ -135,52 +136,50 @@ public class OrderManager {
             Order order = Order.builder()
                     .clOrdID(message.getClOrdID())
                     .orderID(orderID)
-                    .sessionSubID(session.getSessionSubID())
-                    .username(session.getUsername())
+                    .sessionSubID(context.getSessionIdentifier()) // "TCP-123" o "REST-API"
+                    .username(context.getUsername())
                     .side(message.getSide())
                     .orderQty(message.getOrderQty())
                     .price(message.getPrice())
                     .ordType(message.getOrdType() != 0 ? message.getOrdType() : (byte)2)
                     .symbol(message.getSymbol())
-                    .maturityDate(message.getMaturityDate())
-                    .strikePrice(message.getStrikePrice())
-                    .putOrCall(message.getPutOrCall())
                     .capacity(message.getCapacity())
                     .account(message.getAccount() != null ? message.getAccount() : "")
                     .clearingFirm(message.getClearingFirm() != null ? message.getClearingFirm() : "")
-                    .clearingAccount(message.getClearingAccount() != null ? message.getClearingAccount() : "")
-                    .openClose(message.getOpenClose() != 0 ? message.getOpenClose() : (byte)'N')
                     .routingInst(message.getRoutingInst() != 0 ? message.getRoutingInst() : (byte)'B')
                     .receivedSequence(message.getSequenceNumber())
                     .matchingUnit(message.getMatchingUnit())
                     .build();
 
-            // 4. Acknowledge orden
+            // 4. Acknowledge order
             order.acknowledge();
 
             // 5. Add to cache
             activeOrdersByClOrdID.put(order.getClOrdID(), order);
             activeOrdersByOrderID.put(order.getOrderID(), order);
 
-            // 6. Send it to the matching engine
+            // 6. Send to matching engine
             List<Trade> trades = matchingEngine.processOrder(order);
 
-            // 7. If there were no trades, the order is in the book, save
-            if (trades.isEmpty()) orderRepository.save(order);
+            // 7. If no trades, save to DB (if trades, execution handler saves)
+            if (trades.isEmpty()) {
+                orderRepository.save(order);
+            }
 
             totalOrdersAccepted.incrementAndGet();
 
-            LOGGER.log(Level.INFO, "[Session {0}] Order accepted: {1} (OrderID: {2}, Trades: {3})", new Object[]{
-                    session.getConnectionId(),
-                    order.getClOrdID(),
-                    order.getOrderID(),
-                    trades.size()
-            });
+            LOGGER.log(Level.INFO, "[{0}] Order accepted: {1} (OrderID: {2}, Trades: {3})",
+                    new Object[]{
+                            context.getSessionIdentifier(),
+                            order.getClOrdID(),
+                            order.getOrderID(),
+                            trades.size()
+                    });
 
             return OrderResponse.acknowledged(order);
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error processing order", e);
+            LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error processing order", e);
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
@@ -190,139 +189,82 @@ public class OrderManager {
         }
     }
 
-    private void handleTradeExecution(Trade trade) {
-        LOGGER.log(Level.INFO, "Trade executed: {0}", trade);
-
-        // Update statistics
-        Order buyOrder = activeOrdersByOrderID.get(trade.getBuyOrderId());
-        Order sellOrder = activeOrdersByOrderID.get(trade.getSellOrderId());
-
-        if (buyOrder != null && buyOrder.isFilled()) {
-            totalOrdersFilled.incrementAndGet();
-            activeOrdersByClOrdID.remove(buyOrder.getClOrdID());
-            activeOrdersByOrderID.remove(buyOrder.getOrderID());
-        }
-
-        if (sellOrder != null && sellOrder.isFilled()) {
-            totalOrdersFilled.incrementAndGet();
-            activeOrdersByClOrdID.remove(sellOrder.getClOrdID());
-            activeOrdersByOrderID.remove(sellOrder.getOrderID());
-        }
-
-        // Send execution messages to clients
-        if (sessionManager != null) sendExecutionMessages(trade, buyOrder, sellOrder);
-    }
-
-    private void sendExecutionMessages(Trade trade, Order buyOrder, Order sellOrder) {
-        if (buyOrder != null) sendExecutionMessage(buyOrder, trade, true); // Aggressive (took liquidity)
-        if (sellOrder != null) sendExecutionMessage(sellOrder, trade, false); // Passive (added liquidity)
-    }
-
-    private void sendExecutionMessage(Order order, Trade trade, boolean isAggressive) {
-        ClientConnectionHandler handler = sessionManager.getHandlerByUsername(order.getUsername());
-
-        if (handler != null && handler.getSession().isAuthenticated()) {
-            try {
-                OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(trade, order, isAggressive);
-                execMsg.setMatchingUnit(handler.getSession().getMatchingUnit());
-                execMsg.setSequenceNumber(handler.getSession().getNextSentSequenceNumber());
-
-                byte[] msgBytes = execMsg.toBytes();
-                handler.sendMessage(msgBytes);
-
-                LOGGER.log(Level.INFO, "Sent execution to {0}: {1}", new Object[]{
-                        order.getUsername(),
-                        execMsg
-                });
-
-            } catch (IOException e) {
-                LOGGER.log(Level.SEVERE, "Failed to send execution message to " + order.getUsername(), e);
-            }
-        } else LOGGER.log(Level.WARNING, "Cannot send execution - user not connected: {0}", order.getUsername());
-    }
-
+    // ========== TCP/BOE Cancel ==========
     public CancelResponse processCancelOrder(CancelOrderMessage message, ClientSession session) {
-        LOGGER.log(Level.INFO, "[Session {0}] Processing CancelOrder: {1}", new Object[]{
-                session.getConnectionId(),
-                message
-        });
-
-        // Check if it is mass cancel
-        if (message.isMassCancel()) return processMassCancel(message, session);
-
-        // Single order cancel
-        return processSingleCancel(message.getOrigClOrdID(), session);
+        OrderExecutionContext context = OrderExecutionContext.fromTcpSession(session);
+        return processCancelOrderInternal(message, context);
     }
 
-    private CancelResponse processSingleCancel(String origClOrdID, ClientSession session) {
+    // ========== REST API Cancel ==========
+    public CancelResponse processCancelOrder(String clOrdID, String username) {
+        OrderExecutionContext context = OrderExecutionContext.fromRestApi(username);
+        CancelOrderMessage message = new CancelOrderMessage(clOrdID);
+        return processCancelOrderInternal(message, context);
+    }
+
+    private CancelResponse processCancelOrderInternal(CancelOrderMessage message, OrderExecutionContext context) {
+        LOGGER.log(Level.INFO, "[{0}] Processing CancelOrder: {1}",
+                new Object[]{context.getSessionIdentifier(), message});
+
+        if (message.isMassCancel()) return processMassCancel(message, context);
+
+        return processSingleCancel(message.getOrigClOrdID(), context);
+    }
+
+    private CancelResponse processSingleCancel(String origClOrdID, OrderExecutionContext context) {
         Order order = activeOrdersByClOrdID.get(origClOrdID);
 
         if (order == null) {
-            LOGGER.log(Level.WARNING, "[Session {0}] Cancel rejected - order not found: {1}", new Object[]{
-                    session.getConnectionId(),
-                    origClOrdID
-            });
-            return CancelResponse.rejected(origClOrdID, "Order not found or already terminated"
-            );
+            LOGGER.log(Level.WARNING, "[{0}] Cancel rejected - order not found: {1}",
+                    new Object[]{context.getSessionIdentifier(), origClOrdID});
+            return CancelResponse.rejected(origClOrdID, "Order not found or already terminated");
         }
 
         // Check permissions
-        if (!order.getUsername().equals(session.getUsername())) {
-            LOGGER.log(Level.WARNING, "[Session {0}] Cancel rejected - unauthorized: {1}", new Object[]{
-                    session.getConnectionId(),
-                    origClOrdID
-            });
-            return CancelResponse.rejected(origClOrdID, "Unauthorized: order belongs to different user"
-            );
+        if (!order.getUsername().equals(context.getUsername())) {
+            LOGGER.log(Level.WARNING, "[{0}] Cancel rejected - unauthorized: {1}",
+                    new Object[]{context.getSessionIdentifier(), origClOrdID});
+            return CancelResponse.rejected(origClOrdID, "Unauthorized: order belongs to different user");
         }
 
-        // Check status
+        // Check state
         if (!order.getState().isCancellable()) {
-            LOGGER.log(Level.WARNING, "[Session {0}] Cancel rejected - not cancellable: {1} (state: {2})", new Object[]{
-                    session.getConnectionId(),
-                    origClOrdID,
-                    order.getState()
-            });
-            return CancelResponse.rejected(origClOrdID, "Order not cancellable in state: " + order.getState()
-            );
+            LOGGER.log(Level.WARNING, "[{0}] Cancel rejected - not cancellable: {1} (state: {2})",
+                    new Object[]{context.getSessionIdentifier(), origClOrdID, order.getState()});
+            return CancelResponse.rejected(origClOrdID, "Order not cancellable in state: " + order.getState());
         }
 
         // Cancel order
         try {
-            // Remove from the matching engine
             matchingEngine.cancelOrder(order);
 
             order.cancel();
             orderRepository.save(order);
 
-            // Clear cache
             activeOrdersByClOrdID.remove(order.getClOrdID());
             activeOrdersByOrderID.remove(order.getOrderID());
 
             totalOrdersCancelled.incrementAndGet();
 
-            LOGGER.log(Level.INFO, "[Session {0}] Order cancelled: {1}",
-                    new Object[]{session.getConnectionId(), origClOrdID});
+            LOGGER.log(Level.INFO, "[{0}] Order cancelled: {1}",
+                    new Object[]{context.getSessionIdentifier(), origClOrdID});
 
             return CancelResponse.cancelled(order, OrderCancelledMessage.REASON_USER_REQUESTED);
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error cancelling order", e);
-            return CancelResponse.rejected(origClOrdID,"Internal error: " + e.getMessage()
-            );
+            LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error cancelling order", e);
+            return CancelResponse.rejected(origClOrdID, "Internal error: " + e.getMessage());
         }
     }
 
-    private CancelResponse processMassCancel(CancelOrderMessage message, ClientSession session) {
-        LOGGER.log(Level.INFO, "[Session {0}] Processing Mass Cancel: type={1}", new Object[]{
-                session.getConnectionId(),
-                message.getMassCancelType()
-        });
+    private CancelResponse processMassCancel(CancelOrderMessage message, OrderExecutionContext context) {
+        LOGGER.log(Level.INFO, "[{0}] Processing Mass Cancel: type={1}",
+                new Object[]{context.getSessionIdentifier(), message.getMassCancelType()});
 
         List<Order> ordersToCancel = switch (message.getMassCancelType()) {
-            case FIRM -> filterOrdersByClearingFirm(message.getClearingFirm(), session);
-            case SYMBOL -> filterOrdersBySymbol(message.getRiskRoot(), session);
-            case ALL -> filterAllOrders(session);
+            case FIRM -> filterOrdersByClearingFirm(message.getClearingFirm(), context);
+            case SYMBOL -> filterOrdersBySymbol(message.getRiskRoot(), context);
+            case ALL -> filterAllOrders(context);
             default -> List.of();
         };
 
@@ -345,35 +287,81 @@ public class OrderManager {
 
         totalOrdersCancelled.addAndGet(cancelledCount);
 
-        LOGGER.log(Level.INFO, "[Session {0}] Mass Cancel completed: {1} orders cancelled", new Object[]{
-                session.getConnectionId(),
-                cancelledCount
-        });
+        LOGGER.log(Level.INFO, "[{0}] Mass Cancel completed: {1} orders cancelled",
+                new Object[]{context.getSessionIdentifier(), cancelledCount});
 
         return CancelResponse.massCancelled(cancelledCount, message.getMassCancelId());
     }
 
-    private List<Order> filterOrdersByClearingFirm(String clearingFirm, ClientSession session) {
+    private List<Order> filterOrdersByClearingFirm(String clearingFirm, OrderExecutionContext context) {
         return activeOrdersByClOrdID.values().stream()
-                .filter(o -> o.getUsername().equals(session.getUsername()))
+                .filter(o -> o.getUsername().equals(context.getUsername()))
                 .filter(o -> clearingFirm.equals(o.getClearingFirm()))
                 .filter(o -> o.getState().isCancellable())
                 .toList();
     }
 
-    private List<Order> filterOrdersBySymbol(String symbol, ClientSession session) {
+    private List<Order> filterOrdersBySymbol(String symbol, OrderExecutionContext context) {
         return activeOrdersByClOrdID.values().stream()
-                .filter(o -> o.getUsername().equals(session.getUsername()))
+                .filter(o -> o.getUsername().equals(context.getUsername()))
                 .filter(o -> symbol.equals(o.getSymbol()))
                 .filter(o -> o.getState().isCancellable())
                 .toList();
     }
 
-    private List<Order> filterAllOrders(ClientSession session) {
+    private List<Order> filterAllOrders(OrderExecutionContext context) {
         return activeOrdersByClOrdID.values().stream()
-                .filter(o -> o.getUsername().equals(session.getUsername()))
+                .filter(o -> o.getUsername().equals(context.getUsername()))
                 .filter(o -> o.getState().isCancellable())
                 .toList();
+    }
+
+    private void handleTradeExecution(Trade trade) {
+        LOGGER.log(Level.INFO, "Trade executed: {0}", trade);
+
+        Order buyOrder = activeOrdersByOrderID.get(trade.getBuyOrderId());
+        Order sellOrder = activeOrdersByOrderID.get(trade.getSellOrderId());
+
+        if (buyOrder != null && buyOrder.isFilled()) {
+            totalOrdersFilled.incrementAndGet();
+            activeOrdersByClOrdID.remove(buyOrder.getClOrdID());
+            activeOrdersByOrderID.remove(buyOrder.getOrderID());
+        }
+
+        if (sellOrder != null && sellOrder.isFilled()) {
+            totalOrdersFilled.incrementAndGet();
+            activeOrdersByClOrdID.remove(sellOrder.getClOrdID());
+            activeOrdersByOrderID.remove(sellOrder.getOrderID());
+        }
+
+        if (sessionManager != null) sendExecutionMessages(trade, buyOrder, sellOrder);
+    }
+
+    private void sendExecutionMessages(Trade trade, Order buyOrder, Order sellOrder) {
+        if (buyOrder != null) sendExecutionMessage(buyOrder, trade, true);
+        if (sellOrder != null) sendExecutionMessage(sellOrder, trade, false);
+    }
+
+    private void sendExecutionMessage(Order order, Trade trade, boolean isAggressive) {
+        ClientConnectionHandler handler = sessionManager.getHandlerByUsername(order.getUsername());
+
+        if (handler != null && handler.getSession().isAuthenticated()) {
+            try {
+                OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(trade, order, isAggressive);
+                execMsg.setMatchingUnit(handler.getSession().getMatchingUnit());
+                execMsg.setSequenceNumber(handler.getSession().getNextSentSequenceNumber());
+
+                byte[] msgBytes = execMsg.toBytes();
+                handler.sendMessage(msgBytes);
+
+                LOGGER.log(Level.INFO, "Sent execution to {0}: {1}",
+                        new Object[]{order.getUsername(), execMsg});
+
+            } catch (IOException e) {
+                LOGGER.log(Level.SEVERE, "Failed to send execution message to " + order.getUsername(), e);
+            }
+        } else LOGGER.log(Level.FINE, "User not connected via TCP: {0} (order from REST API)", order.getUsername());
+
     }
 
     private void loadActiveOrders() {
@@ -383,7 +371,6 @@ public class OrderManager {
                 activeOrdersByClOrdID.put(order.getClOrdID(), order);
                 activeOrdersByOrderID.put(order.getOrderID(), order);
 
-                // Re-add to matching engine
                 matchingEngine.getOrderBook(order.getSymbol()).ifPresent(book -> book.addOrder(order));
             }
             LOGGER.log(Level.INFO, "Loaded {0} active orders from database", activeOrders.size());
@@ -398,8 +385,8 @@ public class OrderManager {
     public long getTotalOrdersRejected() { return totalOrdersRejected.get(); }
     public long getTotalOrdersCancelled() { return totalOrdersCancelled.get(); }
     public long getTotalOrdersFilled() { return totalOrdersFilled.get(); }
-    public int getActiveOrderCount() { return activeOrdersByClOrdID.size(); }
     public MatchingEngine getMatchingEngine() { return matchingEngine; }
+    public int getActiveOrderCount() { return activeOrdersByClOrdID.size(); }
 
     public Optional<Order> findByClOrdID(String clOrdID) {
         Order order = activeOrdersByClOrdID.get(clOrdID);
@@ -420,7 +407,6 @@ public class OrderManager {
         matchingEngine.printStatistics();
     }
 
-    // Response classes
     public static class OrderResponse {
         private final ResponseType type;
         private final Order order;
@@ -444,14 +430,34 @@ public class OrderManager {
             return new OrderResponse(ResponseType.REJECTED, null, clOrdID, reason, text);
         }
 
-        public boolean isAcknowledged() { return type == ResponseType.ACKNOWLEDGED; }
-        public boolean isRejected() { return type == ResponseType.REJECTED; }
-        public Order getOrder() { return order; }
-        public String getClOrdID() { return clOrdID; }
-        public byte getRejectReason() { return rejectReason; }
-        public String getRejectText() { return rejectText; }
+        public boolean isAcknowledged() {
+            return type == ResponseType.ACKNOWLEDGED;
+        }
 
-        enum ResponseType { ACKNOWLEDGED, REJECTED }
+        public boolean isRejected() {
+            return type == ResponseType.REJECTED;
+        }
+
+        public Order getOrder() {
+            return order;
+        }
+
+        public String getClOrdID() {
+            return clOrdID;
+        }
+
+        public byte getRejectReason() {
+            return rejectReason;
+        }
+
+        public String getRejectText() {
+            return rejectText;
+        }
+
+        enum ResponseType {
+            ACKNOWLEDGED,
+            REJECTED
+        }
     }
 
     public static class CancelResponse {
@@ -486,16 +492,46 @@ public class OrderManager {
             return new CancelResponse(ResponseType.MASS_CANCELLED, null, null, (byte)0, null, count, massCancelId);
         }
 
-        public boolean isCancelled() { return type == ResponseType.CANCELLED; }
-        public boolean isRejected() { return type == ResponseType.REJECTED; }
-        public boolean isMassCancelled() { return type == ResponseType.MASS_CANCELLED; }
-        public Order getOrder() { return order; }
-        public String getClOrdID() { return clOrdID; }
-        public byte getCancelReason() { return cancelReason; }
-        public String getRejectText() { return rejectText; }
-        public int getMassCancelCount() { return massCancelCount; }
-        public String getMassCancelId() { return massCancelId; }
+        public boolean isCancelled() {
+            return type == ResponseType.CANCELLED;
+        }
 
-        enum ResponseType { CANCELLED, REJECTED, MASS_CANCELLED }
+        public boolean isRejected() {
+            return type == ResponseType.REJECTED;
+        }
+
+        public boolean isMassCancelled() {
+            return type == ResponseType.MASS_CANCELLED;
+        }
+
+        public Order getOrder() {
+            return order;
+        }
+
+        public String getClOrdID() {
+            return clOrdID;
+        }
+
+        public byte getCancelReason() {
+            return cancelReason;
+        }
+
+        public String getRejectText() {
+            return rejectText;
+        }
+
+        public int getMassCancelCount() {
+            return massCancelCount;
+        }
+
+        public String getMassCancelId() {
+            return massCancelId;
+        }
+
+        enum ResponseType {
+            CANCELLED,
+            REJECTED,
+            MASS_CANCELLED
+        }
     }
 }

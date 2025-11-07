@@ -45,7 +45,7 @@ public class CboeServer {
     private final HealthMetrics healthMetrics;
     private final StatisticsGeneratorService statisticsGenerator;
     private final OrderManager orderManager;
-    private RestApiServer restApiServer;
+    private final RestApiServer restApiServer;
 
     private ServerSocket serverSocket;
     private Thread acceptorThread;
@@ -71,7 +71,7 @@ public class CboeServer {
         this.orderManager.setSessionManager(sessionManager);
 
         this.restApiServer = new RestApiServer(
-                9090,
+                9091,
                 orderManager,
                 new com.boe.simulator.server.order.OrderRepository(dbManager),
                 new com.boe.simulator.server.matching.TradeRepositoryService(dbManager),
@@ -107,8 +107,8 @@ public class CboeServer {
         // Start a REST API server
         restApiServer.start();
 
-        LOGGER.info("✓ CBOE Server started successfully on " + config.getHost() + ":" + config.getPort());
-        LOGGER.info("✓ REST API available on http://localhost:9090");
+        LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}", new Object[]{config.getHost(), config.getPort()});
+        LOGGER.info("✓ REST API available on http://localhost:9091");
 
 
         // Create server socket
@@ -134,7 +134,7 @@ public class CboeServer {
 
         while (running.get()) {
             try {
-                // Accept new connection (with timeout)
+                // Accept a new connection (with timeout)
                 Socket clientSocket = serverSocket.accept();
 
                 // Check connection limit
@@ -226,46 +226,74 @@ public class CboeServer {
     public void shutdown() {
         LOGGER.info("======= SERVER SHUTDOWN INITIATED =======");
 
-        // Print statistics
-        LOGGER.info(healthMetrics.getHealthSummary());
-        LOGGER.log(Level.INFO, "Error stats: Errors={0}, Warnings={1}, Recoveries={2}", new Object[]{
-                errorHandler.getTotalErrors(),
-                errorHandler.getTotalWarnings(),
-                errorHandler.getTotalRecoveries()
-        });
-        LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
-        sessionManager.printSessionSummary();
-        orderManager.printStatistics();
-
-        // Stop REST API server
-        if (restApiServer != null) restApiServer.stop();
-
-        // Stop accepting connections
-        stop();
-
-        // Disconnect all sessions
-        sessionManager.disconnectAll();
-
-        // Shutdown executor
-        clientExecutor.shutdown();
         try {
-            if (!clientExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                LOGGER.warning("Executor did not terminate in time, forcing shutdown...");
+            // Print statistics (con try-catch para proteger)
+            try {
+                LOGGER.info(healthMetrics.getHealthSummary());
+                LOGGER.log(Level.INFO, "Error stats: Errors={0}, Warnings={1}, Recoveries={2}", new Object[]{
+                        errorHandler.getTotalErrors(),
+                        errorHandler.getTotalWarnings(),
+                        errorHandler.getTotalRecoveries()
+                });
+                LOGGER.log(Level.INFO, "Users in database: {0}", authService.getUserCount());
+
+                // Intentar imprimir estadísticas de sesiones (puede fallar si DB ya cerrada)
+                if (dbManager != null && !dbManager.isClosed()) {
+                    sessionManager.printSessionSummary();
+                    orderManager.printStatistics();
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Could not print statistics during shutdown", e);
+            }
+
+            // Stop REST API server
+            if (restApiServer != null) {
+                try {
+                    restApiServer.stop();
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Error stopping REST API", e);
+                }
+            }
+
+            // Stop accepting connections
+            stop();
+
+            // Disconnect all sessions
+            try {
+                sessionManager.disconnectAll();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error disconnecting sessions", e);
+            }
+
+            // Shutdown executor
+            clientExecutor.shutdown();
+            try {
+                if (!clientExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                    LOGGER.warning("Executor did not terminate in time, forcing shutdown...");
+                    clientExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 clientExecutor.shutdownNow();
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            clientExecutor.shutdownNow();
-        }
 
-        LOGGER.info("Closing persistence layer...");
-        if (dbManager != null) {
-            dbManager.close();
-            LOGGER.info("✓ Database closed successfully");
-        }
+            // Cerrar base de datos al FINAL
+            LOGGER.info("Closing persistence layer...");
+            if (dbManager != null && !dbManager.isClosed()) {
+                try {
+                    dbManager.close();
+                    LOGGER.info("✓ Database closed successfully");
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Error closing database", e);
+                }
+            }
 
-        LOGGER.info("✓ CBOE Server shutdown complete");
-        LOGGER.info("=========================================");
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error during shutdown", e);
+        } finally {
+            LOGGER.info("✓ CBOE Server shutdown complete");
+            LOGGER.info("=========================================");
+        }
     }
 
     // Status methods
@@ -312,7 +340,7 @@ public class CboeServer {
     public static void main(String[] args) {
         ServerConfiguration config = ServerConfiguration.builder()
                 .host("0.0.0.0")
-                .port(8080)
+                .port(8081)
                 .maxConnections(10)
                 .logLevel(Level.INFO)
                 .build();
@@ -332,12 +360,12 @@ public class CboeServer {
                     ║         CBOE Server + REST API - RUNNING                   ║
                     ╠════════════════════════════════════════════════════════════╣
                     ║  BOE Protocol: %s:%d                               ║
-                    ║  REST API: http://localhost:9090                           ║
+                    ║  REST API: http://localhost:9091                           ║
                     ║  Max Connections: %d                                       ║
                     ║  Persistence: ENABLED                                      ║
                     ║  Matching Engine: ENABLED                                  ║
                     ║                                                            ║
-                    ║  API Documentation: http://localhost:9090/api/health       ║
+                    ║  API Documentation: http://localhost:9091/api/health       ║
                     ║                                                            ║
                     ║  Press Ctrl+C to stop the server                           ║
                     ╚════════════════════════════════════════════════════════════╝
@@ -348,7 +376,7 @@ public class CboeServer {
                 if (server.isRunning()) LOGGER.log(Level.INFO, "Server status - Active connections: {0}", server.getActiveConnections());
             }, 0, 10, TimeUnit.SECONDS);
 
-            // Keep main thread alive
+            // Keep the main thread alive
             while (server.isRunning()) {
                 Thread.sleep(1000);
             }

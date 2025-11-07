@@ -1,8 +1,5 @@
 package com.boe.simulator.server.order;
 
-import com.boe.simulator.protocol.types.BinaryPrice;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
