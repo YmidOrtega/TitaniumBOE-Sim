@@ -5,6 +5,8 @@ import com.boe.simulator.api.middleware.AuthenticationFilter;
 import com.boe.simulator.api.middleware.CorsFilter;
 import com.boe.simulator.api.middleware.ErrorHandler;
 import com.boe.simulator.api.service.*;
+import com.boe.simulator.api.websocket.WebSocketHandler;
+import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.TradeRepository;
@@ -25,6 +27,7 @@ public class RestApiServer {
     private final TradeRepository tradeRepository;
     private final AuthenticationService authService;
     private final MatchingEngine matchingEngine;
+    private final WebSocketService webSocketService;
 
     private Javalin app;
     private boolean running = false;
@@ -43,6 +46,7 @@ public class RestApiServer {
         this.tradeRepository = tradeRepository;
         this.authService = authService;
         this.matchingEngine = matchingEngine;
+        this.webSocketService = new WebSocketService();
     }
 
     public void start() {
@@ -69,8 +73,14 @@ public class RestApiServer {
         TradeController tradeController = new TradeController(tradeService);
         SymbolController symbolController = new SymbolController(matchingEngine, symbolService);
 
-        // Create authentication filter
+        // Create an authentication filter
         AuthenticationFilter authFilter = new AuthenticationFilter(authService);
+
+        // Configure WebSocket service in OrderManager and MatchingEngine
+        orderManager.setWebSocketService(webSocketService);
+        matchingEngine.setWebSocketService(webSocketService);
+
+        WebSocketHandler wsHandler = new WebSocketHandler(webSocketService);
 
         // Create Javalin app
         app = Javalin.create(config -> {
@@ -93,6 +103,8 @@ public class RestApiServer {
                     matchingEngine.getTotalMatches()
             ));
         });
+
+        app.ws("/ws/feed", wsHandler::configure);
 
         app.get("/api/symbols", symbolController::getSymbols);
 
@@ -121,6 +133,7 @@ public class RestApiServer {
         running = true;
 
         LOGGER.log(Level.INFO, "✓ REST API Server started successfully on http://localhost:{0}", port);
+        LOGGER.log(Level.INFO, "✓ WebSocket available at ws://localhost:{0}/ws/feed", port);
         printEndpoints();
     }
 
@@ -158,7 +171,14 @@ public class RestApiServer {
         LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/trades/recent", port);
         LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/trades/symbol/{{symbol}}", port);
         LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/trades/my", port);
+        LOGGER.info("");
+        LOGGER.info("WEBSOCKET:");
+        LOGGER.log(Level.INFO, "  WS     ws://localhost:{0}/ws/feed", port);
         LOGGER.info("========================================");
+    }
+
+    public WebSocketService getWebSocketService() {
+        return webSocketService;
     }
 
     private record HealthResponse(
