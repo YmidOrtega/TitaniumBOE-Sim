@@ -1,5 +1,6 @@
 package com.boe.simulator.server.matching;
 
+import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.server.order.Order;
 import com.boe.simulator.server.order.OrderRepository;
 
@@ -21,6 +22,7 @@ public class MatchingEngine {
     private final boolean allowSelfTrade;
     private final AtomicLong totalMatches;
     private final AtomicLong totalTradeVolume;
+    private WebSocketService webSocketService;
 
     public MatchingEngine(OrderRepository orderRepository, TradeRepository tradeRepository) {
         this(orderRepository, tradeRepository, false);
@@ -37,6 +39,10 @@ public class MatchingEngine {
         this.totalTradeVolume = new AtomicLong(0);
 
         LOGGER.info("MatchingEngine initialized (Self-trade: " + allowSelfTrade + ")");
+    }
+
+    public void setWebSocketService(WebSocketService webSocketService) {
+        this.webSocketService = webSocketService;
     }
 
     public List<Trade> processOrder(Order order) {
@@ -204,23 +210,15 @@ public class MatchingEngine {
     }
 
     private void notifyOrderAdded(Order order, OrderBook book) {
-        for (MatchingEventListener listener : eventListeners) {
-            try {
-                listener.onOrderAdded(order, book);
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Error notifying listener", e);
-            }
-        }
+        eventListeners.forEach(listener -> listener.onOrderAdded(order, book));
+
+        if (webSocketService != null) webSocketService.broadcastOrderBookUpdate(order.getSymbol(), book, 10);
     }
 
     private void notifyOrderRemoved(Order order, OrderBook book) {
-        for (MatchingEventListener listener : eventListeners) {
-            try {
-                listener.onOrderRemoved(order, book);
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Error notifying listener", e);
-            }
-        }
+        eventListeners.forEach(listener -> listener.onOrderRemoved(order, book));
+
+        if (webSocketService != null) webSocketService.broadcastOrderBookUpdate(order.getSymbol(), book, 10);
     }
 
     // Statistics
