@@ -15,12 +15,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.boe.simulator.api.RestApiServer;
+import com.boe.simulator.bot.MarketSimulator;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.error.ErrorHandler;
+import com.boe.simulator.server.matching.TradeRepositoryService;
 import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.order.OrderManager;
+import com.boe.simulator.server.order.OrderRepository;
 import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.persistence.repository.SessionRepository;
 import com.boe.simulator.server.persistence.repository.StatisticsRepository;
@@ -45,6 +48,7 @@ public class CboeServer {
     private final HealthMetrics healthMetrics;
     private final StatisticsGeneratorService statisticsGenerator;
     private final OrderManager orderManager;
+    private final MarketSimulator marketSimulator;
     private final RestApiServer restApiServer;
 
     private ServerSocket serverSocket;
@@ -70,20 +74,31 @@ public class CboeServer {
         this.orderManager = new OrderManager(dbManager);
         this.orderManager.setSessionManager(sessionManager);
 
-        this.restApiServer = new RestApiServer(
-                9091,
-                orderManager,
-                new com.boe.simulator.server.order.OrderRepository(dbManager),
-                new com.boe.simulator.server.matching.TradeRepositoryService(dbManager),
-                authService,
-                orderManager.getMatchingEngine()
-        );
-
+        // Initialize statistics generator
         this.statisticsGenerator = new StatisticsGeneratorService(
                 sessionRepo,
                 statsRepo,
                 sessionManager,
                 errorHandler
+        );
+
+        TradeRepositoryService tradeRepository = new TradeRepositoryService(dbManager);
+        this.marketSimulator = new MarketSimulator(
+                orderManager,
+                orderManager.getMatchingEngine(),
+                tradeRepository
+        );
+
+        OrderRepository orderRepo = orderManager.getOrderRepository();
+
+        this.restApiServer = new RestApiServer(
+                9091,
+                orderManager,
+                orderRepo,
+                tradeRepository,
+                authService,
+                orderManager.getMatchingEngine(),
+                marketSimulator
         );
 
         // Configure logging
@@ -120,13 +135,21 @@ public class CboeServer {
         acceptorThread = new Thread(this::acceptConnections, "ServerAcceptor");
         acceptorThread.start();
 
-        LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}",new Object[]{
-            config.getHost(), config.getPort()
-        });
+        LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}",
+                new Object[]{config.getHost(), config.getPort()});
         LOGGER.log(Level.INFO, "✓ Ready to accept connections (max: {0})", config.getMaxConnections());
 
         statisticsGenerator.start();
         LOGGER.info("✓ Statistics generator started");
+
+        if (config.isMarketSimulatorEnabled()) {
+            marketSimulator.initializeDefaultBots();
+            marketSimulator.start();
+            LOGGER.info("✓ Market Simulator started");
+        }
+
+        running.set(true);
+        LOGGER.info("✓ CBOE Server started successfully");
     }
 
     private void acceptConnections() {
@@ -200,12 +223,18 @@ public class CboeServer {
         }
 
         LOGGER.info("Stopping CBOE Server...");
+
+        if (marketSimulator.isRunning()) {
+            marketSimulator.stop();
+            LOGGER.info("✓ Market Simulator stopped");
+        }
+
         running.set(false);
 
         // Close server socket
         try {
             if (serverSocket != null && !serverSocket.isClosed()) serverSocket.close();
-            
+
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Error closing server socket", e);
         }
@@ -257,6 +286,9 @@ public class CboeServer {
 
             // Stop accepting connections
             stop();
+
+            // Shutdown market simulator
+            marketSimulator.shutdown();
 
             // Disconnect all sessions
             try {
@@ -337,6 +369,10 @@ public class CboeServer {
         return restApiServer;
     }
 
+    public MarketSimulator getMarketSimulator() {
+        return marketSimulator;
+    }
+
     public static void main(String[] args) {
         ServerConfiguration config = ServerConfiguration.builder()
                 .host("0.0.0.0")
@@ -347,7 +383,7 @@ public class CboeServer {
 
         CboeServer server = new CboeServer(config);
 
-        // Add shutdown hook for clean shutdown
+        // Add a shutdown hook for clean shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("\n\nShutdown signal received...");
             server.shutdown();

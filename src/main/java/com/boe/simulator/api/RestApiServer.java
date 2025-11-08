@@ -7,6 +7,7 @@ import com.boe.simulator.api.middleware.ErrorHandler;
 import com.boe.simulator.api.service.*;
 import com.boe.simulator.api.websocket.WebSocketHandler;
 import com.boe.simulator.api.websocket.WebSocketService;
+import com.boe.simulator.bot.MarketSimulator;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.TradeRepository;
@@ -28,6 +29,7 @@ public class RestApiServer {
     private final AuthenticationService authService;
     private final MatchingEngine matchingEngine;
     private final WebSocketService webSocketService;
+    private final MarketSimulator marketSimulator;
 
     private Javalin app;
     private boolean running = false;
@@ -38,7 +40,8 @@ public class RestApiServer {
             OrderRepository orderRepository,
             TradeRepository tradeRepository,
             AuthenticationService authService,
-            MatchingEngine matchingEngine
+            MatchingEngine matchingEngine,
+            MarketSimulator marketSimulator
     ) {
         this.port = port;
         this.orderManager = orderManager;
@@ -46,6 +49,7 @@ public class RestApiServer {
         this.tradeRepository = tradeRepository;
         this.authService = authService;
         this.matchingEngine = matchingEngine;
+        this.marketSimulator = marketSimulator;
         this.webSocketService = new WebSocketService();
     }
 
@@ -72,6 +76,7 @@ public class RestApiServer {
         PositionController positionController = new PositionController(positionService);
         TradeController tradeController = new TradeController(tradeService);
         SymbolController symbolController = new SymbolController(matchingEngine, symbolService);
+        BotController botController = new BotController(marketSimulator); // ✅ N
 
         // Create an authentication filter
         AuthenticationFilter authFilter = new AuthenticationFilter(authService);
@@ -132,6 +137,15 @@ public class RestApiServer {
         app.start(port);
         running = true;
 
+        // Bot management endpoints
+        app.get("/api/simulator/status", botController::getSimulatorStatus);
+        app.get("/api/simulator/bots", botController::getAllBots);
+        app.get("/api/simulator/bots/{botId}", botController::getBot);
+        app.post("/api/simulator/bots/{botId}/start", botController::startBot);
+        app.post("/api/simulator/bots/{botId}/stop", botController::stopBot);
+        app.post("/api/simulator/start", botController::startSimulator);
+        app.post("/api/simulator/stop", botController::stopSimulator);
+
         LOGGER.log(Level.INFO, "✓ REST API Server started successfully on http://localhost:{0}", port);
         LOGGER.log(Level.INFO, "✓ WebSocket available at ws://localhost:{0}/ws/feed", port);
         printEndpoints();
@@ -174,6 +188,12 @@ public class RestApiServer {
         LOGGER.info("");
         LOGGER.info("WEBSOCKET:");
         LOGGER.log(Level.INFO, "  WS     ws://localhost:{0}/ws/feed", port);
+        LOGGER.info("");
+        LOGGER.info("SIMULATOR (Admin):");
+        LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/simulator/status", port);
+        LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/simulator/bots", port);
+        LOGGER.log(Level.INFO, "  POST   http://localhost:{0}/api/simulator/start", port);
+        LOGGER.log(Level.INFO, "  POST   http://localhost:{0}/api/simulator/stop", port);
         LOGGER.info("========================================");
     }
 
