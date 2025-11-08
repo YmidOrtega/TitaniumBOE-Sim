@@ -398,7 +398,7 @@ public class OrderManager {
     public long getTotalOrdersRejected() { return totalOrdersRejected.get(); }
     public long getTotalOrdersCancelled() { return totalOrdersCancelled.get(); }
     public long getTotalOrdersFilled() { return totalOrdersFilled.get(); }
-    public MatchingEngine getMatchingEngine() { return matchingEngine; }
+    public MatchingEngine getMatchingEngine() {return matchingEngine; }
     public int getActiveOrderCount() { return activeOrdersByClOrdID.size(); }
 
     public Optional<Order> findByClOrdID(String clOrdID) {
@@ -418,6 +418,10 @@ public class OrderManager {
         LOGGER.info("======================================");
 
         matchingEngine.printStatistics();
+    }
+
+    public OrderRepository getOrderRepository() {
+        return orderRepository;
     }
 
     public static class OrderResponse {

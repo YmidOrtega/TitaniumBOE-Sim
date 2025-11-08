@@ -16,6 +16,8 @@ public class ServerConfiguration {
     
     // Logging
     private final Level logLevel;
+
+    private boolean marketSimulatorEnabled = true;
     
     private ServerConfiguration(Builder builder) {
         this.host = builder.host;
@@ -33,6 +35,14 @@ public class ServerConfiguration {
     
     public static ServerConfiguration getDefault() {
         return builder().build();
+    }
+
+    public boolean isMarketSimulatorEnabled() {
+        return marketSimulatorEnabled;
+    }
+
+    public void setMarketSimulatorEnabled(boolean enabled) {
+        this.marketSimulatorEnabled = enabled;
     }
     
     // Getters
