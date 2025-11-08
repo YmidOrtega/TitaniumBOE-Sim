@@ -1,5 +1,6 @@
 package com.boe.simulator.server.order;
 
+import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.protocol.message.*;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.matching.MatchingEngine;
@@ -25,6 +26,7 @@ public class OrderManager {
     private final MatchingEngine matchingEngine;
 
     private ClientSessionManager sessionManager;
+    private WebSocketService webSocketService;
 
     private final ConcurrentHashMap<String, Order> activeOrdersByClOrdID;
     private final ConcurrentHashMap<Long, Order> activeOrdersByOrderID;
@@ -64,6 +66,10 @@ public class OrderManager {
 
     public void setSessionManager(ClientSessionManager sessionManager) {
         this.sessionManager = sessionManager;
+    }
+
+    public void setWebSocketService(WebSocketService webSocketService) {
+        this.webSocketService = webSocketService;
     }
 
     private void setupMatchingEngineListeners() {
@@ -335,6 +341,13 @@ public class OrderManager {
         }
 
         if (sessionManager != null) sendExecutionMessages(trade, buyOrder, sellOrder);
+
+        if (webSocketService != null) {
+            webSocketService.broadcastTrade(trade);
+            // Notify order status updates
+            if (buyOrder != null) webSocketService.broadcastOrderStatus(buyOrder);
+            if (sellOrder != null) webSocketService.broadcastOrderStatus(sellOrder);
+        }
     }
 
     private void sendExecutionMessages(Trade trade, Order buyOrder, Order sellOrder) {
