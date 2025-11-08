@@ -1,6 +1,6 @@
 package com.boe.simulator.api.websocket.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
@@ -16,10 +16,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 })
 public abstract class WebSocketMessage {
 
-    @JsonProperty("type")
+    @JsonIgnore
     private final String type;
 
-    @JsonProperty("timestamp")
     private final long timestamp;
 
     protected WebSocketMessage(String type) {
