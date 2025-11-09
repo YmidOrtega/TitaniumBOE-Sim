@@ -1,13 +1,13 @@
 package com.boe.simulator.integration;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.client.listener.BoeMessageListener;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
-import com.boe.simulator.client.connection.BoeConnectionHandler;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class BidirectionalHeartbeatTest {
     public static void main(String[] args) throws Exception {
@@ -43,6 +43,7 @@ public class BidirectionalHeartbeatTest {
         System.out.println("✓ Login sent\n");
 
         // Start listener
+        @SuppressWarnings("unused")
         CompletableFuture<Void> listenerFuture = client.startListener();
         Thread.sleep(500);
 
