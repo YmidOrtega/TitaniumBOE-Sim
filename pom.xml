@@ -125,7 +125,6 @@
                 <version>3.11.0</version>
                 <configuration>
                     <release>21</release>
-                    <!-- ❌ ELIMINADO source y target que conflictúan con release -->
                 </configuration>
             </plugin>
 
@@ -136,9 +135,6 @@
                 <version>3.0.0-M7</version>
                 <configuration>
                     <runOrder>alphabetical</runOrder>
-                    <excludes>
-                        <exclude>**/integration/**</exclude>
-                    </excludes>
                 </configuration>
             </plugin>
 
