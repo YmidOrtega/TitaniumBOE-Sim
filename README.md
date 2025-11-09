@@ -151,16 +151,32 @@ mvn exec:java -Dexec.mainClass="com.boe.simulator.server.CboeServer"
 
 # Using packaged JAR
 java -jar target/boe-simulator-1.0-SNAPSHOT.jar
+
+# With demo mode enabled (for testing only)
+DEMO_MODE=true mvn exec:java -Dexec.mainClass="com.boe.simulator.server.CboeServer"
 ```
 
-**Server Configuration** (edit before running):
-```java
-// src/main/java/com/boe/simulator/server/config/ServerConfiguration.java
-- Port: 9001
-- Max Connections: 100
-- Heartbeat Timeout: 30s
-- Rate Limit: 100 msg/sec
+**Server Configuration** (via environment variables):
+```bash
+# Required for demo/testing
+export DEMO_MODE=true                    # Creates sample users (DO NOT use in production)
+export DEMO_USER_1=trader1               # Optional: custom demo username
+export DEMO_PASS_1=SecurePass123!        # Optional: custom demo password
+
+# REST API CORS configuration
+export ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# Server ports (optional)
+export BOE_PORT=8081
+export API_PORT=9091
 ```
+
+**Default Configuration**:
+- BOE Protocol Port: 8081
+- REST API Port: 9091
+- Max Connections: 10
+- Heartbeat Timeout: 30s
+- Rate Limit: 100 msg/min
 
 ### Running the Client
 
@@ -295,9 +311,9 @@ mvn test -Dtest=OrderManagerTest
 
 ---
 
-## 🛡️ Validation Features
+## 🛡️ Validation & Security Features
 
-The server implements several safety checks:
+The server implements several safety and security checks:
 
 ### Fat Finger Protection
 Rejects orders with unrealistic prices (e.g., AAPL at $50,000):
@@ -317,6 +333,21 @@ if (buyPrice > nbboAsk || sellPrice < nbboBid) {
 
 ### Quantity Limits
 Enforces maximum order sizes per symbol.
+
+### Security Features
+- ✅ **BCrypt Password Hashing** (12 rounds)
+- ✅ **Rate Limiting** (100 msg/min per connection)
+- ✅ **Session Management** with timeout detection
+- ✅ **HTTP Basic Authentication** for REST API
+- ✅ **Input Validation** for all messages
+- ✅ **Thread-Safe** concurrent operations
+
+> **🔒 Security Note**: This is a demonstration project. See [SECURITY.md](docs/SECURITY.md) for important security considerations before production deployment. Key items needed for production:
+> - Enable TLS/HTTPS encryption
+> - Configure specific CORS origins
+> - Set `DEMO_MODE=false`
+> - Use strong passwords from secure environment variables
+> - Add rate limiting to REST API
 
 ---
 
