@@ -1,5 +1,16 @@
 package com.boe.simulator.integration;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+
+import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.client.listener.BoeMessageListener;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
@@ -8,19 +19,6 @@ import com.boe.simulator.protocol.message.LogoutRequestMessage;
 import com.boe.simulator.protocol.message.LogoutResponseMessage;
 import com.boe.simulator.server.CboeServer;
 import com.boe.simulator.server.config.ServerConfiguration;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import java.io.IOException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-
-import java.util.concurrent.CountDownLatch;
 
 public class LogoutIntegrationTest {
 

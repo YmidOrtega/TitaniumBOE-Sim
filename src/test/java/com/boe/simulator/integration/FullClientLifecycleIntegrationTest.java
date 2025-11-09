@@ -116,8 +116,7 @@ public class FullClientLifecycleIntegrationTest {
         
         for (int i = 1; i <= 4; i++) {
             Thread.sleep(5000);
-            System.out.println("[" + (i * 5) + "s] Estado: " + client.getState() + 
-                             " | Heartbeat: " + client.getHeartbeatManager().isActive());
+            System.out.println("[" + (i * 5) + "s] Estado: " + client.getState() + " | Heartbeat: " + client.getHeartbeatManager().isActive());
         }
         
         // Desconectar limpiamente
@@ -130,6 +129,7 @@ public class FullClientLifecycleIntegrationTest {
     /**
      * Test 2: Auto-reconnect (necesitas detener el servidor manualmente)
      */
+    @SuppressWarnings("unused")
     private static void testAutoReconnect() throws Exception {
         System.out.println("═══ Test: Reconexión Automática ═══\n");
         System.out.println("INSTRUCCIONES:");
@@ -192,12 +192,10 @@ public class FullClientLifecycleIntegrationTest {
         System.out.println("\n✓ Conectado - Ahora DETÉN el servidor para ver la reconexión\n");
         
         // Esperar largo tiempo para que puedas detener/reiniciar el servidor
+        final long sleepInterval = 1000;
         for (int i = 1; i <= 60; i++) {  // 60 segundos = 1 minuto
-            Thread.sleep(1000);
-            
-            if (i % 10 == 0) {
-                System.out.println("[" + i + "s] Estado: " + client.getState() + " | Reconectando: " + client.isReconnecting());
-            }
+            if (i % 10 == 0) System.out.println("[" + i + "s] Estado: " + client.getState() + " | Reconectando: " + client.isReconnecting());
+            Thread.sleep(sleepInterval);
         }
         
         // Cleanup

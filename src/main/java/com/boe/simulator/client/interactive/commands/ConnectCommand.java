@@ -54,6 +54,16 @@ public class ConnectCommand implements Command {
             // Connect (includes automatic login)
             client.connect().get();
 
+            // Check if authentication was successful
+            if (!client.isAuthenticated()) {
+                // Cleanup on authentication failure
+                context.getNotificationManager().stop();
+                client.getConnectionHandler().removeTradingListener(tradingListener);
+                client.disconnect();
+                ColorOutput.error("Authentication failed - invalid username or password");
+                return;
+            }
+
             context.connect(host, port, client);
             context.authenticate(username);
             context.set("password", password);
@@ -63,8 +73,22 @@ public class ConnectCommand implements Command {
             ColorOutput.info("Real-time notifications enabled");
 
         } catch (Exception e) {
-            ColorOutput.error("Connection failed: " + e.getMessage());
-            throw e;
+            // Cleanup notification manager if it was started
+            context.getNotificationManager().stop();
+            
+            // Extract the root cause message for user-friendly error
+            Throwable cause = e;
+            while (cause.getCause() != null && cause.getCause() != cause) {
+                cause = cause.getCause();
+            }
+            
+            String errorMessage = cause.getMessage();
+            if (errorMessage == null || errorMessage.isEmpty()) {
+                errorMessage = cause.getClass().getSimpleName();
+            }
+            
+            ColorOutput.error("Connection failed: " + errorMessage);
+            // Don't re-throw - just return to allow user to try again
         }
     }
 
