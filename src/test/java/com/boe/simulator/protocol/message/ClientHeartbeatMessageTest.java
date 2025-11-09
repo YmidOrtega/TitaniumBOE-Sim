@@ -36,11 +36,11 @@ class ClientHeartbeatMessageTest {
         // Arrange
         ClientHeartbeatMessage message = new ClientHeartbeatMessage((byte) 1, 12345);
         byte[] expected = {
-                (byte) 0xBA, (byte) 0xBA,
-                0x06, 0x00,
-                0x03,
-                0x01,
-                0x39, 0x30, 0x00, 0x00
+                (byte) 0xBA, (byte) 0xBA,  // Start of Message
+                0x08, 0x00,                 // Message Length (8 bytes)
+                0x03,                       // Message Type (ClientHeartbeat)
+                0x01,                       // Matching Unit
+                0x39, 0x30, 0x00, 0x00      // Sequence Number (12345 in little-endian)
         };
 
         // Act
