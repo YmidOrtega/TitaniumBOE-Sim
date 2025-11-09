@@ -106,4 +106,12 @@ public class MarketMakerStrategy implements TradingStrategy {
     public String getStrategyName() {
         return "MARKET_MAKER";
     }
+
+    public OrderManager getOrderManager() {
+        return orderManager;
+    }
+
+    public void setOrderManager(OrderManager orderManager) {
+        this.orderManager = orderManager;
+    }
 }

@@ -86,4 +86,12 @@ public class RandomTraderStrategy implements TradingStrategy {
     public String getStrategyName() {
         return "RANDOM_TRADER";
     }
+
+    public OrderManager getOrderManager() {
+        return orderManager;
+    }
+
+    public void setOrderManager(OrderManager orderManager) {
+        this.orderManager = orderManager;
+    }
 }

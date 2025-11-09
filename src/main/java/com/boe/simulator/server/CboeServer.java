@@ -52,7 +52,7 @@ public class CboeServer {
     private final RestApiServer restApiServer;
 
     private ServerSocket serverSocket;
-    private Thread acceptorThread;
+    private static Thread acceptorThread;
 
     public CboeServer(ServerConfiguration config) {
         this.config = config;
@@ -395,7 +395,7 @@ public class CboeServer {
                     ╔════════════════════════════════════════════════════════════╗
                     ║         CBOE Server + REST API - RUNNING                   ║
                     ╠════════════════════════════════════════════════════════════╣
-                    ║  BOE Protocol: %s:%d                               ║
+                    ║  BOE Protocol: %s:%d                                ║
                     ║  REST API: http://localhost:9091                           ║
                     ║  Max Connections: %d                                       ║
                     ║  Persistence: ENABLED                                      ║
@@ -413,17 +413,15 @@ public class CboeServer {
             }, 0, 10, TimeUnit.SECONDS);
 
             // Keep the main thread alive
-            while (server.isRunning()) {
-                Thread.sleep(1000);
+            try {
+                acceptorThread.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
 
             // Shutdown del scheduler al finalizar
             scheduler.shutdownNow();
 
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOGGER.log(Level.WARNING, "Server thread interrupted", e);
-            server.shutdown();
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Server I/O error", e);
             server.shutdown();

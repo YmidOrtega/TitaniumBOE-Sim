@@ -38,16 +38,40 @@ public class AuthenticationService {
         long userCount = userRepository.count();
 
         if (userCount == 0) {
-            LOGGER.info("No users found in database, creating default users...");
-
-            // Create default users
-            createUser("USER", "PASS");
-            createUser("TRD1", "PASS1");
-            createUser("TRD2", "PASS2");
-            createUser("ADMN", "ADMIN123");
-            createUser("TEST", "TEST");
-
-            LOGGER.log(Level.INFO, "Created {0} default users", userRepository.count());
+            // Check both system property (for tests) and environment variable
+            String demoMode = System.getProperty("DEMO_MODE", System.getenv().getOrDefault("DEMO_MODE", "false"));
+            
+            if ("true".equalsIgnoreCase(demoMode)) {
+                LOGGER.warning("════════════════════════════════════════════════════");
+                LOGGER.warning("⚠️  DEMO MODE ENABLED - Creating sample users");
+                LOGGER.warning("⚠️  These credentials are for DEMONSTRATION ONLY");
+                LOGGER.warning("⚠️  DO NOT USE IN PRODUCTION ENVIRONMENTS");
+                LOGGER.warning("════════════════════════════════════════════════════");
+                
+                // Create demo users with credentials from environment or defaults
+                // NOTE: Username max 4 chars, Password max 10 chars (BOE protocol limits)
+                createUser(
+                    System.getenv().getOrDefault("DEMO_USER_1", "TRD1"),
+                    System.getenv().getOrDefault("DEMO_PASS_1", "Pass1234!")
+                );
+                createUser(
+                    System.getenv().getOrDefault("DEMO_USER_2", "TRD2"),
+                    System.getenv().getOrDefault("DEMO_PASS_2", "Pass5678!")
+                );
+                createUser(
+                    System.getenv().getOrDefault("DEMO_ADMIN", "ADMN"),
+                    System.getenv().getOrDefault("DEMO_ADMIN_PASS", "Admin999!")
+                );
+                
+                LOGGER.log(Level.WARNING, "Created {0} demo users for testing", userRepository.count());
+                LOGGER.warning("Set DEMO_MODE=false to disable automatic user creation");
+            } else {
+                LOGGER.info("No users found in database.");
+                LOGGER.info("To create users:");
+                LOGGER.info("  1. Set DEMO_MODE=true for demo users (NOT for production)");
+                LOGGER.info("  2. Use the createUser() API programmatically");
+                LOGGER.info("  3. Use a proper user management system");
+            }
         } else {
             LOGGER.log(Level.INFO, "Found {0} existing users in database", userCount);
         }
