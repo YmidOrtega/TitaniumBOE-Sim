@@ -4,14 +4,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.List;
+import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.boe.simulator.client.listener.BoeMessageListener;
+import com.boe.simulator.client.listener.TradingMessageListener;
 import com.boe.simulator.protocol.message.*;
 import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
 
@@ -22,6 +21,7 @@ public class BoeConnectionHandler {
     private final int port;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final BoeMessageSerializer serializer = new BoeMessageSerializer();
+    private final List<TradingMessageListener> tradingListeners = new CopyOnWriteArrayList<>();
 
     private final Object readLock = new Object();
     private final Object writeLock = new Object();
@@ -37,6 +37,17 @@ public class BoeConnectionHandler {
     public BoeConnectionHandler(String host, int port) {
         this.host = host;
         this.port = port;
+    }
+
+    public void addTradingListener(TradingMessageListener listener) {
+        if (listener != null && !tradingListeners.contains(listener)) {
+            tradingListeners.add(listener);
+            LOGGER.log(Level.FINE, "Trading listener added: {0}", listener.getClass().getSimpleName());
+        }
+    }
+
+    public void removeTradingListener(TradingMessageListener listener) {
+        if (tradingListeners.remove(listener)) LOGGER.log(Level.FINE, "Trading listener removed: {0}", listener.getClass().getSimpleName());
     }
 
     public CompletableFuture<Void> connect() {
@@ -227,8 +238,25 @@ public class BoeConnectionHandler {
                 case ServerHeartbeatMessage heartbeat -> processServerHeartbeat(heartbeat);
                 case LoginResponseMessage login -> processLoginResponse(login);
                 case LogoutResponseMessage logout -> processLogoutResponse(logout);
-                case OrderAcknowledgmentMessage ack -> processOrderAcknowledgment(ack, message);
-                case OrderRejectedMessage rejected -> processOrderRejected(rejected, message);
+
+                // ✅ TRADING MESSAGES - Notify trading listeners
+                case OrderAcknowledgmentMessage ack -> {
+                    processOrderAcknowledgment(ack, message);
+                    notifyTradingListeners(ack);  // ← AGREGAR
+                }
+                case OrderExecutedMessage exec -> {
+                    processOrderExecuted(exec, message);  // ← AGREGAR
+                    notifyTradingListeners(exec);  // ← AGREGAR
+                }
+                case OrderRejectedMessage rejected -> {
+                    processOrderRejected(rejected, message);
+                    notifyTradingListeners(rejected);  // ← AGREGAR
+                }
+                case OrderCancelledMessage cancelled -> {
+                    processOrderCancelled(cancelled, message);  // ← AGREGAR
+                    notifyTradingListeners(cancelled);  // ← AGREGAR
+                }
+
                 default -> {
                     LOGGER.log(Level.WARNING, "Unhandled message type: {0}", specificMessage.getClass().getName());
                     if (messageListener != null) messageListener.onUnknownMessage(message);
@@ -241,19 +269,84 @@ public class BoeConnectionHandler {
         }
     }
 
+    private void notifyTradingListeners(Object message) {
+        if (tradingListeners.isEmpty()) return;
+
+        switch (message) {
+            case OrderAcknowledgmentMessage ack -> {
+                for (TradingMessageListener listener : tradingListeners) {
+                    try {
+                        listener.onOrderAcknowledgment(ack);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Error notifying listener about ack", e);
+                    }
+                }
+            }
+            case OrderExecutedMessage exec -> {
+                for (TradingMessageListener listener : tradingListeners) {
+                    try {
+                        listener.onOrderExecuted(exec);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Error notifying listener about execution", e);
+                    }
+                }
+            }
+            case OrderRejectedMessage rej -> {
+                for (TradingMessageListener listener : tradingListeners) {
+                    try {
+                        listener.onOrderRejected(rej);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Error notifying listener about rejection", e);
+                    }
+                }
+            }
+            case OrderCancelledMessage canc -> {
+                for (TradingMessageListener listener : tradingListeners) {
+                    try {
+                        listener.onOrderCancelled(canc);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Error notifying listener about cancellation", e);
+                    }
+                }
+            }
+            default -> {
+                // Not a trading message, ignore
+            }
+        }
+    }
+
+    private void processOrderExecuted(OrderExecutedMessage exec, BoeMessage originalMessage) {
+        LOGGER.log(Level.INFO, "Order executed: ClOrdID={0}, ExecID={1}, Qty={2}, Price={3}",
+                new Object[]{
+                        exec.getClOrdID(),
+                        exec.getExecID(),
+                        exec.getLastPx(),
+                        exec.getLastPx()
+                });
+        if (messageListener != null) {
+            messageListener.onUnknownMessage(originalMessage);
+        }
+    }
+
+    private void processOrderCancelled(OrderCancelledMessage cancelled, BoeMessage originalMessage) {
+        LOGGER.log(Level.INFO, "Order cancelled: ClOrdID={0}, Reason={1}",
+                new Object[]{
+                        cancelled.getClOrdID(),
+                        (char)cancelled.getCancelReason()
+                });
+        if (messageListener != null) {
+            messageListener.onUnknownMessage(originalMessage);
+        }
+    }
+
     private void processOrderAcknowledgment(OrderAcknowledgmentMessage ack, BoeMessage originalMessage) {
         LOGGER.log(Level.INFO, "Order acknowledged: ClOrdID={0}, OrderID={1}",
                 new Object[]{ack.getClOrdID(), ack.getOrderID()});
-        if (messageListener != null) messageListener.onUnknownMessage(originalMessage);
     }
 
     private void processOrderRejected(OrderRejectedMessage rejected, BoeMessage originalMessage) {
         LOGGER.log(Level.WARNING, "Order rejected: ClOrdID={0}, Reason={1}",
-                new Object[]{
-                        rejected.getClOrdID(),
-                        (char)rejected.getOrderRejectReason()
-        });
-        if (messageListener != null) messageListener.onUnknownMessage(originalMessage);
+                new Object[]{rejected.getClOrdID(), (char)rejected.getOrderRejectReason()});
     }
 
     private void processServerHeartbeat(ServerHeartbeatMessage heartbeat) {

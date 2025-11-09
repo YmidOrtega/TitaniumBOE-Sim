@@ -16,14 +16,13 @@ public class CancelCommand implements Command {
 
         System.out.printf("Cancelling order %s...%n", clOrdID);
 
-        // Create CancelOrderMessage
-        CancelOrderMessage cancel = new CancelOrderMessage();
-        cancel.setOrigClOrdID(clOrdID);
+        CancelOrderMessage cancel = new CancelOrderMessage(clOrdID);
 
-        // Send it via connection handler
-        context.getClient().getConnectionHandler()
-                .sendMessageRaw(cancel.toBytes())
-                .get();
+        // Serialize and send
+        byte[] messageBytes = cancel.toBytes();
+
+        // Send via connection handler
+        context.getClient().getConnectionHandler().sendMessageRaw(messageBytes).get();
 
         System.out.println("✓ Cancel request submitted");
         Thread.sleep(300);

@@ -1,16 +1,16 @@
 package com.boe.simulator.bot.strategy;
 
-import com.boe.simulator.bot.BotConfig;
-import com.boe.simulator.bot.util.PriceGenerator;
-import com.boe.simulator.server.matching.MatchingEngine;
-import com.boe.simulator.server.matching.OrderBook;
-import com.boe.simulator.server.order.OrderManager;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.boe.simulator.bot.BotConfig;
+import com.boe.simulator.bot.util.PriceGenerator;
+import com.boe.simulator.server.matching.MatchingEngine;
+import com.boe.simulator.server.matching.OrderBook;
+import com.boe.simulator.server.order.OrderManager;
 
 public class RandomTraderStrategy implements TradingStrategy {
     private static final Logger LOGGER = Logger.getLogger(RandomTraderStrategy.class.getName());
@@ -29,7 +29,7 @@ public class RandomTraderStrategy implements TradingStrategy {
     public void initialize(OrderManager orderManager, MatchingEngine matchingEngine) {
         this.orderManager = orderManager;
         this.matchingEngine = matchingEngine;
-        LOGGER.info("RandomTrader initialized for symbols: " + config.symbols());
+        LOGGER.log(Level.INFO, "RandomTrader initialized for symbols: {0}", config.symbols());
     }
 
     @Override
@@ -38,7 +38,7 @@ public class RandomTraderStrategy implements TradingStrategy {
             var bookOpt = matchingEngine.getOrderBook(symbol);
 
             if (bookOpt.isEmpty()) {
-                LOGGER.fine("No order book for " + symbol + ", skipping");
+                LOGGER.log(Level.FINE, "No order book for {0}, skipping", symbol);
                 return;
             }
 

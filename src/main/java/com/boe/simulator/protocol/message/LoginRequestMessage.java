@@ -48,8 +48,8 @@ public class LoginRequestMessage {
 
     public byte[] toBytes() {
         // Calculate message length:
-        // Total payload (after MessageLength field) = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes
-        // MessageLength = Payload + 2 (for MessageLength field itself)
+        // Total payload (after the MessageLength field) = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes
+        // MessageLength = Payload + 2 (for the MessageLength field itself)
         int payloadLength = 1 + 1 + 4 + SESSION_SUB_ID_SIZE + USERNAME_SIZE + PASSWORD_SIZE + 1;
         
         // MessageLength = Payload + 2 (the MessageLength field itself)
@@ -114,6 +114,7 @@ public class LoginRequestMessage {
         buffer.position(2);
 
         // MessageLength (2 bytes)
+        @SuppressWarnings("unused")
         int messageLength = buffer.getShort() & 0xFFFF;
 
         // MessageType (1 byte)
@@ -141,12 +142,13 @@ public class LoginRequestMessage {
         buffer.get(passwordBytes);
         String password = new String(passwordBytes, StandardCharsets.US_ASCII).trim();
 
-        // Create message
+        // Create a message
         LoginRequestMessage msg = new LoginRequestMessage(username, password, sessionSubID, matchingUnit);
         msg.setSequenceNumber(sequenceNumber);
 
         // NumberOfParamGroups (1 byte) - if there are more bytes
         if (buffer.remaining() > 0) {
+            @SuppressWarnings("unused")
             int numberOfParamGroups = buffer.get() & 0xFF;
         }
 

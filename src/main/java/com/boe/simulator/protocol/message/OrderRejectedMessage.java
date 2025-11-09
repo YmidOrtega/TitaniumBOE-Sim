@@ -18,7 +18,7 @@ public class OrderRejectedMessage {
     private long transactTime;
     private String clOrdID;           // 20 bytes
     private byte orderRejectReason;   // Reject reason code
-    private String text;              // 60 bytes - Human readable text
+    private String text;              // 60 bytes - Human-readable text
 
     // Reject reason codes
     public static final byte REASON_DUPLICATE_CLORDID = (byte) 'D';
