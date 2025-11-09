@@ -21,8 +21,11 @@ public class IntegrationTest {
 
     private static final String HOST = "localhost";
     private static final int PORT = 8081;
-    private static final String USERNAME = "TRD1";
-    private static final String PASSWORD = "PASS1";
+    private static final String USERNAME = "TRD1";  // Use demo credentials (max 4 chars for BOE)
+    private static final String PASSWORD = "Pass1234!";  // Use demo credentials
+    
+    // NOTE: This test requires a running server with DEMO_MODE=true
+    // Start server with: DEMO_MODE=true mvn exec:java -Dexec.mainClass="com.boe.simulator.server.CboeServer"
 
     @BeforeAll
     static void setup() throws Exception {

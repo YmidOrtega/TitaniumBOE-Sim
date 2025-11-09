@@ -28,13 +28,20 @@ public class LogoutIntegrationTest {
     private CountDownLatch listenerReadyLatch;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() throws Exception {
+        // Enable DEMO_MODE for tests
+        System.setProperty("DEMO_MODE", "true");
+        
         ServerConfiguration config = ServerConfiguration.builder()
                 .port(8080)
                 .logLevel(Level.INFO)
                 .build();
         server = new CboeServer(config);
         server.start();
+        
+        // Give server time to initialize and create demo users
+        Thread.sleep(2000);
+        
         listenerReadyLatch = new CountDownLatch(1);
     }
 
@@ -43,6 +50,8 @@ public class LogoutIntegrationTest {
         if (server != null) {
             server.shutdown();
         }
+        // Clean up system property
+        System.clearProperty("DEMO_MODE");
     }
 
     @Test
@@ -76,7 +85,7 @@ public class LogoutIntegrationTest {
         listenerReadyLatch.await(10, TimeUnit.SECONDS); // Wait for listener to process initial messages
 
         // Login
-        LoginRequestMessage login = new LoginRequestMessage("USER", "PASS", "S001");
+        LoginRequestMessage login = new LoginRequestMessage("TRD1", "Pass1234!", "S001");
         client.sendMessageRaw(login.toBytes()).get(10, TimeUnit.SECONDS);
 
         LoginResponseMessage loginResponse = loginFuture.get(10, TimeUnit.SECONDS);
