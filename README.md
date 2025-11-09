@@ -109,18 +109,18 @@
     │     CLI        │◄─────────┤  (Port 8081)   │◄─────────┤  (Port 9091)   │
     │   Client       │  Binary  │                │   HTTP   │                │
     └────────────────┘  Protocol└────────┬───────┘          └────────┬───────┘
-                                         │                            │
+                                         │                           |
                         ┌────────────────┼────────────────┐          │
                         │                │                │          │
-                ┌───────▼───────┐  ┌────▼─────┐   ┌─────▼─────┐   │
-                │ Authentication│  │ Session  │   │  Order    │   │
-                │   Service     │  │ Manager  │   │  Manager  │   │
-                └───────┬───────┘  └────┬─────┘   └─────┬─────┘   │
-                        │               │               │          │
-                        └───────────────┼───────────────┘          │
-                                        │                          │
-                                ┌───────▼────────┐                 │
-                                │ Matching Engine│◄────────────────┘
+                ┌───────▼───────┐  ┌────▼─────┐   ┌─────▼─────┐      │
+                │ Authentication│  │ Session  │   │  Order    │      │
+                │   Service     │  │ Manager  │   │  Manager  │      │
+                └───────┬───────┘  └────┬─────┘   └─────┬─────┘      │
+                        │               │               │            │
+                        └───────────────┼───────────────┘            │
+                                        │                            │
+                                ┌───────▼────────┐                   │
+                                │ Matching Engine│◄──────────────────┘
                                 │  (Price-Time)  │
                                 └───────┬────────┘
                                         │
@@ -290,16 +290,16 @@ mvn exec:java -Dexec.mainClass="com.boe.simulator.client.interactive.Interactive
 ╔════════════════════════════════════════════════════════╗
 ║              Interactive CLI Commands                  ║
 ╠════════════════════════════════════════════════════════╣
-║ connect <host> <port>    - Connect to BOE server      ║
-║ order <side> <sym> <qty> <price> - Submit order       ║
-║ cancel <clOrdID>         - Cancel an order            ║
-║ book <symbol>            - View order book            ║
-║ positions                - View your positions        ║
-║ trades                   - View recent trades         ║
-║ status                   - Show session status        ║
-║ clear                    - Clear the screen           ║
-║ help [command]           - Show help                  ║
-║ exit                     - Exit the CLI               ║
+║ connect <host> <port>    - Connect to BOE server       ║
+║ order <side> <sym> <qty> <price> - Submit order        ║
+║ cancel <clOrdID>         - Cancel an order             ║
+║ book <symbol>            - View order book             ║
+║ positions                - View your positions         ║
+║ trades                   - View recent trades          ║
+║ status                   - Show session status         ║
+║ clear                    - Clear the screen            ║
+║ help [command]           - Show help                   ║
+║ exit                     - Exit the CLI                ║
 ╚════════════════════════════════════════════════════════╝
 ```
 
@@ -334,8 +334,8 @@ Submitting order: BUY 100 AAPL @ 150.50 (ID: CLI-12345)
 # Check positions
 ● TRD1> positions
 
-╔═══════════════════════════════════════════════════════════════════╗
-║                          Positions                                ║
+╔══════════════════════════════════════════════════════════════════╗
+║                          Positions                               ║
 ╠═════════╦════════════╦════════════╦═══════════╦══════════════════╣
 ║ Symbol  ║ Quantity   ║   Avg Px   ║ Curr Px   ║   Unrealized P/L ║
 ╠═════════╬════════════╬════════════╬═══════════╬══════════════════╣
@@ -345,13 +345,13 @@ Submitting order: BUY 100 AAPL @ 150.50 (ID: CLI-12345)
 # View trade history
 ● TRD1> trades
 
-╔══════════════════════════════════════════════════════════════════════╗
-║                          Recent Trades                               ║
-╠══════════╦═════════╦═════════╦═════════╦═════════════════════════════╣
+╔════════════════════════════════════════════════════════════════════╗
+║                          Recent Trades                             ║
+╠══════════╦═════════╦═════════╦═════════╦═══════════════════════════╣
 ║   Time   ║ Symbol  ║   Qty   ║  Price  ║          Value            ║
-╠══════════╬═════════╬═════════╬═════════╬═════════════════════════════╣
+╠══════════╬═════════╬═════════╬═════════╬═══════════════════════════╣
 ║ 18:30:45 ║ AAPL    ║     100 ║  150.50 ║                  15050.00 ║
-╚══════════╩═════════╩═════════╩═════════╩═════════════════════════════╝
+╚══════════╩═════════╩═════════╩═════════╩═══════════════════════════╝
 
 # Exit
 ● TRD1> exit
