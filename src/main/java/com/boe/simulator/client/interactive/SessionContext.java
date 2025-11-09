@@ -2,6 +2,8 @@ package com.boe.simulator.client.interactive;
 
 import com.boe.simulator.client.BoeClient;
 import com.boe.simulator.client.interactive.notification.NotificationManager;
+import com.boe.simulator.client.interactive.notification.NotificationTradingListener;
+import com.boe.simulator.client.interactive.notification.OrderStatusPoller;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,7 +16,8 @@ public class SessionContext {
     private boolean authenticated;
     private final Map<String, Object> sessionData;
     private long connectedAt;
-    private NotificationManager notificationManager;
+    private final NotificationManager notificationManager;
+    private OrderStatusPoller orderPoller;
 
     public SessionContext() {
         this.sessionData = new HashMap<>();
@@ -32,12 +35,20 @@ public class SessionContext {
         this.port = port;
         this.client = client;
         this.connectedAt = System.currentTimeMillis();
+
+        if (orderPoller == null) orderPoller = new OrderStatusPoller(this, notificationManager);
     }
 
     public void disconnect() {
-        if (client != null) {
-            client.disconnect();
-        }
+
+        // Remove trading listener
+        Object listener = sessionData.get("tradingListener");
+        if (listener instanceof NotificationTradingListener && client != null) client.getConnectionHandler().removeTradingListener((NotificationTradingListener) listener);
+
+        // Stop notification manager
+        if (notificationManager != null) notificationManager.stop();
+        if (client != null) client.disconnect();
+
         this.client = null;
         this.authenticated = false;
     }
@@ -50,6 +61,8 @@ public class SessionContext {
     public void authenticate(String username) {
         this.username = username;
         this.authenticated = true;
+
+        if (orderPoller != null) orderPoller.start();
     }
 
     public void logout() {

@@ -53,6 +53,7 @@ public class NewOrderMessage {
         buffer.position(2);
 
         // MessageLength (2 bytes)
+        @SuppressWarnings("unused")
         int messageLength = buffer.getShort() & 0xFFFF;
 
         // MessageType (1 byte)
@@ -225,9 +226,7 @@ public class NewOrderMessage {
         buffer.put((byte)numberOfBitfields);
 
         // Bitfields
-        if (bitfields != null) {
-            buffer.put(bitfields);
-        }
+        if (bitfields != null) buffer.put(bitfields);
 
         // Optional fields
         if (numberOfBitfields > 0 && bitfields != null) {
@@ -236,17 +235,11 @@ public class NewOrderMessage {
                 byte bf1 = bitfields[0];
 
                 if ((bf1 & 0x01) != 0) buffer.put(toFixedLengthBytes(clearingFirm, 4));
-
                 if ((bf1 & 0x02) != 0) buffer.put(toFixedLengthBytes(clearingAccount, 4));
-
                 if ((bf1 & 0x04) != 0) buffer.put(BinaryPrice.fromPrice(price).toBytes());
-
                 if ((bf1 & 0x08) != 0) buffer.put(ordType);
-
                 if ((bf1 & 0x10) != 0) buffer.put(timeInForce);
-
                 if ((bf1 & 0x40) != 0) buffer.put(toFixedLengthBytes(symbol, 8));
-
                 if ((bf1 & 0x80) != 0) buffer.put(capacity);
             }
 
@@ -255,11 +248,8 @@ public class NewOrderMessage {
                 byte bf2 = bitfields[1];
 
                 if ((bf2 & 0x01) != 0) buffer.put(toFixedLengthBytes(account, 16));
-
                 if ((bf2 & 0x40) != 0) buffer.put(routingInst);
-
                 if ((bf2 & 0x80) != 0) buffer.put(openClose);
-
             }
 
             // Bitfield 3
@@ -268,8 +258,7 @@ public class NewOrderMessage {
 
                 if ((bf3 & 0x01) != 0) {
                     LocalDate epoch = LocalDate.of(1970, 1, 1);
-                    LocalDate maturity = Instant.ofEpochMilli(maturityDate.toEpochMilli())
-                            .atZone(ZoneId.of("America/New_York")).toLocalDate();
+                    LocalDate maturity = Instant.ofEpochMilli(maturityDate.toEpochMilli()).atZone(ZoneId.of("America/New_York")).toLocalDate();
                     int days = epoch.until(maturity).getDays();
                     buffer.putInt(days);
                 }
@@ -332,7 +321,7 @@ public class NewOrderMessage {
 
     public void setAccount(String account) {
         this.account = account;
-        // Enable account bitfield
+        // Enable an account bitfield
         ensureBitfield(1);
         bitfields[1] |= 0x01; // Set bit 0 for an account
     }
@@ -404,31 +393,38 @@ public class NewOrderMessage {
     private int calculateOptionalFieldsSize() {
         int size = 0;
 
-        if (numberOfBitfields == 0 || bitfields == null) return size;
+        if (bitfields == null || numberOfBitfields == 0) return 0;
 
-        if (price != null) size += 8;
+        // Bitfield 1
+        if (bitfields.length >= 1) {
+            byte bf1 = bitfields[0];
 
-        if (symbol != null) size += 8;
+            if ((bf1 & 0x01) != 0 && clearingFirm != null) size += 4;
+            if ((bf1 & 0x02) != 0 && clearingAccount != null) size += 4;
+            if ((bf1 & 0x04) != 0 && price != null) size += 8;
+            if ((bf1 & 0x08) != 0) size += 1; // ordType
+            if ((bf1 & 0x10) != 0) size += 1; // timeInForce
+            if ((bf1 & 0x40) != 0 && symbol != null) size += 8;
+            if ((bf1 & 0x80) != 0) size += 1; // capacity
+        }
 
-        if (account != null) size += 16;
+        // Bitfield 2
+        if (bitfields.length >= 2) {
+            byte bf2 = bitfields[1];
 
-        if (clearingFirm != null) size += 4;
+            if ((bf2 & 0x01) != 0 && account != null) size += 16;
+            if ((bf2 & 0x40) != 0) size += 1; // routingInst
+            if ((bf2 & 0x80) != 0) size += 1; // openClose
+        }
 
-        if (clearingAccount != null) size += 4;
+        // Bitfield 3
+        if (bitfields.length >= 3) {
+            byte bf3 = bitfields[2];
 
-        if (maturityDate != null) size += 4;
-
-        if (strikePrice != null) size += 8;
-
-        if (routingInst != 0) size += 1;
-
-        if (putOrCall != 0) size += 1;
-
-        if (openClose != 0) size += 1;
-
-        if (ordType != 0) size += 1;
-
-        if (timeInForce != 0) size += 1;
+            if ((bf3 & 0x01) != 0 && maturityDate != null) size += 4;
+            if ((bf3 & 0x02) != 0 && strikePrice != null) size += 8;
+            if ((bf3 & 0x04) != 0) size += 1; // putOrCall
+        }
 
         return size;
     }
@@ -469,7 +465,7 @@ public class NewOrderMessage {
     // Setters for building messages
     public void setMatchingUnit(byte matchingUnit) { this.matchingUnit = matchingUnit; }
     public void setSequenceNumber(int sequenceNumber) { this.sequenceNumber = sequenceNumber; }
-
+    
     @Override
     public String toString() {
         return "NewOrderMessage{" +

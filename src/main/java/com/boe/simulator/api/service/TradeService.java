@@ -1,17 +1,14 @@
 package com.boe.simulator.api.service;
 
-import com.boe.simulator.api.dto.TradeDTO;
-import com.boe.simulator.server.matching.TradeRepository;
-
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-public class TradeService {
-    private static final Logger LOGGER = Logger.getLogger(TradeService.class.getName());
+import com.boe.simulator.api.dto.TradeDTO;
+import com.boe.simulator.server.matching.TradeRepository;
 
+public class TradeService {
     private final TradeRepository tradeRepository;
 
     public TradeService(TradeRepository tradeRepository) {

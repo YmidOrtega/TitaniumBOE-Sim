@@ -20,7 +20,7 @@ public class BoeMessageFactory {
     public static final byte ORDER_EXECUTED = 0x21;  // ⭐ NUEVO
     public static final byte ORDER_ACKNOWLEDGMENT = 0x25;
     public static final byte ORDER_REJECTED = 0x26;
-    public static final byte ORDER_CANCELLED = 0x28;
+    public static final byte ORDER_CANCELLED = 0x23;
 
     public enum Context {
         CLIENT,

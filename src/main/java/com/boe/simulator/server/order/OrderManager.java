@@ -112,14 +112,14 @@ public class OrderManager {
 
         // 1. Validate message
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
-        if (!validation.isValid()) {
-            LOGGER.log(Level.WARNING, "[{0}] Order rejected - validation failed: {1}",
-                    new Object[]{context.getSessionIdentifier(), validation.getErrorMessage()});
+        if (!isValidSymbol(message.getSymbol())) {
+            LOGGER.log(Level.WARNING, "[{0}] Order rejected - invalid symbol: {1}",
+                    new Object[]{context.getSessionIdentifier(), message.getSymbol()});
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
-                    OrderRejectedMessage.REASON_MISSING_REQUIRED_FIELD,
-                    validation.getErrorMessage()
+                    OrderRejectedMessage.REASON_INVALID_SYMBOL,
+                    "Invalid or unknown symbol: " + message.getSymbol()
             );
         }
 
@@ -320,6 +320,17 @@ public class OrderManager {
                 .filter(o -> o.getUsername().equals(context.getUsername()))
                 .filter(o -> o.getState().isCancellable())
                 .toList();
+    }
+
+    private boolean isValidSymbol(String symbol) {
+        // Lista de símbolos válidos
+        return symbol != null && (
+                symbol.equals("AAPL") ||
+                        symbol.equals("MSFT") ||
+                        symbol.equals("GOOGL") ||
+                        symbol.equals("AMZN") ||
+                        symbol.equals("META")
+        );
     }
 
     private void handleTradeExecution(Trade trade) {

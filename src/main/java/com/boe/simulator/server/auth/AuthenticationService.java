@@ -1,13 +1,14 @@
 package com.boe.simulator.server.auth;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.persistence.model.PersistedUser;
 import com.boe.simulator.server.persistence.repository.UserRepository;
 import com.boe.simulator.server.persistence.service.UserRepositoryService;
 import com.boe.simulator.server.persistence.util.PasswordHasher;
-
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
 
 public class AuthenticationService {
     private static final Logger LOGGER = Logger.getLogger(AuthenticationService.class.getName());
@@ -41,14 +42,14 @@ public class AuthenticationService {
 
             // Create default users
             createUser("USER", "PASS");
-            createUser("TRADER1", "PASS1");
-            createUser("TRADER2", "PASS2");
-            createUser("ADMIN", "ADMIN123");
+            createUser("TRD1", "PASS1");
+            createUser("TRD2", "PASS2");
+            createUser("ADMN", "ADMIN123");
             createUser("TEST", "TEST");
 
-            LOGGER.info("Created " + userRepository.count() + " default users");
+            LOGGER.log(Level.INFO, "Created {0} default users", userRepository.count());
         } else {
-            LOGGER.info("Found " + userCount + " existing users in database");
+            LOGGER.log(Level.INFO, "Found {0} existing users in database", userCount);
         }
     }
 
@@ -57,7 +58,7 @@ public class AuthenticationService {
         PersistedUser user = PersistedUser.create(username, passwordHash);
         userRepository.save(user);
 
-        LOGGER.info("Created new user: " + username);
+        LOGGER.log(Level.INFO, "Created new user: {0}", username);
     }
 
     public AuthenticationResult authenticate(String username, String password, String sessionSubID) {
@@ -68,7 +69,7 @@ public class AuthenticationService {
         var userOpt = userRepository.findByUsername(username);
 
         if (userOpt.isEmpty()) {
-            LOGGER.warning("Login attempt for unknown user: " + username);
+            LOGGER.log(Level.WARNING, "Login attempt for unknown user: {0}", username);
             return AuthenticationResult.rejected("Invalid username or password");
         }
 
@@ -76,20 +77,20 @@ public class AuthenticationService {
 
         // Check if user is active
         if (!user.active()) {
-            LOGGER.warning("Login attempt for inactive user: " + username);
+            LOGGER.log(Level.WARNING, "Login attempt for inactive user: {0}", username);
             return AuthenticationResult.rejected("User account is inactive");
         }
 
         // Verify password
         if (!PasswordHasher.verify(password, user.passwordHash())) {
-            LOGGER.warning("Invalid password for user: " + username);
+            LOGGER.log(Level.WARNING, "Invalid password for user: {0}", username);
             return AuthenticationResult.rejected("Invalid username or password");
         }
 
         // Check for duplicate session
         if (activeSessions.containsKey(username)) {
             String existingSession = activeSessions.get(username);
-            LOGGER.warning("User " + username + " already has active session: " + existingSession);
+            LOGGER.log(Level.WARNING, "User {0} already has active session: {1}", new Object[]{username, existingSession});
             return AuthenticationResult.sessionInUse("Session already active for this user");
         }
 
@@ -97,14 +98,14 @@ public class AuthenticationService {
         activeSessions.put(username, sessionSubID);
         userRepository.updateLastLogin(username);
 
-        LOGGER.info("User " + username + " authenticated successfully (session: " + sessionSubID + ")");
+        LOGGER.log(Level.INFO, "User {0} authenticated successfully (session: {1})", new Object[]{username, sessionSubID});
 
         return AuthenticationResult.accepted("Login successful");
     }
 
     public void endSession(String username) {
         String sessionSubID = activeSessions.remove(username);
-        if (sessionSubID != null) LOGGER.info("Ended session for user: " + username + " (session: " + sessionSubID + ")");
+        if (sessionSubID != null) LOGGER.log(Level.INFO, "Ended session for user: {0} (session: {1})", new Object[]{username, sessionSubID});
 
     }
 

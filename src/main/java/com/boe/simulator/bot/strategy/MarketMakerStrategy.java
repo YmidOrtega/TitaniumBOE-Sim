@@ -1,16 +1,16 @@
 package com.boe.simulator.bot.strategy;
 
-import com.boe.simulator.bot.BotConfig;
-import com.boe.simulator.bot.util.PriceGenerator;
-import com.boe.simulator.server.matching.MatchingEngine;
-import com.boe.simulator.server.matching.OrderBook;
-import com.boe.simulator.server.order.OrderManager;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.boe.simulator.bot.BotConfig;
+import com.boe.simulator.bot.util.PriceGenerator;
+import com.boe.simulator.server.matching.MatchingEngine;
+import com.boe.simulator.server.matching.OrderBook;
+import com.boe.simulator.server.order.OrderManager;
 
 public class MarketMakerStrategy implements TradingStrategy {
     private static final Logger LOGGER = Logger.getLogger(MarketMakerStrategy.class.getName());
@@ -29,7 +29,7 @@ public class MarketMakerStrategy implements TradingStrategy {
     public void initialize(OrderManager orderManager, MatchingEngine matchingEngine) {
         this.orderManager = orderManager;
         this.matchingEngine = matchingEngine;
-        LOGGER.info("MarketMaker initialized for symbols: " + config.symbols());
+        LOGGER.log(Level.INFO, "MarketMaker initialized for symbols: {0}", config.symbols());
     }
 
     @Override
@@ -47,7 +47,7 @@ public class MarketMakerStrategy implements TradingStrategy {
             BigDecimal midPrice = calculateMidPrice(book, symbol);
 
             if (midPrice == null) {
-                LOGGER.warning("Cannot determine mid price for " + symbol);
+                LOGGER.log(Level.WARNING, "Cannot determine mid price for {0}", symbol);
                 return;
             }
 
@@ -67,7 +67,7 @@ public class MarketMakerStrategy implements TradingStrategy {
         placeBidOrder(symbol, basePrice);
         placeAskOrder(symbol, basePrice);
 
-        LOGGER.info("Created initial market for " + symbol + " @ " + basePrice);
+        LOGGER.log(Level.INFO, "Created initial market for {0} @ {1}", new Object[]{symbol, basePrice});
     }
 
     private BigDecimal calculateMidPrice(OrderBook book, String symbol) {

@@ -55,7 +55,7 @@ public class BoeMessageSerializer {
 
         if (messageLength < 2) throw new IOException("Invalid message length: " + messageLength);
 
-        // Payload size = MessageLength - 2 (excluding length field itself)
+        // Payload size = MessageLength - 2 (excluding the length field itself)
         int payloadLength = messageLength - 2;
 
         byte[] messageBody = new byte[payloadLength];

@@ -2,7 +2,11 @@ package com.boe.simulator.client.heartbeat;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -99,11 +103,7 @@ public class ClientHeartbeatManager {
 
             lastClientHeartbeatSent = Instant.now();
 
-            LOGGER.log(Level.FINE, "Client heartbeat sent (seq={0})", heartbeat.getSequenceNumber());
-
-        } catch (InterruptedException | ExecutionException e) {
-            LOGGER.log(Level.WARNING, "Failed to send heartbeat", e);
-            Thread.currentThread().interrupt();
+        } catch (InterruptedException | ExecutionException ignored) {
         }
     }
 
