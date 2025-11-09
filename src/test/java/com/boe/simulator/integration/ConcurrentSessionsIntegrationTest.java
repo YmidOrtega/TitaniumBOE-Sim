@@ -1,11 +1,13 @@
 package com.boe.simulator.integration;
 
 
+import java.util.concurrent.CompletableFuture;
+
 import com.boe.simulator.client.connection.BoeConnectionHandler;
 import com.boe.simulator.client.listener.BoeMessageListener;
-import com.boe.simulator.protocol.message.*;
-
-import java.util.concurrent.CompletableFuture;
+import com.boe.simulator.protocol.message.LoginRequestMessage;
+import com.boe.simulator.protocol.message.LoginResponseMessage;
+import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
 
 public class ConcurrentSessionsIntegrationTest {
     public static void main(String[] args) throws Exception {
@@ -17,6 +19,7 @@ public class ConcurrentSessionsIntegrationTest {
         client1.connect().get();
         LoginRequestMessage login1 = new LoginRequestMessage("USER", "PASS", "S001");
         client1.sendMessageRaw(login1.toBytes()).get();
+        @SuppressWarnings("unused")
         CompletableFuture<Void> listener1 = client1.startListener();
         Thread.sleep(1000);
         System.out.println("✓ Client 1 connected and authenticated\n");
