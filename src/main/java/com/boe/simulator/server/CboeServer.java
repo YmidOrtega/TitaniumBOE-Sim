@@ -92,7 +92,7 @@ public class CboeServer {
         OrderRepository orderRepo = orderManager.getOrderRepository();
 
         this.restApiServer = new RestApiServer(
-                9091,
+                9090,
                 orderManager,
                 orderRepo,
                 tradeRepository,
@@ -123,7 +123,7 @@ public class CboeServer {
         restApiServer.start();
 
         LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}", new Object[]{config.getHost(), config.getPort()});
-        LOGGER.info("✓ REST API available on http://localhost:9091");
+        LOGGER.info("✓ REST API available on http://localhost:9090");
 
 
         // Create server socket
@@ -376,7 +376,7 @@ public class CboeServer {
     public static void main(String[] args) {
         ServerConfiguration config = ServerConfiguration.builder()
                 .host("0.0.0.0")
-                .port(8081)
+                .port(8080)
                 .maxConnections(10)
                 .logLevel(Level.INFO)
                 .build();
@@ -396,12 +396,12 @@ public class CboeServer {
                     ║         CBOE Server + REST API - RUNNING                   ║
                     ╠════════════════════════════════════════════════════════════╣
                     ║  BOE Protocol: %s:%d                               ║
-                    ║  REST API: http://localhost:9091                           ║
+                    ║  REST API: http://localhost:9090                           ║
                     ║  Max Connections: %d                                       ║
                     ║  Persistence: ENABLED                                      ║
                     ║  Matching Engine: ENABLED                                  ║
                     ║                                                            ║
-                    ║  API Documentation: http://localhost:9091/api/health       ║
+                    ║  API Documentation: http://localhost:9090/api/health       ║
                     ║                                                            ║
                     ║  Press Ctrl+C to stop the server                           ║
                     ╚════════════════════════════════════════════════════════════╝

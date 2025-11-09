@@ -100,14 +100,12 @@ public class RestApiServer {
         ErrorHandler.configure(app);
 
         // Public routes
-        app.get("/api/health", ctx -> {
-            ctx.json(new HealthResponse(
-                    "healthy",
-                    System.currentTimeMillis(),
-                    orderManager.getActiveOrderCount(),
-                    matchingEngine.getTotalMatches()
-            ));
-        });
+        app.get("/api/health", ctx -> ctx.json(new HealthResponse(
+                "healthy",
+                System.currentTimeMillis(),
+                orderManager.getActiveOrderCount(),
+                matchingEngine.getTotalMatches()
+        )));
 
         app.ws("/ws/feed", wsHandler::configure);
 

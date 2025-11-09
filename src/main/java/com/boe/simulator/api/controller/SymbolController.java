@@ -20,7 +20,7 @@ public class SymbolController {
     public void getSymbols(Context ctx) {
         List<SymbolDTO> symbolDTOs = symbolService.getAllSymbols().stream()
                 .map(symbolInfo -> {
-                    // Check if symbol has an active order book
+                    // Check if the symbol has an active order book
                     var bookOpt = matchingEngine.getOrderBook(symbolInfo.symbol());
 
                     if (bookOpt.isPresent()) {
