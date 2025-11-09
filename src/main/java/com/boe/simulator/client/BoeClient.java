@@ -168,7 +168,7 @@ public class BoeClient {
                 // Start listener
                 listenerFuture = connectionHandler.startListener();
                 
-                // Wait a bit for login response
+                // Wait a bit for a login response
                 Thread.sleep(1000);
                 
             } catch (Exception e) {
