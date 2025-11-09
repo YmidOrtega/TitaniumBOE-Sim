@@ -1,18 +1,18 @@
 package com.boe.simulator.api.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
 import com.boe.simulator.api.dto.PositionDTO;
 import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.matching.TradeRepository;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.*;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
-
 public class PositionService {
-    private static final Logger LOGGER = Logger.getLogger(PositionService.class.getName());
-
     private final TradeRepository tradeRepository;
 
     public PositionService(TradeRepository tradeRepository) {
@@ -103,7 +103,8 @@ public class PositionService {
         private BigDecimal totalBuyCost = BigDecimal.ZERO;
         private int totalSellQty = 0;
         private BigDecimal totalSellProceeds = BigDecimal.ZERO;
-        private BigDecimal realizedPnL = BigDecimal.ZERO;
+        @SuppressWarnings("unused")
+        private final BigDecimal realizedPnL = BigDecimal.ZERO;
 
         public Position(String symbol) {
             this.symbol = symbol;
