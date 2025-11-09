@@ -47,3 +47,14 @@ data/
 *.tmp
 *.swp
 *.bak
+
+####################################
+# Environment & Secrets
+####################################
+.env
+.env.local
+.env.production
+secrets/
+*.key
+*.pem
+*.jks
