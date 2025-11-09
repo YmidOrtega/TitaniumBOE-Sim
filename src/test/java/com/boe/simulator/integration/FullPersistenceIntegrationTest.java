@@ -33,6 +33,9 @@ public class FullPersistenceIntegrationTest {
 
             Thread.sleep(500);
 
+            // Enable DEMO_MODE for test
+            System.setProperty("DEMO_MODE", "true");
+
             // 1. Iniciar servidor con persistencia
             System.out.println("═══ Paso 1: Iniciando Servidor ═══");
             ServerConfiguration config = ServerConfiguration.builder()
@@ -49,14 +52,14 @@ public class FullPersistenceIntegrationTest {
             // 2. Crear múltiples sesiones
             System.out.println("═══ Paso 2: Creando Sesiones ═══");
 
-            // Sesión exitosa 1 - CORREGIDO: Session Sub ID máximo 4 caracteres
+            // Sesión exitosa 1 - Using demo credentials
             System.out.println("\n--- Cliente 1: Login Exitoso ---");
             BoeConnectionHandler client1 = createTestClient("Client1", "localhost", 8081);
             client1.connect().get();
             client1.startListener();
             Thread.sleep(300);
 
-            LoginRequestMessage login1 = new LoginRequestMessage("USER", "PASS", "TS01"); // ✓ 4 chars
+            LoginRequestMessage login1 = new LoginRequestMessage("TRD1", "Pass1234!", "TS01");
             client1.sendMessageRaw(login1.toBytes()).get();
             Thread.sleep(1000);
 
@@ -67,7 +70,7 @@ public class FullPersistenceIntegrationTest {
             client2.startListener();
             Thread.sleep(300);
 
-            LoginRequestMessage login2 = new LoginRequestMessage("TEST", "TEST", "TS02"); // ✓ 4 chars
+            LoginRequestMessage login2 = new LoginRequestMessage("TRD2", "Pass5678!", "TS02");
             client2.sendMessageRaw(login2.toBytes()).get();
             Thread.sleep(1000);
 
@@ -78,7 +81,7 @@ public class FullPersistenceIntegrationTest {
             client3.startListener();
             Thread.sleep(300);
 
-            LoginRequestMessage login3 = new LoginRequestMessage("USER", "WRONG", "TS03"); // ✓ 4 chars
+            LoginRequestMessage login3 = new LoginRequestMessage("TRD1", "WRONG", "TS03");
             client3.sendMessageRaw(login3.toBytes()).get();
             Thread.sleep(1000);
 
@@ -216,6 +219,9 @@ public class FullPersistenceIntegrationTest {
             } catch (Exception e) {
                 System.err.println("Error cerrando recursos: " + e.getMessage());
             }
+            
+            // Clean up system property
+            System.clearProperty("DEMO_MODE");
         }
     }
 
