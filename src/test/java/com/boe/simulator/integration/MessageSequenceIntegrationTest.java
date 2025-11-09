@@ -17,13 +17,13 @@ public class MessageSequenceIntegrationTest {
         Thread.sleep(500);
 
         // 2. Heartbeat 1
-        ClientHeartbeatMessage hb1 = new ClientHeartbeatMessage((byte) 0, 1);
+        ClientHeartbeatMessage hb1 = new ClientHeartbeatMessage((byte) 0, (short) 1);
         client.sendMessageRaw(hb1.toBytes()).get();
         System.out.println("✓ Sent: Heartbeat #1");
         Thread.sleep(500);
 
         // 3. Heartbeat 2
-        ClientHeartbeatMessage hb2 = new ClientHeartbeatMessage((byte) 0, 2);
+        ClientHeartbeatMessage hb2 = new ClientHeartbeatMessage((byte) 0, (short) 2);
         client.sendMessageRaw(hb2.toBytes()).get();
         System.out.println("✓ Sent: Heartbeat #2");
         Thread.sleep(500);

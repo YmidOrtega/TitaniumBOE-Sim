@@ -65,6 +65,7 @@ public class LogoutRequestMessage {
         buffer.position(2);
 
         // MessageLength (2 bytes)
+        @SuppressWarnings("unused")
         int messageLength = buffer.getShort() & 0xFFFF;
 
         // MessageType (1 byte)

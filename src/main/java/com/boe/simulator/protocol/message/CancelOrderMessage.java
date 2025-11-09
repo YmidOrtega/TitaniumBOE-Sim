@@ -36,9 +36,7 @@ public class CancelOrderMessage {
     }
 
     public static CancelOrderMessage parse(byte[] data) {
-        if (data == null || data.length < 31) {
-            throw new IllegalArgumentException("Invalid CancelOrder message data");
-        }
+        if (data == null || data.length < 31) throw new IllegalArgumentException("Invalid CancelOrder message data");
 
         CancelOrderMessage msg = new CancelOrderMessage();
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
@@ -47,6 +45,7 @@ public class CancelOrderMessage {
         buffer.position(2);
 
         // MessageLength (2 bytes)
+        @SuppressWarnings("unused")
         int messageLength = buffer.getShort() & 0xFFFF;
 
         // MessageType (1 byte)
@@ -164,40 +163,28 @@ public class CancelOrderMessage {
             }
 
             // Bit 3: SendTime
-            if ((bf2 & 0x08) != 0) {
-                sendTime = buffer.getLong();
-            }
+            if ((bf2 & 0x08) != 0) sendTime = buffer.getLong();
         }
     }
 
     private void writeOptionalFields(ByteBuffer buffer) {
         if (bitfields.length >= 1) {
             // Bit 0: ClearingFirm
-            if ((bitfields[0] & 0x01) != 0 && clearingFirm != null) {
-                buffer.put(toFixedLengthBytes(clearingFirm, 4));
-            }
-
+            if ((bitfields[0] & 0x01) != 0 && clearingFirm != null) buffer.put(toFixedLengthBytes(clearingFirm, 4));
+            
             // Bit 3: RiskRoot
-            if ((bitfields[0] & 0x08) != 0 && riskRoot != null) {
-                buffer.put(toFixedLengthBytes(riskRoot, 6));
-            }
-
+            if ((bitfields[0] & 0x08) != 0 && riskRoot != null) buffer.put(toFixedLengthBytes(riskRoot, 6));
+            
             // Bit 4: MassCancelId
-            if ((bitfields[0] & 0x10) != 0 && massCancelId != null) {
-                buffer.put(toFixedLengthBytes(massCancelId, 20));
-            }
+            if ((bitfields[0] & 0x10) != 0 && massCancelId != null) buffer.put(toFixedLengthBytes(massCancelId, 20));
         }
 
         if (bitfields.length >= 2) {
             // Bit 0 of bitfield 2: MassCancelInst
-            if ((bitfields[1] & 0x01) != 0 && massCancelInst != null) {
-                buffer.put(toFixedLengthBytes(massCancelInst, 16));
-            }
+            if ((bitfields[1] & 0x01) != 0 && massCancelInst != null) buffer.put(toFixedLengthBytes(massCancelInst, 16));
 
             // Bit 3 of bitfield 2: SendTime
-            if ((bitfields[1] & 0x08) != 0) {
-                buffer.putLong(sendTime);
-            }
+            if ((bitfields[1] & 0x08) != 0) buffer.putLong(sendTime);
         }
     }
 
@@ -231,8 +218,7 @@ public class CancelOrderMessage {
     }
 
     public boolean isMassCancel() {
-        return origClOrdID == null || origClOrdID.isEmpty() ||
-                origClOrdID.replaceAll("\u0000", "").trim().isEmpty();
+        return origClOrdID == null || origClOrdID.isEmpty() ||origClOrdID.replaceAll("\u0000", "").trim().isEmpty();
     }
 
     public void setOrigClOrdID(String origClOrdID) {
@@ -240,10 +226,8 @@ public class CancelOrderMessage {
     }
 
     public MassCancelType getMassCancelType() {
-        if (massCancelInst == null || massCancelInst.isEmpty()) {
-            return MassCancelType.NONE;
-        }
-
+        if (massCancelInst == null || massCancelInst.isEmpty()) return MassCancelType.NONE;
+        
         char firstChar = massCancelInst.charAt(0);
         return switch (firstChar) {
             case 'F' -> MassCancelType.FIRM;           // Cancel by clearing firm
@@ -301,12 +285,8 @@ public class CancelOrderMessage {
 
     @Override
     public String toString() {
-        if (isMassCancel()) {
-            return "CancelOrder{MASS CANCEL: firm='" + clearingFirm + "', root='" + riskRoot +
-                    "', type=" + getMassCancelType() + ", lockout=" + isLockoutRequested() + "}";
-        } else {
-            return "CancelOrder{origClOrdID='" + origClOrdID + "'}";
-        }
+        if (isMassCancel()) return "CancelOrder{MASS CANCEL: firm='" + clearingFirm + "', root='" + riskRoot +"', type=" + getMassCancelType() + ", lockout=" + isLockoutRequested() + "}";
+        else return "CancelOrder{origClOrdID='" + origClOrdID + "'}";
     }
 
     public enum MassCancelType {

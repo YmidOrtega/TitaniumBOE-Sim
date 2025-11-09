@@ -74,6 +74,7 @@ public class RocksDBManager {
                     .setCreateMissingColumnFamilies(true)) {
 
                 // List existing column families
+                @SuppressWarnings("unused")
                 List<byte[]> existingCFs = new ArrayList<>();
                 try {
                     existingCFs = RocksDB.listColumnFamilies(options, dbPath);

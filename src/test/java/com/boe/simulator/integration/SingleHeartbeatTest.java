@@ -16,7 +16,7 @@ public class SingleHeartbeatTest {
         Thread.sleep(500);
 
         // Send heartbeat
-        ClientHeartbeatMessage heartbeat = new ClientHeartbeatMessage((byte) 0, 1);
+        ClientHeartbeatMessage heartbeat = new ClientHeartbeatMessage((byte) 0, (short) 1);
         client.sendMessageRaw(heartbeat.toBytes()).get();
 
         System.out.println("✓ Heartbeat sent");

@@ -1,13 +1,5 @@
 package com.boe.simulator.bot.strategy;
 
-import com.boe.simulator.bot.BotConfig;
-import com.boe.simulator.bot.util.PriceGenerator;
-import com.boe.simulator.server.matching.MatchingEngine;
-import com.boe.simulator.server.matching.OrderBook;
-import com.boe.simulator.server.matching.Trade;
-import com.boe.simulator.server.matching.TradeRepository;
-import com.boe.simulator.server.order.OrderManager;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -16,6 +8,14 @@ import java.util.List;
 import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.boe.simulator.bot.BotConfig;
+import com.boe.simulator.bot.util.PriceGenerator;
+import com.boe.simulator.server.matching.MatchingEngine;
+import com.boe.simulator.server.matching.OrderBook;
+import com.boe.simulator.server.matching.Trade;
+import com.boe.simulator.server.matching.TradeRepository;
+import com.boe.simulator.server.order.OrderManager;
 
 public class TrendFollowerStrategy implements TradingStrategy {
     private static final Logger LOGGER = Logger.getLogger(TrendFollowerStrategy.class.getName());
@@ -36,7 +36,7 @@ public class TrendFollowerStrategy implements TradingStrategy {
     public void initialize(OrderManager orderManager, MatchingEngine matchingEngine) {
         this.orderManager = orderManager;
         this.matchingEngine = matchingEngine;
-        LOGGER.info("TrendFollower initialized for symbols: " + config.symbols());
+        LOGGER.log(Level.INFO, "TrendFollower initialized for symbols: {0}", config.symbols());
     }
 
     @Override
@@ -65,14 +65,9 @@ public class TrendFollowerStrategy implements TradingStrategy {
             boolean isBuy = (trend == Trend.UPWARD);
 
             BigDecimal orderPrice;
-            if (isBuy) {
-                // Aggressive buy (slightly above market)
-                orderPrice = referencePrice.multiply(BigDecimal.valueOf(1.001)).setScale(2, RoundingMode.HALF_UP);
-            } else {
-                // Aggressive sell (slightly below market)
-                orderPrice = referencePrice.multiply(BigDecimal.valueOf(0.999)).setScale(2, RoundingMode.HALF_UP);
-            }
-
+            if (isBuy) orderPrice = referencePrice.multiply(BigDecimal.valueOf(1.001)).setScale(2, RoundingMode.HALF_UP); // Aggressive buy (slightly above market)
+            else orderPrice = referencePrice.multiply(BigDecimal.valueOf(0.999)).setScale(2, RoundingMode.HALF_UP); // Aggressive sell (slightly below market)
+            
             int quantity = random.nextInt(config.minQuantity(), config.maxQuantity() + 1);
 
             String side = isBuy ? "BUY" : "SELL";

@@ -5,10 +5,9 @@ import java.nio.ByteOrder;
 
 public class ClientHeartbeatMessage {
     private static final byte MESSAGE_TYPE = 0x03;
-    
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
-    
+
     private byte matchingUnit;
     private int sequenceNumber;
 
@@ -23,50 +22,37 @@ public class ClientHeartbeatMessage {
     }
 
     public byte[] toBytes() {
-        // Calculate message length according to BOE spec:
-        // MessageLength = from MessageType to end
-        // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) = 6 bytes
-        int payloadLength = 1 + 1 + 4;
-        
-        // Total message = StartOfMessage(2) + MessageLength(2) + Payload(6) = 10 bytes
-        int totalLength = 2 + 2 + payloadLength;
-        
+        // BOE spec: MessageLength = length of everything AFTER StartOfMessage
+        // = MessageLength field itself (2) + MessageType (1) + MatchingUnit (1) + SequenceNumber (2)
+        int messageLength = 2 + 1 + 1 + 2; // = 6 bytes
+        int totalLength = 2 + messageLength; // = 8 bytes
+
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
-        
+
         // Start of Message (2 bytes)
         buffer.put(START_OF_MESSAGE_1);
         buffer.put(START_OF_MESSAGE_2);
-        
-        // Message Length (2 bytes)
-        buffer.putShort((short) payloadLength);
-        
+
+        // Message Length (2 bytes) - includes itself + payload
+        buffer.putShort((short) messageLength);
+
         // Message Type (1 byte)
         buffer.put(MESSAGE_TYPE);
-        
+
         // Matching Unit (1 byte)
         buffer.put(matchingUnit);
-        
-        // Sequence Number (4 bytes)
-        buffer.putInt(sequenceNumber);
-        
+
+        // Sequence Number (2 bytes)
+        buffer.putShort((short) sequenceNumber);
+
         return buffer.array();
     }
 
     public static ClientHeartbeatMessage parseFromBytes(byte[] data) {
-        if (data == null || data.length < 10) throw new IllegalArgumentException("Invalid ClientHeartbeat message data");
+        if (data == null || data.length < 5) throw new IllegalArgumentException("Invalid ClientHeartbeat message data: expected 5 bytes, got " + (data == null ? "null" : data.length));
 
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
-
-        // Skip StartOfMessage (2 bytes)
-        buffer.position(2);
-
-        // MessageLength (2 bytes)
-        int messageLength = buffer.getShort() & 0xFFFF;
-
-        // MessageType (1 byte)
-        byte messageType = buffer.get();
-        if (messageType != 0x03) throw new IllegalArgumentException("Invalid message type: expected 0x03, got 0x" + String.format("%02X", messageType));
 
         // MatchingUnit (1 byte)
         byte matchingUnit = buffer.get();
@@ -74,27 +60,24 @@ public class ClientHeartbeatMessage {
         // SequenceNumber (4 bytes)
         int sequenceNumber = buffer.getInt();
 
-        // Create message
-        ClientHeartbeatMessage msg = new ClientHeartbeatMessage(matchingUnit, sequenceNumber);
-
-        return msg;
+        return new ClientHeartbeatMessage(matchingUnit, sequenceNumber);
     }
 
+    // Getters and setters
+    public byte getMatchingUnit() {
+        return matchingUnit;
+    }
 
     public void setMatchingUnit(byte matchingUnit) {
         this.matchingUnit = matchingUnit;
     }
 
-    public void setSequenceNumber(int sequenceNumber) {
-        this.sequenceNumber = sequenceNumber;
-    }
-
-    public byte getMatchingUnit() {
-        return matchingUnit;
-    }
-
     public int getSequenceNumber() {
         return sequenceNumber;
+    }
+
+    public void setSequenceNumber(int sequenceNumber) {
+        this.sequenceNumber = sequenceNumber;
     }
 
     @Override

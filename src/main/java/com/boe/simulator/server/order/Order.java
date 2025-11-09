@@ -33,6 +33,7 @@ public class Order {
     private final String clearingFirm;
     private final String clearingAccount;
     private final byte openClose;
+    @SuppressWarnings("unused")
     private final byte matchingUnit;// O=Open, C=Close, N=None
 
     // Estado y timestamps
