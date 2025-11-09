@@ -23,9 +23,9 @@ public class ClientHeartbeatMessage {
 
     public byte[] toBytes() {
         // BOE spec: MessageLength = length of everything AFTER StartOfMessage
-        // = MessageLength field itself (2) + MessageType (1) + MatchingUnit (1) + SequenceNumber (2)
-        int messageLength = 2 + 1 + 1 + 2; // = 6 bytes
-        int totalLength = 2 + messageLength; // = 8 bytes
+        // = MessageLength field itself (2) + MessageType (1) + MatchingUnit (1) + SequenceNumber (4)
+        int messageLength = 2 + 1 + 1 + 4; // = 8 bytes
+        int totalLength = 2 + messageLength; // = 10 bytes
 
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -43,8 +43,8 @@ public class ClientHeartbeatMessage {
         // Matching Unit (1 byte)
         buffer.put(matchingUnit);
 
-        // Sequence Number (2 bytes)
-        buffer.putShort((short) sequenceNumber);
+        // Sequence Number (4 bytes)
+        buffer.putInt(sequenceNumber);
 
         return buffer.array();
     }

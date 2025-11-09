@@ -1,7 +1,19 @@
 package com.boe.simulator.server.order;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import com.boe.simulator.api.websocket.WebSocketService;
-import com.boe.simulator.protocol.message.*;
+import com.boe.simulator.protocol.message.CancelOrderMessage;
+import com.boe.simulator.protocol.message.NewOrderMessage;
+import com.boe.simulator.protocol.message.OrderCancelledMessage;
+import com.boe.simulator.protocol.message.OrderExecutedMessage;
+import com.boe.simulator.protocol.message.OrderRejectedMessage;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.OrderBook;
@@ -10,13 +22,6 @@ import com.boe.simulator.server.matching.TradeRepositoryService;
 import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.session.ClientSession;
 import com.boe.simulator.server.session.ClientSessionManager;
-
-import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class OrderManager {
     private static final Logger LOGGER = Logger.getLogger(OrderManager.class.getName());
@@ -112,6 +117,18 @@ public class OrderManager {
 
         // 1. Validate message
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
+        if (!validation.isValid()) {
+            LOGGER.log(Level.WARNING, "[{0}] Order rejected - validation failed: {1}",
+                    new Object[]{context.getSessionIdentifier(), validation.getErrorMessage()});
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(
+                    message.getClOrdID(),
+                    OrderRejectedMessage.REASON_MISSING_REQUIRED_FIELD,
+                    validation.getErrorMessage()
+            );
+        }
+        
+        // 2. Validate symbol
         if (!isValidSymbol(message.getSymbol())) {
             LOGGER.log(Level.WARNING, "[{0}] Order rejected - invalid symbol: {1}",
                     new Object[]{context.getSessionIdentifier(), message.getSymbol()});
@@ -123,7 +140,7 @@ public class OrderManager {
             );
         }
 
-        // 2. Verify duplicate ClOrdID
+        // 3. Verify duplicate ClOrdID
         if (activeOrdersByClOrdID.containsKey(message.getClOrdID())) {
             LOGGER.log(Level.WARNING, "[{0}] Order rejected - duplicate ClOrdID: {1}",
                     new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
@@ -323,13 +340,15 @@ public class OrderManager {
     }
 
     private boolean isValidSymbol(String symbol) {
-        // Lista de símbolos válidos
         return symbol != null && (
                 symbol.equals("AAPL") ||
                         symbol.equals("MSFT") ||
                         symbol.equals("GOOGL") ||
+                        symbol.equals("GOOG") ||
                         symbol.equals("AMZN") ||
-                        symbol.equals("META")
+                        symbol.equals("META") ||
+                        symbol.equals("TSLA") ||
+                        symbol.equals("NFLX")
         );
     }
 

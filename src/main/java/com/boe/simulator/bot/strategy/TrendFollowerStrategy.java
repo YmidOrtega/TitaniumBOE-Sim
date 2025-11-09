@@ -113,6 +113,22 @@ public class TrendFollowerStrategy implements TradingStrategy {
         return "TREND_FOLLOWER";
     }
 
+    public OrderManager getOrderManager() {
+        return orderManager;
+    }
+
+    public void setOrderManager(OrderManager orderManager) {
+        this.orderManager = orderManager;
+    }
+
+    public TradeRepository getTradeRepository() {
+        return tradeRepository;
+    }
+
+    public void setTradeRepository(TradeRepository tradeRepository) {
+        this.tradeRepository = tradeRepository;
+    }
+
     private enum Trend {
         UPWARD, DOWNWARD, NEUTRAL
     }
