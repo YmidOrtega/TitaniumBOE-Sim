@@ -283,6 +283,124 @@ public class NewOrderMessage {
         return buffer.array();
     }
 
+    public void setClOrdID(String clOrdID) {
+        this.clOrdID = clOrdID;
+    }
+
+    public void setSide(byte side) {
+        this.side = side;
+    }
+
+    public void setOrderQty(int orderQty) {
+        this.orderQty = orderQty;
+    }
+
+    public void setPrice(BigDecimal price) {
+        this.price = price;
+        // Enable price bitfield
+        ensureBitfield(0);
+        bitfields[0] |= 0x04; // Set bit 2 for price
+    }
+
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
+        // Enable symbol bitfield
+        ensureBitfield(0);
+        bitfields[0] |= 0x40; // Set bit 6 for a symbol
+    }
+
+    public void setCapacity(byte capacity) {
+        this.capacity = capacity;
+        // Enable capacity bitfield
+        ensureBitfield(0);
+        bitfields[0] |= 0x80; // Set bit 7 for capacity
+    }
+
+    public void setOrdType(byte ordType) {
+        this.ordType = ordType;
+        // Enable ordType bitfield
+        ensureBitfield(0);
+        bitfields[0] |= 0x08; // Set bit 3 for ordType
+    }
+
+    public void setRoutingInst(byte routingInst) {
+        this.routingInst = routingInst;
+        // Enable routingInst bitfield
+        ensureBitfield(1);
+        bitfields[1] |= 0x40; // Set bit 6 for routingInst
+    }
+
+    public void setAccount(String account) {
+        this.account = account;
+        // Enable account bitfield
+        ensureBitfield(1);
+        bitfields[1] |= 0x01; // Set bit 0 for an account
+    }
+
+    public void setOpenClose(byte openClose) {
+        this.openClose = openClose;
+        // Enable openClose bitfield
+        ensureBitfield(1);
+        bitfields[1] |= 0x80; // Set bit 7 for openClose
+    }
+
+    public void setClearingFirm(String clearingFirm) {
+        this.clearingFirm = clearingFirm;
+        // Enable clearingFirm bitfield
+        ensureBitfield(0);
+        bitfields[0] |= 0x01; // Set bit 0 for clearingFirm
+    }
+
+    public void setClearingAccount(String clearingAccount) {
+        this.clearingAccount = clearingAccount;
+        // Enable clearingAccount bitfield
+        ensureBitfield(0);
+        bitfields[0] |= 0x02; // Set bit 1 for clearingAccount
+    }
+
+    public void setMaturityDate(Instant maturityDate) {
+        this.maturityDate = maturityDate;
+        // Enable maturityDate bitfield
+        ensureBitfield(2);
+        bitfields[2] |= 0x01; // Set bit 0 for maturityDate
+    }
+
+    public void setStrikePrice(BigDecimal strikePrice) {
+        this.strikePrice = strikePrice;
+        // Enable strikePrice bitfield
+        ensureBitfield(2);
+        bitfields[2] |= 0x02; // Set bit 1 for strikePrice
+    }
+
+    public void setPutOrCall(byte putOrCall) {
+        this.putOrCall = putOrCall;
+        // Enable putOrCall bitfield
+        ensureBitfield(2);
+        bitfields[2] |= 0x04; // Set bit 2 for putOrCall
+    }
+
+    public void setTimeInForce(byte timeInForce) {
+        this.timeInForce = timeInForce;
+        // Enable timeInForce bitfield
+        ensureBitfield(0);
+        bitfields[0] |= 0x10; // Set bit 4 for timeInForce
+    }
+
+    // Helper method to ensure a bitfield array has required size
+    private void ensureBitfield(int index) {
+        int requiredSize = index + 1;
+
+        if (bitfields == null) {
+            numberOfBitfields = requiredSize;
+            bitfields = new byte[requiredSize];
+        } else if (bitfields.length < requiredSize) {
+            byte[] newBitfields = new byte[requiredSize];
+            System.arraycopy(bitfields, 0, newBitfields, 0, bitfields.length);
+            bitfields = newBitfields;
+            numberOfBitfields = requiredSize;
+        }
+    }
+
     private int calculateOptionalFieldsSize() {
         int size = 0;
 

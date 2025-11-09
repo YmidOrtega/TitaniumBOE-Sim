@@ -235,6 +235,10 @@ public class CancelOrderMessage {
                 origClOrdID.replaceAll("\u0000", "").trim().isEmpty();
     }
 
+    public void setOrigClOrdID(String origClOrdID) {
+        this.origClOrdID = origClOrdID;
+    }
+
     public MassCancelType getMassCancelType() {
         if (massCancelInst == null || massCancelInst.isEmpty()) {
             return MassCancelType.NONE;
