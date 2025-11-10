@@ -1,0 +1,93 @@
+version: '3.9'
+
+services:
+  # CBOE Server
+  boe-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cboe-server
+    ports:
+      - "8081:8081"  # BOE Protocol port
+      - "9091:9091"  # REST API port
+    environment:
+      # ✅ Use .env file for sensitive data
+      - DEMO_MODE=${DEMO_MODE:-true}
+      - BOE_PORT=8081
+      - API_PORT=9091
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Security: Load from environment variables
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      # Persist RocksDB data
+      - boe-data:/app/data
+      # Optional: Mount logs directory
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - boe-network
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Optional: Monitoring with Prometheus (uncomment to enable)
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus-data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   networks:
+  #     - boe-network
+  #   depends_on:
+  #     - boe-server
+
+  # Optional: Grafana for dashboards (uncomment to enable)
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: grafana
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #     - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+  #     - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+  #   networks:
+  #     - boe-network
+  #   depends_on:
+  #     - prometheus
+
+volumes:
+  boe-data:
+    driver: local
+  # prometheus-data:
+  #   driver: local
+  # grafana-data:
+  #   driver: local
+
+networks:
+  boe-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
