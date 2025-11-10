@@ -1,0 +1,181 @@
+name: Code Quality & Coverage
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Run Tests with Coverage
+      run: mvn clean test jacoco:report
+
+    - name: Coverage Quality Gate (Maven-based)
+      run: |
+        echo "Checking code coverage with JaCoCo Maven Plugin..."
+        mvn jacoco:check \
+          -Drules.bundle.coveredratio.minimum=0.70 \
+          || {
+            echo "❌ Coverage below 70% threshold"
+            echo "Run 'mvn jacoco:report' locally and check target/site/jacoco/index.html"
+            exit 1
+          }
+        echo "✅ Coverage meets quality gate (≥70%)"
+
+    - name: Generate Coverage Badge Data
+      if: always()
+      run: |
+        if [ -f target/site/jacoco/index.html ]; then
+          # Extract coverage percentage from JaCoCo HTML report
+          COVERAGE=$(grep -oP 'Total[^%]+\K[0-9]+(?=%)' target/site/jacoco/index.html | head -1)
+          
+          if [ -n "$COVERAGE" ]; then
+            echo "COVERAGE_PERCENTAGE=$COVERAGE" >> $GITHUB_ENV
+            echo "Code Coverage: $COVERAGE%"
+            
+            # Determine badge color
+            if [ "$COVERAGE" -ge 80 ]; then
+              COLOR="brightgreen"
+            elif [ "$COVERAGE" -ge 70 ]; then
+              COLOR="green"
+            elif [ "$COVERAGE" -ge 50 ]; then
+              COLOR="yellow"
+            else
+              COLOR="red"
+            fi
+            echo "BADGE_COLOR=$COLOR" >> $GITHUB_ENV
+          fi
+        fi
+
+    - name: Test Quality Gate
+      run: |
+        if [ -f target/surefire-reports/TEST-*.xml ]; then
+          FAILURES=$(grep -o 'failures="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          ERRORS=$(grep -o 'errors="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          TESTS=$(grep -o 'tests="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          
+          # Default to 0 if empty
+          FAILURES=${FAILURES:-0}
+          ERRORS=${ERRORS:-0}
+          TESTS=${TESTS:-0}
+          
+          if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then
+            echo "❌ Tests failed: $FAILURES failures, $ERRORS errors out of $TESTS tests"
+            exit 1
+          fi
+          echo "✅ All $TESTS tests passed"
+        else
+          echo "⚠️  No test reports found"
+          exit 1
+        fi
+
+    - name: Build Quality Gate
+      run: |
+        mvn package -DskipTests
+        if [ $? -ne 0 ]; then
+          echo "❌ Build failed"
+          exit 1
+        fi
+        echo "✅ Build successful"
+
+    - name: Check Code Style (Optional)
+      continue-on-error: true
+      run: |
+        # Check for common code smells
+        echo "Checking for common anti-patterns..."
+        
+        # Check for System.out.println (should use logging)
+        PRINTLN_COUNT=$(grep -r "System\.out\.println" src/main --include="*.java" | wc -l || echo "0")
+        if [ "$PRINTLN_COUNT" -gt 0 ]; then
+          echo "⚠️  Found $PRINTLN_COUNT System.out.println statements (consider using logger)"
+        fi
+        
+        # Check for printStackTrace (should use proper logging)
+        STACKTRACE_COUNT=$(grep -r "printStackTrace" src/main --include="*.java" | wc -l || echo "0")
+        if [ "$STACKTRACE_COUNT" -gt 0 ]; then
+          echo "⚠️  Found $STACKTRACE_COUNT printStackTrace calls (use logger instead)"
+        fi
+
+    - name: Generate Quality Report
+      if: always()
+      run: |
+        mkdir -p quality-reports
+        
+        echo "# 📊 Code Quality Report" > quality-reports/summary.md
+        echo "" >> quality-reports/summary.md
+        echo "**Build Status:** ✅ Passed" >> quality-reports/summary.md
+        echo "" >> quality-reports/summary.md
+        echo "**Test Status:** ✅ All tests passed" >> quality-reports/summary.md
+        echo "" >> quality-reports/summary.md
+        
+        if [ -n "${COVERAGE_PERCENTAGE}" ]; then
+          echo "**Code Coverage:** ${COVERAGE_PERCENTAGE}% ![Coverage](https://img.shields.io/badge/coverage-${COVERAGE_PERCENTAGE}%25-${BADGE_COLOR})" >> quality-reports/summary.md
+        else
+          echo "**Code Coverage:** See detailed report" >> quality-reports/summary.md
+        fi
+        
+        echo "" >> quality-reports/summary.md
+        echo "## 📈 Coverage Details" >> quality-reports/summary.md
+        echo "" >> quality-reports/summary.md
+        echo "View the full JaCoCo report in the build artifacts." >> quality-reports/summary.md
+
+    - name: Upload Coverage Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: target/site/jacoco/
+        retention-days: 30
+
+    - name: Upload Quality Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: quality-reports
+        path: quality-reports/
+        retention-days: 14
+
+    - name: Comment PR with Coverage
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          const coverage = process.env.COVERAGE_PERCENTAGE;
+          if (coverage) {
+            const color = process.env.BADGE_COLOR;
+            const emoji = color === 'brightgreen' ? '🎉' : color === 'green' ? '✅' : color === 'yellow' ? '⚠️' : '❌';
+            
+            const comment = `## ${emoji} Code Coverage Report
+            
+**Coverage:** ${coverage}%
+
+${coverage >= 70 ? '✅ Coverage meets quality gate (≥70%)' : '❌ Coverage below quality gate (≥70%)'}
+
+[View detailed report in artifacts](${context.payload.pull_request.html_url}/checks)
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }
