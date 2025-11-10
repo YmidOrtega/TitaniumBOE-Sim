@@ -1,5 +1,5 @@
 # Multi-stage build for optimal image size
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM eclipse-temurin:25-jdk-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY src ./src
 RUN ./mvnw clean package -DskipTests -B
 
 # Runtime stage - smaller image
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 # Add metadata
 LABEL maintainer="your-email@example.com"
