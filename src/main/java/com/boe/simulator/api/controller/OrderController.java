@@ -5,6 +5,7 @@ import com.boe.simulator.api.dto.OrderRequest;
 import com.boe.simulator.api.dto.OrderResponse;
 import com.boe.simulator.api.service.OrderService;
 import io.javalin.http.Context;
+import io.javalin.openapi.*;
 
 import java.util.List;
 import java.util.logging.Level;
@@ -19,6 +20,26 @@ public class OrderController {
         this.orderService = orderService;
     }
 
+    @OpenApi(
+        summary = "Submit a new order",
+        description = "Crea una nueva orden de compra o venta en el sistema BOE",
+        operationId = "submitOrder",
+        path = "/api/orders",
+        methods = HttpMethod.POST,
+        tags = {"Orders"},
+        security = {@OpenApiSecurity(name = "BasicAuth")},
+        requestBody = @OpenApiRequestBody(
+            content = {@OpenApiContent(from = OrderRequest.class)},
+            required = true,
+            description = "Datos de la orden a crear"
+        ),
+        responses = {
+            @OpenApiResponse(status = "201", content = {@OpenApiContent(from = OrderResponse.class)}, description = "Orden creada exitosamente"),
+            @OpenApiResponse(status = "400", content = {@OpenApiContent(from = ApiResponse.class)}, description = "Solicitud inválida"),
+            @OpenApiResponse(status = "401", description = "No autenticado"),
+            @OpenApiResponse(status = "422", content = {@OpenApiContent(from = ApiResponse.class)}, description = "Orden rechazada")
+        }
+    )
     public void submitOrder(Context ctx) {
         String username = ctx.attribute("username");
         OrderRequest request = ctx.bodyAsClass(OrderRequest.class);
@@ -38,6 +59,19 @@ public class OrderController {
         }
     }
 
+    @OpenApi(
+        summary = "Get active orders",
+        description = "Obtiene todas las órdenes activas del usuario autenticado",
+        operationId = "getActiveOrders",
+        path = "/api/orders/active",
+        methods = HttpMethod.GET,
+        tags = {"Orders"},
+        security = {@OpenApiSecurity(name = "BasicAuth")},
+        responses = {
+            @OpenApiResponse(status = "200", content = {@OpenApiContent(from = OrderResponse[].class)}, description = "Lista de órdenes activas"),
+            @OpenApiResponse(status = "401", description = "No autenticado")
+        }
+    )
     public void getActiveOrders(Context ctx) {
         String username = ctx.attribute("username");
 
@@ -45,6 +79,21 @@ public class OrderController {
         ctx.json(ApiResponse.success(orders));
     }
 
+    @OpenApi(
+        summary = "Get order by ID",
+        description = "Obtiene los detalles de una orden específica por su ID",
+        operationId = "getOrder",
+        path = "/api/orders/{clOrdID}",
+        methods = HttpMethod.GET,
+        tags = {"Orders"},
+        security = {@OpenApiSecurity(name = "BasicAuth")},
+        pathParams = {@OpenApiParam(name = "clOrdID", description = "ID de la orden", required = true)},
+        responses = {
+            @OpenApiResponse(status = "200", content = {@OpenApiContent(from = OrderResponse.class)}, description = "Detalles de la orden"),
+            @OpenApiResponse(status = "401", description = "No autenticado"),
+            @OpenApiResponse(status = "404", content = {@OpenApiContent(from = ApiResponse.class)}, description = "Orden no encontrada")
+        }
+    )
     public void getOrder(Context ctx) {
         String username = ctx.attribute("username");
         String clOrdID = ctx.pathParam("clOrdID");
@@ -59,6 +108,23 @@ public class OrderController {
                 );
     }
 
+    @OpenApi(
+        summary = "Cancel an order",
+        description = "Cancela una orden activa del usuario autenticado",
+        operationId = "cancelOrder",
+        path = "/api/orders/{clOrdID}",
+        methods = HttpMethod.DELETE,
+        tags = {"Orders"},
+        security = {@OpenApiSecurity(name = "BasicAuth")},
+        pathParams = {@OpenApiParam(name = "clOrdID", description = "ID de la orden a cancelar", required = true)},
+        responses = {
+            @OpenApiResponse(status = "200", content = {@OpenApiContent(from = ApiResponse.class)}, description = "Orden cancelada exitosamente"),
+            @OpenApiResponse(status = "400", content = {@OpenApiContent(from = ApiResponse.class)}, description = "No se puede cancelar la orden"),
+            @OpenApiResponse(status = "401", description = "No autenticado"),
+            @OpenApiResponse(status = "403", content = {@OpenApiContent(from = ApiResponse.class)}, description = "No autorizado para cancelar esta orden"),
+            @OpenApiResponse(status = "404", content = {@OpenApiContent(from = ApiResponse.class)}, description = "Orden no encontrada")
+        }
+    )
     public void cancelOrder(Context ctx) {
         String username = ctx.attribute("username");
         String clOrdID = ctx.pathParam("clOrdID");

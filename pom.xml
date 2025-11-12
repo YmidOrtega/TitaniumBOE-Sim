@@ -115,6 +115,20 @@
             <version>1.5.7</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Javalin OpenAPI Plugin -->
+        <dependency>
+            <groupId>io.javalin.community.openapi</groupId>
+            <artifactId>javalin-openapi-plugin</artifactId>
+            <version>6.3.0</version>
+        </dependency>
+
+        <!-- Javalin Swagger Plugin -->
+        <dependency>
+            <groupId>io.javalin.community.openapi</groupId>
+            <artifactId>javalin-swagger-plugin</artifactId>
+            <version>6.3.0</version>
+        </dependency>
     </dependencies>
 
     <build>
