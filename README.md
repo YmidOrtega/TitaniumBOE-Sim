@@ -201,6 +201,20 @@ The DeepWiki contains:
 - 🔐 Security best practices
 - 🚀 Deployment instructions
 
+### **[📚 Interactive API Documentation (Scalar) →](docs/API_DOCUMENTATION.md)**
+
+Access the interactive API documentation:
+- **Scalar UI**: http://localhost:8080/api/docs *(recommended)*
+- **Swagger UI**: http://localhost:8080/api/swagger
+- **OpenAPI Spec**: http://localhost:8080/api/openapi
+
+Features:
+- ✨ Modern, clean interface with Scalar
+- 🔧 Interactive request testing
+- 📝 Code examples in multiple languages
+- 🔍 Advanced search functionality
+- 🌙 Dark mode support
+
 ---
 
 ## 📄 License
