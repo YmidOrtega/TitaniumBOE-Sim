@@ -4,6 +4,7 @@ import com.boe.simulator.api.dto.ApiResponse;
 import com.boe.simulator.api.service.SymbolService;
 import com.boe.simulator.server.matching.MatchingEngine;
 import io.javalin.http.Context;
+import io.javalin.openapi.*;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,6 +18,17 @@ public class SymbolController {
         this.symbolService = symbolService;
     }
 
+    @OpenApi(
+        summary = "Get all available symbols",
+        description = "Obtiene la lista de todos los símbolos disponibles para trading con su información de mercado",
+        operationId = "getSymbols",
+        path = "/api/symbols",
+        methods = HttpMethod.GET,
+        tags = {"Market Data"},
+        responses = {
+            @OpenApiResponse(status = "200", content = {@OpenApiContent(from = SymbolDTO[].class)}, description = "Lista de símbolos disponibles")
+        }
+    )
     public void getSymbols(Context ctx) {
         List<SymbolDTO> symbolDTOs = symbolService.getAllSymbols().stream()
                 .map(symbolInfo -> {
