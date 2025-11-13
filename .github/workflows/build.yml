@@ -38,4 +38,10 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar -Dsonar.projectKey=TitaniumBOE-Sim -Dsonar.projectName='TitaniumBOE-Sim'
+          SONAR_PROJECT_KEY: TitaniumBOE-Sim
+          SONAR_PROJECT_NAME: 'TitaniumBOE-Sim'
+        run: |
+          mvn -B verify \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar \
+            -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
+            -Dsonar.projectName="${SONAR_PROJECT_NAME}"
