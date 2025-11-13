@@ -8,9 +8,9 @@ TitaniumBOE Simulator incluye documentación interactiva de la API REST utilizan
 
 Una vez que el servidor esté ejecutándose, la documentación estará disponible en:
 
-- **Scalar UI** (Recomendado): http://localhost:8080/api/docs
-- **Swagger UI** (Alternativa): http://localhost:8080/api/swagger
-- **Especificación OpenAPI** (JSON): http://localhost:8080/api/openapi
+- **Scalar UI** (Recomendado): http://localhost:8081/api/docs
+- **Swagger UI** (Alternativa): http://localhost:8081/api/swagger
+- **Especificación OpenAPI** (JSON): http://localhost:8081/openapi
 
 ## 🚀 Características de Scalar
 
@@ -63,7 +63,7 @@ Scalar proporciona una interfaz de documentación moderna con:
 La API utiliza **HTTP Basic Authentication**. Incluye las credenciales en el header:
 
 ```bash
-curl -u username:password http://localhost:8080/api/orders/active
+curl -u username:password http://localhost:8081/api/orders/active
 ```
 
 ## 📝 Ejemplo de Uso
@@ -71,7 +71,7 @@ curl -u username:password http://localhost:8080/api/orders/active
 ### Crear una orden LIMIT
 
 ```bash
-curl -X POST http://localhost:8080/api/orders \
+curl -X POST http://localhost:8081/api/orders \
   -u trader1:password \
   -H "Content-Type: application/json" \
   -d '{

@@ -1,6 +1,8 @@
 package com.boe.simulator.api;
 
+import com.boe.simulator.api.config.OpenApiHandler;
 import com.boe.simulator.api.config.ScalarHandler;
+import com.boe.simulator.api.config.SwaggerHandler;
 import com.boe.simulator.api.controller.*;
 import com.boe.simulator.api.middleware.AuthenticationFilter;
 import com.boe.simulator.api.middleware.CorsFilter;
@@ -16,8 +18,6 @@ import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.order.OrderRepository;
 import io.javalin.Javalin;
 import io.javalin.http.ContentType;
-import io.javalin.openapi.plugin.OpenApiPlugin;
-import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -90,34 +90,11 @@ public class RestApiServer {
 
         WebSocketHandler wsHandler = new WebSocketHandler(webSocketService);
 
-        // Create Javalin app with OpenAPI and Swagger plugins
+        // Create Javalin app without OpenAPI plugins (using custom handlers instead)
         String serverUrl = "http://localhost:" + port;
         app = Javalin.create(config -> {
             config.showJavalinBanner = false;
             config.http.defaultContentType = ContentType.JSON;
-            
-            // Register OpenAPI plugin
-            config.registerPlugin(new OpenApiPlugin(pluginConfig -> {
-                pluginConfig.withDefinitionConfiguration((version, definition) -> {
-                    definition
-                        .withOpenApiInfo(info -> {
-                            info.setTitle("TitaniumBOE Simulator API");
-                            info.setVersion("1.0.0");
-                            info.setDescription("API REST para el simulador de Bolsa de Opciones y Futuros (BOE). " +
-                                    "Proporciona endpoints para gestión de órdenes, posiciones, trades y simulación de mercado.");
-                        })
-                        .withServer(server -> {
-                            server.setUrl(serverUrl);
-                            server.setDescription("Development Server");
-                        });
-                });
-            }));
-            
-            // Register Swagger UI plugin
-            config.registerPlugin(new SwaggerPlugin(pluginConfig -> {
-                pluginConfig.setDocumentationPath("/api/openapi");
-                pluginConfig.setUiPath("/api/swagger");
-            }));
         });
 
         // Configure CORS
@@ -138,6 +115,12 @@ public class RestApiServer {
 
         // API Documentation endpoints - Scalar UI (recommended)
         app.get("/api/docs", ScalarHandler.getHandler());
+        
+        // OpenAPI specification endpoint
+        app.get("/openapi", ctx -> OpenApiHandler.handle(ctx, port));
+        
+        // Swagger UI endpoint
+        app.get("/api/swagger", SwaggerHandler::handle);
 
         app.get("/api/symbols", symbolController::getSymbols);
 
@@ -177,7 +160,7 @@ public class RestApiServer {
         LOGGER.log(Level.INFO, "✓ REST API Server started successfully on http://localhost:{0}", port);
         LOGGER.log(Level.INFO, "✓ WebSocket available at ws://localhost:{0}/ws/feed", port);
         LOGGER.log(Level.INFO, "✓ API Documentation available at http://localhost:{0}/api/docs (Scalar)", port);
-        LOGGER.log(Level.INFO, "✓ OpenAPI Specification at http://localhost:{0}/api/openapi", port);
+        LOGGER.log(Level.INFO, "✓ OpenAPI Specification at http://localhost:{0}/openapi", port);
         LOGGER.log(Level.INFO, "✓ Swagger UI at http://localhost:{0}/api/swagger", port);
         printEndpoints();
     }
@@ -205,7 +188,7 @@ public class RestApiServer {
         LOGGER.info("DOCUMENTATION:");
         LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/docs (Scalar UI)", port);
         LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/swagger (Swagger UI)", port);
-        LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/openapi (OpenAPI Spec)", port);
+        LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/openapi (OpenAPI Spec)", port);
         LOGGER.info("");
         LOGGER.info("PUBLIC:");
         LOGGER.log(Level.INFO, "  GET    http://localhost:{0}/api/health", port);

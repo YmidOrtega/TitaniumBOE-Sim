@@ -91,8 +91,8 @@ Before deploying this project to production, you **MUST** implement:
 ```bash
 # Server Configuration
 BOE_HOST=0.0.0.0
-BOE_PORT=8081
-API_PORT=9091
+BOE_PORT=8080
+API_PORT=8081
 
 # Security
 DEMO_MODE=false                          # MUST be false in production
