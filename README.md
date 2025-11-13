@@ -68,7 +68,7 @@ mvn exec:java -Dexec.mainClass="com.boe.simulator.client.interactive.Interactive
 ## 🎨 Interactive CLI Example
 
 ```bash
-● guest> connect localhost 8081
+● guest> connect localhost 8080
 Username: TRD1
 Password: ********
 ✓ Connected and authenticated successfully
@@ -93,17 +93,17 @@ Best Bid: 150.00 | Best Ask: 150.50 | Spread: 0.50
 
 ```bash
 # Health check
-curl http://localhost:9091/api/health
+curl http://localhost:8081/api/health
 
 # Get market data
-curl http://localhost:9091/api/symbols/AAPL
+curl http://localhost:8081/api/symbols/AAPL
 
 # Authenticated endpoints
-curl -u TRD1:Pass1234! http://localhost:9091/api/positions
-curl -u TRD1:Pass1234! http://localhost:9091/api/trades/my
+curl -u TRD1:Pass1234! http://localhost:8081/api/positions
+curl -u TRD1:Pass1234! http://localhost:8081/api/trades/my
 ```
 
-**WebSocket:** `ws://localhost:9091/ws/feed`
+**WebSocket:** `ws://localhost:8081/ws/feed`
 
 ---
 
@@ -112,7 +112,7 @@ curl -u TRD1:Pass1234! http://localhost:9091/api/trades/my
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
 │ Interactive │────▶│  BOE Server  │────▶│  REST API   │
-│     CLI     │     │  (Port 8081) │     │ (Port 9091) │
+│     CLI     │     │  (Port 8080) │     │ (Port 8081) │
 └─────────────┘     └──────┬───────┘     └─────────────┘
                            │
               ┌────────────┼────────────┐
@@ -204,9 +204,9 @@ The DeepWiki contains:
 ### **[📚 Interactive API Documentation (Scalar) →](docs/API_DOCUMENTATION.md)**
 
 Access the interactive API documentation:
-- **Scalar UI**: http://localhost:8080/api/docs *(recommended)*
-- **Swagger UI**: http://localhost:8080/api/swagger
-- **OpenAPI Spec**: http://localhost:8080/api/openapi
+- **Scalar UI**: http://localhost:8081/api/docs *(recommended)*
+- **Swagger UI**: http://localhost:8081/api/swagger
+- **OpenAPI Spec**: http://localhost:8081/openapi
 
 Features:
 - ✨ Modern, clean interface with Scalar

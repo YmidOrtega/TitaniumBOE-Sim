@@ -9,7 +9,7 @@ Este documento describe las consideraciones de seguridad implementadas en la doc
 ### 1. Separación de Entornos
 
 La documentación Scalar se sirve desde el mismo dominio que la API para evitar problemas de CORS:
-- Desarrollo: `http://localhost:8080/api/docs`
+- Desarrollo: `http://localhost:8081/api/docs`
 - Producción: Debe configurarse con HTTPS
 
 ### 2. Sin Credenciales Hardcodeadas

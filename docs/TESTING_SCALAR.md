@@ -19,7 +19,7 @@ mvn exec:java
 
 ### 2. Verificar que el Servidor Está Ejecutándose
 
-Abrir en el navegador: http://localhost:8080/api/health
+Abrir en el navegador: http://localhost:8081/api/health
 
 Deberías ver una respuesta JSON:
 ```json
@@ -33,7 +33,7 @@ Deberías ver una respuesta JSON:
 
 ### 3. Acceder a la Documentación Scalar
 
-Abrir en el navegador: http://localhost:8080/api/docs
+Abrir en el navegador: http://localhost:8081/api/docs
 
 Deberías ver:
 - ✅ Interfaz Scalar moderna y limpia
@@ -45,10 +45,10 @@ Deberías ver:
 ### 4. Probar las Otras Interfaces de Documentación
 
 #### Swagger UI (Alternativa)
-http://localhost:8080/api/swagger
+http://localhost:8081/api/swagger
 
 #### OpenAPI Specification (JSON)
-http://localhost:8080/api/openapi
+http://localhost:8081/api/openapi
 
 ### 5. Probar Endpoints Interactivamente desde Scalar
 
@@ -126,22 +126,22 @@ http://localhost:8080/api/openapi
 
 #### Obtener especificación OpenAPI:
 ```bash
-curl http://localhost:8080/api/openapi | jq
+curl http://localhost:8081/openapi | jq
 ```
 
 #### Probar endpoint público:
 ```bash
-curl http://localhost:8080/api/symbols | jq
+curl http://localhost:8081/api/symbols | jq
 ```
 
 #### Probar endpoint protegido:
 ```bash
-curl -u trader1:password http://localhost:8080/api/orders/active | jq
+curl -u trader1:password http://localhost:8081/api/orders/active | jq
 ```
 
 #### Crear una orden:
 ```bash
-curl -X POST http://localhost:8080/api/orders \
+curl -X POST http://localhost:8081/api/orders \
   -u trader1:password \
   -H "Content-Type: application/json" \
   -d '{
@@ -160,7 +160,7 @@ curl -X POST http://localhost:8080/api/orders \
 #### ✅ Autenticación requerida
 ```bash
 # Sin credenciales (debe fallar con 401)
-curl -v http://localhost:8080/api/orders/active
+curl -v http://localhost:8081/api/orders/active
 ```
 
 Respuesta esperada: `401 Unauthorized`
@@ -168,7 +168,7 @@ Respuesta esperada: `401 Unauthorized`
 #### ✅ Credenciales inválidas
 ```bash
 # Con credenciales incorrectas (debe fallar con 401)
-curl -v -u wronguser:wrongpass http://localhost:8080/api/orders/active
+curl -v -u wronguser:wrongpass http://localhost:8081/api/orders/active
 ```
 
 Respuesta esperada: `401 Unauthorized`
@@ -177,11 +177,11 @@ Respuesta esperada: `401 Unauthorized`
 
 En la consola del servidor, deberías ver logs como:
 ```
-✓ REST API Server started successfully on http://localhost:8080
-✓ WebSocket available at ws://localhost:8080/ws/feed
-✓ API Documentation available at http://localhost:8080/api/docs (Scalar)
-✓ OpenAPI Specification at http://localhost:8080/api/openapi
-✓ Swagger UI at http://localhost:8080/api/swagger
+✓ REST API Server started successfully on http://localhost:8081
+✓ WebSocket available at ws://localhost:8081/ws/feed
+✓ API Documentation available at http://localhost:8081/api/docs (Scalar)
+✓ OpenAPI Specification at http://localhost:8081/api/openapi
+✓ Swagger UI at http://localhost:8081/api/swagger
 ```
 
 ## 🐛 Troubleshooting
@@ -190,7 +190,7 @@ En la consola del servidor, deberías ver logs como:
 **Solución**: 
 - Verificar que hay conexión a internet (Scalar carga desde CDN)
 - Revisar la consola del navegador para errores de red
-- Verificar que el puerto 8080 no está bloqueado por firewall
+- Verificar que el puerto 8081 no está bloqueado por firewall
 
 ### Problema: 401 Unauthorized en endpoints protegidos
 **Solución**:
