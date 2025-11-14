@@ -93,7 +93,6 @@
             <artifactId>javalin</artifactId>
             <version>6.3.0</version>
         </dependency>
-
         <!-- Jackson for JSON -->
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
@@ -129,6 +128,13 @@
             <artifactId>javalin-swagger-plugin</artifactId>
             <version>6.3.0</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.jetty</groupId>
+            <artifactId>jetty-server</artifactId>
+            <version>12.1.4</version>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -202,7 +208,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.11</version>
+                <version>0.8.14</version>
 
                 <!-- ✅ AGREGA ESTO - Configuración global -->
                 <configuration>
@@ -216,12 +222,6 @@
                                     <minimum>0.15</minimum>
                                 </limit>
                             </limits>
-                            <excludes>
-                                <exclude>**/dto/**</exclude>
-                                <exclude>**/model/**</exclude>
-                                <exclude>**/*Config.class</exclude>
-                                <exclude>**/interactive/**</exclude>
-                            </excludes>
                         </rule>
                     </rules>
                 </configuration>
