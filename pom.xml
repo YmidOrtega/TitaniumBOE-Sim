@@ -126,7 +126,7 @@
         <dependency>
             <groupId>io.javalin.community.openapi</groupId>
             <artifactId>javalin-swagger-plugin</artifactId>
-            <version>6.3.0</version>
+            <version>6.7.0-2</version>
         </dependency>
 
         <dependency>
