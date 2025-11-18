@@ -16,6 +16,14 @@
         <junit.jupiter.version>5.11.4</junit.jupiter.version>
         <mockito.version>5.20.0</mockito.version>
         <jackson.version>2.18.2</jackson.version>
+        
+        <!-- SonarQube properties -->
+        <sonar.organization>Ymidツ</sonar.organization>
+        <sonar.projectKey>TitaniumBOE-Sim</sonar.projectKey>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.java.source>21</sonar.java.source>
+        <sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.exclusions>**/target/**</sonar.exclusions>
     </properties>
 
     <dependencies>
@@ -132,14 +140,14 @@
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-server</artifactId>
-            <version>12.1.4</version>
+            <version>11.0.25</version>
         </dependency>
 
     </dependencies>
 
     <build>
         <plugins>
-            <!-- ✅ Maven Compiler Plugin CORREGIDO -->
+            <!-- Maven Compiler Plugin CORREGIDO -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -162,7 +170,7 @@
                 </configuration>
             </plugin>
 
-            <!-- ✅ Maven Shade Plugin para crear JAR ejecutable con todas las dependencias -->
+            <!-- Maven Shade Plugin para crear JAR ejecutable con todas las dependencias -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -195,7 +203,7 @@
                 </executions>
             </plugin>
 
-            <!-- ✅ Exec Maven Plugin para ejecutar directamente -->
+            <!-- Exec Maven Plugin para ejecutar directamente -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
@@ -204,7 +212,7 @@
                     <mainClass>com.boe.simulator.server.CboeServer</mainClass>
                 </configuration>
             </plugin>
-            <!-- ✅ JaCoCo Plugin para cobertura de código -->
+            <!-- JaCoCo Plugin para cobertura de código -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>

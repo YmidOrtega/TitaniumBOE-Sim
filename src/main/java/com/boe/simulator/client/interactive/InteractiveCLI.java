@@ -19,6 +19,9 @@ public class InteractiveCLI {
         this.reader = new BufferedReader(new InputStreamReader(System.in));
         this.running = false;
 
+        // Pass the reader to the context so commands can use it
+        context.setReader(reader);
+
         // Disable verbose logging for cleaner output
         Logger.getLogger("").setLevel(Level.WARNING);
     }
@@ -63,7 +66,7 @@ public class InteractiveCLI {
 
     private void printWelcome() {
         System.out.println("Welcome! Type 'help' for available commands.");
-        System.out.println("Start by connecting: connect localhost 8081");
+        System.out.println("Start by connecting: connect localhost 8080");
         System.out.println();
     }
 
