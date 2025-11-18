@@ -391,6 +391,11 @@ public class CboeServer {
 
         try {
             server.start();
+            
+            // Check if DEMO_MODE is enabled
+            String demoMode = System.getProperty("DEMO_MODE", System.getenv().getOrDefault("DEMO_MODE", "false"));
+            boolean isDemoMode = "true".equalsIgnoreCase(demoMode);
+            
             System.out.printf("""
                     ╔════════════════════════════════════════════════════════════╗
                     ║         CBOE Server + REST API - RUNNING                   ║
@@ -400,6 +405,7 @@ public class CboeServer {
                     ║  Max Connections: %d                                       ║
                     ║  Persistence: ENABLED                                      ║
                     ║  Matching Engine: ENABLED                                  ║
+                    ║  DEMO Mode: %-47s ║
                     ║                                                            ║
                     ║  API Documentation: http://localhost:8081/api/docs         ║
                     ║  Swagger UI: http://localhost:8081/api/swagger             ║
@@ -407,7 +413,8 @@ public class CboeServer {
                     ║                                                            ║
                     ║  Press Ctrl+C to stop the server                           ║
                     ╚════════════════════════════════════════════════════════════╝
-                    %n""", config.getHost(), config.getPort(), config.getMaxConnections());
+                    %n""", config.getHost(), config.getPort(), config.getMaxConnections(), 
+                    isDemoMode ? "TRUE" : "FALSE");
 
             ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
             scheduler.scheduleAtFixedRate(() -> {

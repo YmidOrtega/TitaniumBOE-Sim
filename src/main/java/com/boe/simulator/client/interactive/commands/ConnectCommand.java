@@ -17,13 +17,23 @@ public class ConnectCommand implements Command {
         String host = args[0];
         int port = Integer.parseInt(args[1]);
 
-        System.out.print("Username (max 4 chars): ");
-        String username = System.console() != null ? System.console().readLine() : new java.util.Scanner(System.in).nextLine();
+        // Get reader from context to avoid creating multiple Scanners
+        java.io.BufferedReader reader = context.getReader();
+        if (reader == null) {
+            ColorOutput.error("Input reader not available");
+            return;
+        }
 
-        if (username == null || username.isEmpty()) {
+        System.out.print("Username (max 4 chars): ");
+        System.out.flush();
+        String username = reader.readLine();
+
+        if (username == null || username.trim().isEmpty()) {
             ColorOutput.error("Username cannot be empty");
             return;
         }
+
+        username = username.trim();
 
         if (username.length() > 4) {
             ColorOutput.error("Username must be 4 characters or less");
@@ -31,12 +41,21 @@ public class ConnectCommand implements Command {
         }
 
         System.out.print("Password: ");
-        String password = System.console() != null ? new String(System.console().readPassword()) : new java.util.Scanner(System.in).nextLine();
+        System.out.flush();
+        
+        // Try to use Console for password (hidden input), fallback to BufferedReader
+        String password;
+        if (System.console() != null) {
+            char[] passwordChars = System.console().readPassword();
+            password = passwordChars != null ? new String(passwordChars) : "";
+        } else password = reader.readLine();
 
-        if (password == null || password.isEmpty()) {
+        if (password == null || password.trim().isEmpty()) {
             ColorOutput.error("Password cannot be empty");
             return;
         }
+
+        password = password.trim();
 
         System.out.printf("Connecting to %s:%d as %s...%n", host, port, username);
 

@@ -25,8 +25,8 @@ public class BookCommand implements Command {
             String symbol = args[0].toUpperCase();
             int depth = args.length > 1 ? Integer.parseInt(args[1]) : 5;
 
-            // Use REST API to get an order book
-            String restUrl = String.format("http://%s:9091/api/symbols", context.getHost());
+            // Use REST API to get an order book (port 8081 for REST API)
+            String restUrl = String.format("http://%s:8081/api/symbols", context.getHost());
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(restUrl))
@@ -91,6 +91,11 @@ public class BookCommand implements Command {
 
     @Override
     public boolean requiresConnection() {
+        return true;
+    }
+
+    @Override
+    public boolean requiresAuthentication() {
         return true;
     }
 }
