@@ -194,8 +194,15 @@ public class BoeConnectionHandler {
                     processMessage(message);
 
                 } catch (IOException e) {
-                    if (!running) LOGGER.info("Listener stopped.");
-                    else LOGGER.log(Level.SEVERE, "Error reading message", e);
+                    if (!running) {
+                        LOGGER.info("Listener stopped.");
+                    } else {
+                        // Check if this is a graceful close after authentication failure
+                        String errorMsg = e.getMessage();
+                        if (errorMsg != null && errorMsg.contains("Invalid start of message marker")) LOGGER.fine("Connection closed by server (possibly after authentication failure)");
+                        else if (socket.isClosed() || !socket.isConnected()) LOGGER.fine("Socket closed");
+                        else LOGGER.log(Level.WARNING, "Error reading message: {0}", e.getMessage());
+                    }
                     break;
                 }
             }

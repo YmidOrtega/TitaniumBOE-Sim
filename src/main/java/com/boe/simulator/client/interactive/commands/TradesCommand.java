@@ -36,7 +36,7 @@ public class TradesCommand implements Command {
                     (username + ":" + password).getBytes(StandardCharsets.UTF_8)
             );
 
-            String restUrl = String.format("http://%s:9091/api/trades/my", context.getHost());
+            String restUrl = String.format("http://%s:8081/api/trades/my", context.getHost());
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(restUrl))

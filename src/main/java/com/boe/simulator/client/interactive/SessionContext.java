@@ -5,6 +5,7 @@ import com.boe.simulator.client.interactive.notification.NotificationManager;
 import com.boe.simulator.client.interactive.notification.NotificationTradingListener;
 import com.boe.simulator.client.interactive.notification.OrderStatusPoller;
 
+import java.io.BufferedReader;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,6 +19,7 @@ public class SessionContext {
     private long connectedAt;
     private final NotificationManager notificationManager;
     private OrderStatusPoller orderPoller;
+    private BufferedReader reader;
 
     public SessionContext() {
         this.sessionData = new HashMap<>();
@@ -86,6 +88,12 @@ public class SessionContext {
     public int getPort() { return port; }
     public boolean isAuthenticated() { return authenticated; }
     public long getConnectedAt() { return connectedAt; }
+    public BufferedReader getReader() { return reader; }
+
+    // Setter for reader
+    public void setReader(BufferedReader reader) {
+        this.reader = reader;
+    }
 
     public long getUptimeSeconds() {
         return (System.currentTimeMillis() - connectedAt) / 1000;

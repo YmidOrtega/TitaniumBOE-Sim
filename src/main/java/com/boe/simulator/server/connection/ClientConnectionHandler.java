@@ -200,7 +200,17 @@ public class ClientConnectionHandler implements Runnable {
                     session.getConnectionId(),
                     authResult.getMessage()
             });
-            running = false;
+            
+            // Close connection gracefully after failed authentication
+            try {
+                Thread.sleep(100); // Give time for LoginResponse to be sent
+                running = false;
+                socket.close();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (IOException e) {
+                LOGGER.log(Level.FINE, "Error closing socket after failed authentication", e);
+            }
         }
     }
 

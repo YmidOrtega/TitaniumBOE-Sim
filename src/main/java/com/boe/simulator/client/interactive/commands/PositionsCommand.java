@@ -31,7 +31,7 @@ public class PositionsCommand implements Command {
                     (username + ":" + password).getBytes(StandardCharsets.UTF_8)
             );
 
-            String restUrl = String.format("http://%s:9091/api/positions", context.getHost());
+            String restUrl = String.format("http://%s:8081/api/positions", context.getHost());
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(restUrl))
