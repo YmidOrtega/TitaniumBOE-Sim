@@ -111,16 +111,16 @@ curl -u TRD1:Pass1234! http://localhost:8081/api/trades/my
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│ Interactive │────▶│  BOE Server  │────▶│  REST API   │
+│ Interactive │────>│  BOE Server  │────>│  REST API   │
 │     CLI     │     │  (Port 8080) │     │ (Port 8081) │
 └─────────────┘     └──────┬───────┘     └─────────────┘
                            │
               ┌────────────┼────────────┐
               │            │            │
-        ┌─────▼─────┐ ┌───▼────┐ ┌────▼─────┐
-        │ Matching  │ │ Trading│ │ RocksDB  │
-        │  Engine   │ │  Bots  │ │   DB     │
-        └───────────┘ └────────┘ └──────────┘
+        ┌─────▼────┐  ┌────▼────┐  ┌────▼────┐
+        │ Matching │  │ Trading │  │ RocksDB │
+        │  Engine  │  │   Bots  │  │   DB    │
+        └──────────┘  └─────────┘  └─────────┘
 ```
 
 ---
