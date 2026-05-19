@@ -1,0 +1,168 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Trades" page="trades">
+
+  <div class="flex items-center gap-2 mb-4 flex-wrap">
+    <span class="text-xs text-gray-500">Filter:</span>
+    <button onclick="filterSymbol(null)"
+      class="filter-btn px-3 py-1 rounded text-xs border border-[#58a6ff]/60 bg-[#58a6ff]/10 text-[#58a6ff] transition-colors"
+      data-sym="all">All</button>
+    {['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'].map(s => (
+      <button onclick={`filterSymbol('${s}')`}
+        class="filter-btn px-3 py-1 rounded text-xs border border-[#30363d] text-gray-400 hover:text-gray-200 hover:border-[#58a6ff]/40 transition-colors"
+        data-sym={s}>{s}</button>
+    ))}
+    <div class="flex-1"></div>
+    <span class="text-xs text-gray-500" id="trades-count">0 trades</span>
+    <button onclick="clearTrades()"
+      class="px-3 py-1 rounded text-xs border border-[#30363d] text-gray-500 hover:text-gray-300 transition-colors">
+      Clear
+    </button>
+  </div>
+
+  <div class="bg-[#161b22] border border-[#30363d] rounded overflow-hidden">
+    <div class="grid grid-cols-4 gap-3 mb-4 p-4 border-b border-[#30363d]">
+      <div>
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total Trades</div>
+        <div class="text-lg font-semibold text-[#58a6ff]" id="kpi-total">0</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Last Price</div>
+        <div class="text-lg font-semibold font-mono" id="kpi-last">—</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total Volume</div>
+        <div class="text-lg font-semibold text-[#3fb950]" id="kpi-vol">0</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Avg Price</div>
+        <div class="text-lg font-semibold font-mono text-[#d29922]" id="kpi-avg">—</div>
+      </div>
+    </div>
+
+    <div class="overflow-y-auto" style="height:calc(100vh - 260px); min-height:400px">
+      <table class="w-full text-xs">
+        <thead class="sticky top-0 bg-[#161b22] border-b border-[#30363d]">
+          <tr class="text-[10px] text-gray-500 uppercase tracking-wider">
+            <th class="px-4 py-2.5 text-left">#</th>
+            <th class="px-4 py-2.5 text-left">Time</th>
+            <th class="px-4 py-2.5 text-left">Symbol</th>
+            <th class="px-4 py-2.5 text-right">Price</th>
+            <th class="px-4 py-2.5 text-right">Qty</th>
+            <th class="px-4 py-2.5 text-right">Notional</th>
+            <th class="px-4 py-2.5 text-left">Buyer</th>
+            <th class="px-4 py-2.5 text-left">Seller</th>
+          </tr>
+        </thead>
+        <tbody id="trades-tbody" class="divide-y divide-[#30363d]/40">
+          <tr><td colspan="8" class="px-4 py-12 text-center text-gray-600">Waiting for trades…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</Layout>
+
+<script>
+  const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
+  let allTrades = [];
+  let activeFilter = null;
+  let prevPrice = {};
+  let tradeSeq = 0;
+
+  window.filterSymbol = function(sym) {
+    activeFilter = sym;
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      const match = sym === null ? b.dataset.sym === 'all' : b.dataset.sym === sym;
+      b.className = `filter-btn px-3 py-1 rounded text-xs border transition-colors ${
+        match
+          ? 'border-[#58a6ff]/60 bg-[#58a6ff]/10 text-[#58a6ff]'
+          : 'border-[#30363d] text-gray-400 hover:text-gray-200 hover:border-[#58a6ff]/40'
+      }`;
+    });
+    renderTrades();
+  };
+
+  window.clearTrades = function() {
+    allTrades = [];
+    tradeSeq = 0;
+    prevPrice = {};
+    renderTrades();
+    updateKpis([]);
+  };
+
+  function addTrade(msg) {
+    tradeSeq++;
+    const trade = { ...msg, _seq: tradeSeq };
+    allTrades.unshift(trade);
+    if (allTrades.length > 500) allTrades.pop();
+
+    const filtered = activeFilter ? allTrades.filter(t => t.symbol === activeFilter) : allTrades;
+    renderTrades(filtered);
+    updateKpis(filtered);
+  }
+
+  function renderTrades(list) {
+    const filtered = list ?? (activeFilter ? allTrades.filter(t => t.symbol === activeFilter) : allTrades);
+    document.getElementById('trades-count').textContent = `${filtered.length} trades`;
+
+    const tbody = document.getElementById('trades-tbody');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-12 text-center text-gray-600">No trades</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.slice(0, 200).map(t => {
+      const price = parseFloat(t.price ?? 0);
+      const prev  = prevPrice[t.symbol] ?? price;
+      const color = price > prev ? '#3fb950' : price < prev ? '#f85149' : '#e6edf3';
+      prevPrice[t.symbol] = price;
+
+      const time = new Date(t.timestamp ?? Date.now()).toLocaleTimeString('en-US', { hour12: false });
+      const notional = (price * (t.quantity ?? 0)).toFixed(0);
+
+      return `<tr class="hover:bg-white/[0.02] transition-colors">
+        <td class="px-4 py-1.5 text-gray-600">${t._seq}</td>
+        <td class="px-4 py-1.5 text-gray-500">${time}</td>
+        <td class="px-4 py-1.5 text-[#58a6ff] font-medium">${t.symbol ?? '—'}</td>
+        <td class="px-4 py-1.5 text-right font-mono font-medium" style="color:${color}">${price.toFixed(4)}</td>
+        <td class="px-4 py-1.5 text-right text-gray-300">${t.quantity ?? '—'}</td>
+        <td class="px-4 py-1.5 text-right text-gray-500">$${parseInt(notional).toLocaleString()}</td>
+        <td class="px-4 py-1.5 text-gray-400">${t.buyUsername ?? '—'}</td>
+        <td class="px-4 py-1.5 text-gray-400">${t.sellUsername ?? '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function updateKpis(filtered) {
+    const list = filtered ?? (activeFilter ? allTrades.filter(t => t.symbol === activeFilter) : allTrades);
+    document.getElementById('kpi-total').textContent = list.length;
+
+    if (list.length > 0) {
+      const last = list[0];
+      const p = parseFloat(last.price ?? 0).toFixed(4);
+      document.getElementById('kpi-last').textContent = p;
+
+      const vol = list.reduce((s, t) => s + (t.quantity ?? 0), 0);
+      document.getElementById('kpi-vol').textContent = vol.toLocaleString();
+
+      const notional = list.reduce((s, t) => s + parseFloat(t.price ?? 0) * (t.quantity ?? 0), 0);
+      const avg = vol > 0 ? (notional / vol).toFixed(4) : '—';
+      document.getElementById('kpi-avg').textContent = avg;
+    } else {
+      document.getElementById('kpi-last').textContent = '—';
+      document.getElementById('kpi-vol').textContent = '0';
+      document.getElementById('kpi-avg').textContent = '—';
+    }
+  }
+
+  window.wsAddHandler({
+    onopen() {
+      SYMBOLS.forEach(s => window.wsSubscribe(s));
+    },
+    onmessage(msg) {
+      if (msg.type === 'trade') addTrade(msg);
+    }
+  });
+</script>
