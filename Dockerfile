@@ -44,8 +44,8 @@ RUN addgroup -S appgroup && \
 # Switch to non-root user
 USER appuser
 
-# Expose ports (BOE binary protocol + REST API/dashboard)
-EXPOSE 8080 8081
+# Expose ports (REST API/dashboard + BOE binary protocol)
+EXPOSE 8081 9090
 
 # Health check against the API port (override with API_PORT or PORT env var)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

@@ -387,9 +387,11 @@ public class CboeServer {
     }
 
     public static void main(String[] args) {
+        // BOE_PORT avoids conflicting with PORT (Railway injects PORT for HTTP)
+        int boePort = Integer.parseInt(System.getenv().getOrDefault("BOE_PORT", "9090"));
         ServerConfiguration config = ServerConfiguration.builder()
                 .host("0.0.0.0")
-                .port(8080)
+                .port(boePort)
                 .maxConnections(10_000)
                 .logLevel(Level.INFO)
                 .build();
