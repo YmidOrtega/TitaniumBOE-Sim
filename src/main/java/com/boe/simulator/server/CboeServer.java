@@ -92,8 +92,13 @@ public class CboeServer {
 
         OrderRepository orderRepo = orderManager.getOrderRepository();
 
+        // Railway injects PORT; fallback to API_PORT, then 8081
+        int apiPort = Integer.parseInt(
+                System.getenv().getOrDefault("PORT",
+                System.getenv().getOrDefault("API_PORT", "8081")));
+
         this.restApiServer = new RestApiServer(
-                8081,
+                apiPort,
                 orderManager,
                 orderRepo,
                 tradeRepository,
