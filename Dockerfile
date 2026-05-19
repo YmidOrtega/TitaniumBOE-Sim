@@ -16,8 +16,8 @@ COPY frontend ./frontend
 # Build: Astro frontend (via frontend-maven-plugin) + fat JAR
 RUN mvn clean package -DskipTests -B
 
-# Runtime stage - smaller image
-FROM eclipse-temurin:21-jre-alpine
+# Runtime stage — Debian-based for full glibc compatibility (RocksDB JNI)
+FROM eclipse-temurin:21-jre
 
 # Add metadata
 LABEL maintainer="yortegap7920@gmail.com"
@@ -25,7 +25,7 @@ LABEL description="CBOE BOE Protocol Simulator"
 LABEL version="1.0.0"
 
 # Install curl for healthchecks
-RUN apk add --no-cache curl
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
