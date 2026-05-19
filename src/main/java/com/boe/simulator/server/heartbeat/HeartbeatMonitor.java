@@ -17,9 +17,12 @@ import com.boe.simulator.server.connection.ClientConnectionHandler;
 public class HeartbeatMonitor {
     private static final Logger LOGGER = Logger.getLogger(HeartbeatMonitor.class.getName());
 
+    // Shared across all sessions — avoids 2 platform threads per connection
+    private static final ScheduledExecutorService SHARED_SCHEDULER =
+            Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
+
     private final ClientConnectionHandler handler;
     private final ServerConfiguration config;
-    private final ScheduledExecutorService scheduler;
 
     private ScheduledFuture<?> sendTask;
     private ScheduledFuture<?> checkTask;
@@ -28,7 +31,6 @@ public class HeartbeatMonitor {
     public HeartbeatMonitor(ClientConnectionHandler handler, ServerConfiguration config) {
         this.handler = handler;
         this.config = config;
-        this.scheduler = Executors.newScheduledThreadPool(2);
         this.active = false;
     }
 
@@ -41,7 +43,7 @@ public class HeartbeatMonitor {
         active = true;
 
         long sendInterval = config.getHeartbeatIntervalSeconds();
-        sendTask = scheduler.scheduleAtFixedRate(
+        sendTask = SHARED_SCHEDULER.scheduleAtFixedRate(
                 this::sendHeartbeat,
                 sendInterval,
                 sendInterval,
@@ -49,7 +51,7 @@ public class HeartbeatMonitor {
         );
 
         long checkInterval = 5;
-        checkTask = scheduler.scheduleAtFixedRate(
+        checkTask = SHARED_SCHEDULER.scheduleAtFixedRate(
                 this::checkTimeout,
                 checkInterval,
                 checkInterval,
@@ -112,13 +114,7 @@ public class HeartbeatMonitor {
 
     public void shutdown() {
         stop();
-        scheduler.shutdown();
-        try {
-            if (!scheduler.awaitTermination(2, TimeUnit.SECONDS)) scheduler.shutdownNow();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            scheduler.shutdownNow();
-        }
+        // SHARED_SCHEDULER is intentionally not shut down here — it's application-scoped
     }
 
     public boolean isActive() {
