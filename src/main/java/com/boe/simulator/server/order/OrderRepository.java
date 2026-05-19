@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import static java.util.Optional.empty;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -27,9 +29,15 @@ public class OrderRepository {
 
     private static final String CF_ORDERS = RocksDBManager.CF_MESSAGES;
 
+    // Write-behind queue: keeps disk I/O off the NewOrder → ACK hot path
+    private final LinkedBlockingQueue<Order> writeQueue = new LinkedBlockingQueue<>(1_000_000);
+    private volatile boolean asyncRunning;
+    private Thread asyncThread;
+
     public OrderRepository(RocksDBManager dbManager) {
         this.dbManager = dbManager;
         this.serializer = SerializationUtil.getInstance();
+        startAsyncPersistence();
         LOGGER.info("OrderRepository initialized");
     }
 
@@ -44,6 +52,78 @@ public class OrderRepository {
         } catch (RocksDBException e) {
             LOGGER.log(Level.SEVERE, "Failed to save order: " + order.getClOrdID(), e);
             throw new RuntimeException("Failed to save order", e);
+        }
+    }
+
+    // Enqueue order for async write — does not block the calling thread
+    public void saveAsync(Order order) {
+        if (!writeQueue.offer(order)) {
+            save(order); // queue full: sync fallback
+        }
+    }
+
+    private void startAsyncPersistence() {
+        asyncRunning = true;
+        asyncThread = Thread.ofVirtual().name("order-persist").start(this::runAsyncWriter);
+    }
+
+    public void stopAsyncPersistence() {
+        asyncRunning = false;
+        if (asyncThread != null) {
+            asyncThread.interrupt();
+            try { asyncThread.join(5_000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+        flushRemaining();
+    }
+
+    private void runAsyncWriter() {
+        List<Order> batch = new ArrayList<>(256);
+        while (asyncRunning) {
+            try {
+                Order first = writeQueue.poll(1, TimeUnit.MILLISECONDS);
+                if (first == null) continue;
+                batch.add(first);
+                writeQueue.drainTo(batch, 255); // up to 256 per batch flush
+                flushBatch(batch);
+                batch.clear();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Async persist error", e);
+                batch.clear();
+            }
+        }
+        flushRemaining();
+    }
+
+    private void flushRemaining() {
+        List<Order> remaining = new ArrayList<>();
+        writeQueue.drainTo(remaining);
+        if (!remaining.isEmpty()) flushBatch(remaining);
+    }
+
+    private void flushBatch(List<Order> orders) {
+        if (orders.size() == 1) {
+            save(orders.get(0));
+            return;
+        }
+        try {
+            RocksDBManager.WriteBatchOperation[] ops = new RocksDBManager.WriteBatchOperation[orders.size()];
+            for (int i = 0; i < orders.size(); i++) {
+                Order o = orders.get(i);
+                byte[] key   = buildKey(o.getClOrdID()).getBytes();
+                byte[] value = serializer.serialize(PersistedOrder.fromOrder(o));
+                ops[i] = new RocksDBManager.WriteBatchOperation(RocksDBManager.OperationType.PUT, CF_ORDERS, key, value);
+            }
+            dbManager.writeBatch(ops);
+        } catch (RocksDBException e) {
+            LOGGER.log(Level.SEVERE, "Batch flush failed, falling back to individual saves", e);
+            for (Order o : orders) {
+                try { save(o); } catch (Exception ex) {
+                    LOGGER.log(Level.SEVERE, "Individual save failed for " + o.getClOrdID(), ex);
+                }
+            }
         }
     }
 
