@@ -211,6 +211,16 @@
                 <configuration>
                     <mainClass>com.boe.simulator.server.CboeServer</mainClass>
                 </configuration>
+                <executions>
+                    <!-- mvn exec:java@benchmark -->
+                    <execution>
+                        <id>benchmark</id>
+                        <configuration>
+                            <mainClass>com.boe.simulator.benchmark.TradingLatencyBenchmark</mainClass>
+                            <classpathScope>test</classpathScope>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <!-- JaCoCo Plugin para cobertura de código -->
             <plugin>
