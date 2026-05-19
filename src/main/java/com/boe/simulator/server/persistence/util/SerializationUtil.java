@@ -17,9 +17,7 @@ public class SerializationUtil {
         this.objectMapper = new ObjectMapper();
 
         objectMapper.registerModule(new JavaTimeModule());
-        // Configure
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
