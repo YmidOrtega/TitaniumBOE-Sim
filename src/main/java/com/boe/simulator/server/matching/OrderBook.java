@@ -5,6 +5,7 @@ import com.boe.simulator.server.order.Order;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.StampedLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -12,6 +13,7 @@ public class OrderBook {
     private static final Logger LOGGER = Logger.getLogger(OrderBook.class.getName());
 
     private final String symbol;
+    private final StampedLock lock = new StampedLock();
 
     // Bid side: descending price (the best bid first)
     private final TreeMap<BigDecimal, LinkedList<Order>> bids;
@@ -19,7 +21,7 @@ public class OrderBook {
     // Ask side: ascending price (best ask first)
     private final TreeMap<BigDecimal, LinkedList<Order>> asks;
 
-    // Index for quick search by OrderID
+    // Index for quick search by OrderID — ConcurrentHashMap, no lock needed
     private final Map<Long, Order> orderIndex;
 
     private volatile BigDecimal lastTradePrice;
@@ -35,7 +37,11 @@ public class OrderBook {
         this.totalAskQuantity = 0;
     }
 
-    public synchronized void addOrder(Order order) {
+    // Private helpers — caller must already hold a read or write stamp
+    private BigDecimal bestBidUnlocked() { return bids.isEmpty() ? null : bids.firstKey(); }
+    private BigDecimal bestAskUnlocked() { return asks.isEmpty() ? null : asks.firstKey(); }
+
+    public void addOrder(Order order) {
         if (!symbol.equals(order.getSymbol())) throw new IllegalArgumentException("Order symbol mismatch");
 
         BigDecimal price = order.getPrice();
@@ -44,123 +50,153 @@ public class OrderBook {
             return;
         }
 
-        TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == 1 ? bids : asks;
+        long stamp = lock.writeLock();
+        try {
+            TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == 1 ? bids : asks;
+            side.computeIfAbsent(price, k -> new LinkedList<>()).addLast(order);
+            orderIndex.put(order.getOrderID(), order);
 
-        side.computeIfAbsent(price, k -> new LinkedList<>()).addLast(order);
-        orderIndex.put(order.getOrderID(), order);
-
-        if (order.getSide() == 1) totalBidQuantity += order.getLeavesQty();
-        else totalAskQuantity += order.getLeavesQty();
-
-        LOGGER.log(Level.FINE, "Added order to book: {0} @ {1}",
-                new Object[]{order.getClOrdID(), price});
-    }
-
-    public synchronized boolean removeOrder(Order order) {
-        Order removed = orderIndex.remove(order.getOrderID());
-        if (removed == null) return false;
-
-        BigDecimal price = order.getPrice();
-        TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == 1 ? bids : asks;
-
-        LinkedList<Order> level = side.get(price);
-        if (level != null) {
-            boolean success = level.remove(order);
-            if (level.isEmpty()) side.remove(price);
-
-            if (order.getSide() == 1) totalBidQuantity -= order.getLeavesQty();
-            else totalAskQuantity -= order.getLeavesQty();
-
-            LOGGER.log(Level.FINE, "Removed order from book: {0}", order.getClOrdID());
-            return success;
+            if (order.getSide() == 1) totalBidQuantity += order.getLeavesQty();
+            else totalAskQuantity += order.getLeavesQty();
+        } finally {
+            lock.unlockWrite(stamp);
         }
 
-        return false;
+        LOGGER.log(Level.FINE, "Added order to book: {0} @ {1}", new Object[]{order.getClOrdID(), price});
     }
 
-    public synchronized BigDecimal getBestBid() {
-        return bids.isEmpty() ? null : bids.firstKey();
-    }
+    public boolean removeOrder(Order order) {
+        long stamp = lock.writeLock();
+        try {
+            Order removed = orderIndex.remove(order.getOrderID());
+            if (removed == null) return false;
 
-    public synchronized BigDecimal getBestAsk() {
-        return asks.isEmpty() ? null : asks.firstKey();
-    }
+            BigDecimal price = order.getPrice();
+            TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == 1 ? bids : asks;
 
-    public synchronized BigDecimal getSpread() {
-        BigDecimal bid = getBestBid();
-        BigDecimal ask = getBestAsk();
+            LinkedList<Order> level = side.get(price);
+            if (level != null) {
+                boolean success = level.remove(order);
+                if (level.isEmpty()) side.remove(price);
 
-        if (bid == null || ask == null) return null;
+                if (order.getSide() == 1) totalBidQuantity -= order.getLeavesQty();
+                else totalAskQuantity -= order.getLeavesQty();
 
-        return ask.subtract(bid);
-    }
-
-    public synchronized BigDecimal getMidPrice() {
-        BigDecimal bid = getBestBid();
-        BigDecimal ask = getBestAsk();
-
-        if (bid == null || ask == null) {
-            return null;
+                LOGGER.log(Level.FINE, "Removed order from book: {0}", order.getClOrdID());
+                return success;
+            }
+            return false;
+        } finally {
+            lock.unlockWrite(stamp);
         }
-
-        return bid.add(ask).divide(BigDecimal.valueOf(2));
     }
 
-    public synchronized List<Order> getTopBidOrders() {
-        BigDecimal bestBid = getBestBid();
-        if (bestBid == null) {
-            return List.of();
+    public BigDecimal getBestBid() {
+        long stamp = lock.tryOptimisticRead();
+        BigDecimal result = bestBidUnlocked();
+        if (!lock.validate(stamp)) {
+            stamp = lock.readLock();
+            try { result = bestBidUnlocked(); } finally { lock.unlockRead(stamp); }
         }
-        return new ArrayList<>(bids.get(bestBid));
+        return result;
     }
 
-    public synchronized List<Order> getTopAskOrders() {
-        BigDecimal bestAsk = getBestAsk();
-        if (bestAsk == null) {
-            return List.of();
+    public BigDecimal getBestAsk() {
+        long stamp = lock.tryOptimisticRead();
+        BigDecimal result = bestAskUnlocked();
+        if (!lock.validate(stamp)) {
+            stamp = lock.readLock();
+            try { result = bestAskUnlocked(); } finally { lock.unlockRead(stamp); }
         }
-        return new ArrayList<>(asks.get(bestAsk));
+        return result;
+    }
+
+    public BigDecimal getSpread() {
+        long stamp = lock.readLock();
+        try {
+            BigDecimal bid = bestBidUnlocked();
+            BigDecimal ask = bestAskUnlocked();
+            return (bid == null || ask == null) ? null : ask.subtract(bid);
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
+    public BigDecimal getMidPrice() {
+        long stamp = lock.readLock();
+        try {
+            BigDecimal bid = bestBidUnlocked();
+            BigDecimal ask = bestAskUnlocked();
+            return (bid == null || ask == null) ? null : bid.add(ask).divide(BigDecimal.valueOf(2));
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
+    public List<Order> getTopBidOrders() {
+        long stamp = lock.readLock();
+        try {
+            BigDecimal bestBid = bestBidUnlocked();
+            if (bestBid == null) return List.of();
+            return new ArrayList<>(bids.get(bestBid));
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
+    public List<Order> getTopAskOrders() {
+        long stamp = lock.readLock();
+        try {
+            BigDecimal bestAsk = bestAskUnlocked();
+            if (bestAsk == null) return List.of();
+            return new ArrayList<>(asks.get(bestAsk));
+        } finally {
+            lock.unlockRead(stamp);
+        }
     }
 
     public Order findOrder(long orderID) {
         return orderIndex.get(orderID);
     }
 
-    public synchronized boolean isEmpty() {
-        return bids.isEmpty() && asks.isEmpty();
+    public boolean isEmpty() {
+        long stamp = lock.tryOptimisticRead();
+        boolean result = bids.isEmpty() && asks.isEmpty();
+        if (!lock.validate(stamp)) {
+            stamp = lock.readLock();
+            try { result = bids.isEmpty() && asks.isEmpty(); } finally { lock.unlockRead(stamp); }
+        }
+        return result;
     }
 
-    public synchronized int size() {
+    public int size() {
         return orderIndex.size();
     }
 
-    public synchronized BookSnapshot getSnapshot(int depth) {
-        List<PriceLevel> bidLevels = new ArrayList<>();
-        List<PriceLevel> askLevels = new ArrayList<>();
+    public BookSnapshot getSnapshot(int depth) {
+        long stamp = lock.readLock();
+        try {
+            List<PriceLevel> bidLevels = new ArrayList<>();
+            List<PriceLevel> askLevels = new ArrayList<>();
 
-        int count = 0;
-        for (Map.Entry<BigDecimal, LinkedList<Order>> entry : bids.entrySet()) {
-            if (count++ >= depth) break;
+            int count = 0;
+            for (Map.Entry<BigDecimal, LinkedList<Order>> entry : bids.entrySet()) {
+                if (count++ >= depth) break;
+                int totalQty = entry.getValue().stream().mapToInt(Order::getLeavesQty).sum();
+                bidLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
+            }
 
-            int totalQty = entry.getValue().stream()
-                    .mapToInt(Order::getLeavesQty)
-                    .sum();
+            count = 0;
+            for (Map.Entry<BigDecimal, LinkedList<Order>> entry : asks.entrySet()) {
+                if (count++ >= depth) break;
+                int totalQty = entry.getValue().stream().mapToInt(Order::getLeavesQty).sum();
+                askLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
+            }
 
-            bidLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
+            return new BookSnapshot(symbol, bidLevels, askLevels, lastTradePrice);
+        } finally {
+            lock.unlockRead(stamp);
         }
-
-        count = 0;
-        for (Map.Entry<BigDecimal, LinkedList<Order>> entry : asks.entrySet()) {
-            if (count++ >= depth) break;
-
-            int totalQty = entry.getValue().stream()
-                    .mapToInt(Order::getLeavesQty)
-                    .sum();
-
-            askLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
-        }
-
-        return new BookSnapshot(symbol, bidLevels, askLevels, lastTradePrice);
     }
 
     // Getters
