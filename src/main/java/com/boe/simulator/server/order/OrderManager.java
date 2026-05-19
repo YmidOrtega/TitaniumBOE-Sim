@@ -184,10 +184,8 @@ public class OrderManager {
             // 6. Send to matching engine
             List<Trade> trades = matchingEngine.processOrder(order);
 
-            // 7. If no trades, save to DB (if trades, execution handler saves)
-            if (trades.isEmpty()) {
-                orderRepository.save(order);
-            }
+            // 7. Enqueue for async persistence — keeps disk I/O off the NewOrder → ACK hot path
+            orderRepository.saveAsync(order);
 
             totalOrdersAccepted.incrementAndGet();
 
@@ -262,7 +260,7 @@ public class OrderManager {
             matchingEngine.cancelOrder(order);
 
             order.cancel();
-            orderRepository.save(order);
+            orderRepository.saveAsync(order);
 
             activeOrdersByClOrdID.remove(order.getClOrdID());
             activeOrdersByOrderID.remove(order.getOrderID());
@@ -297,7 +295,7 @@ public class OrderManager {
             try {
                 matchingEngine.cancelOrder(order);
                 order.cancel();
-                orderRepository.save(order);
+                orderRepository.saveAsync(order);
 
                 activeOrdersByClOrdID.remove(order.getClOrdID());
                 activeOrdersByOrderID.remove(order.getOrderID());
