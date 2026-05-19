@@ -44,17 +44,16 @@ RUN addgroup -S appgroup && \
 # Switch to non-root user
 USER appuser
 
-# Expose ports
-EXPOSE 8081 9091
+# Expose ports (BOE binary protocol + REST API/dashboard)
+EXPOSE 8080 8081
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:9091/api/health || exit 1
+# Health check against the API port (override with API_PORT or PORT env var)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:${API_PORT:-8081}/api/health || exit 1
 
 # Environment variables with defaults
 ENV DEMO_MODE=true \
-    BOE_PORT=8081 \
-    API_PORT=9091 \
+    API_PORT=8081 \
     LOG_LEVEL=INFO
 
 # Run the application
