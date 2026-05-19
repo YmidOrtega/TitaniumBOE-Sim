@@ -1,26 +1,26 @@
 # Multi-stage build for optimal image size
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM maven:3.9-eclipse-temurin-21-alpine AS builder
 
 WORKDIR /app
 
-# Copy Maven wrapper and pom.xml first (for better caching)
-COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
+# Copy pom.xml first for dependency caching
+COPY pom.xml ./
 
 # Download dependencies (cached layer)
-RUN ./mvnw dependency:go-offline -B
+RUN mvn dependency:go-offline -B
 
-# Copy source code
+# Copy source and frontend
 COPY src ./src
+COPY frontend ./frontend
 
-# Build the application
-RUN ./mvnw clean package -DskipTests -B
+# Build: Astro frontend (via frontend-maven-plugin) + fat JAR
+RUN mvn clean package -DskipTests -B
 
 # Runtime stage - smaller image
 FROM eclipse-temurin:21-jre-alpine
 
 # Add metadata
-LABEL maintainer="your-email@example.com"
+LABEL maintainer="yortegap7920@gmail.com"
 LABEL description="CBOE BOE Protocol Simulator"
 LABEL version="1.0.0"
 
