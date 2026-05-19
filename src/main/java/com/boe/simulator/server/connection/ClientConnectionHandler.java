@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -37,6 +38,7 @@ public class ClientConnectionHandler implements Runnable {
     private InputStream inputStream;
     private OutputStream outputStream;
     private volatile boolean running;
+    private final ReentrantLock sendLock = new ReentrantLock();
 
     public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService, ClientSessionManager sessionManager, ErrorHandler errorHandler, RateLimiter rateLimiter, OrderManager orderManager) {
         this.socket = socket;
@@ -298,7 +300,8 @@ public class ClientConnectionHandler implements Runnable {
     }
 
     public void sendMessage(byte[] messageBytes) throws IOException {
-        synchronized (this) {
+        sendLock.lock();
+        try {
             outputStream.write(messageBytes);
             outputStream.flush();
             session.incrementMessagesSent();
@@ -307,6 +310,8 @@ public class ClientConnectionHandler implements Runnable {
                     session.getConnectionId(),
                     messageBytes.length
             });
+        } finally {
+            sendLock.unlock();
         }
     }
 
