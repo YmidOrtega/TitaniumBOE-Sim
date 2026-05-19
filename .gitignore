@@ -60,3 +60,10 @@ secrets/
 *.jks
 
 autocommit.md
+
+####################################
+# Frontend
+####################################
+frontend/node_modules/
+frontend/dist/
+frontend/.astro/
