@@ -18,6 +18,7 @@ import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.order.OrderRepository;
 import io.javalin.Javalin;
 import io.javalin.http.ContentType;
+import io.javalin.http.staticfiles.Location;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -91,10 +92,15 @@ public class RestApiServer {
         WebSocketHandler wsHandler = new WebSocketHandler(webSocketService);
 
         // Create Javalin app without OpenAPI plugins (using custom handlers instead)
-        String serverUrl = "http://localhost:" + port;
         app = Javalin.create(config -> {
             config.showJavalinBanner = false;
             config.http.defaultContentType = ContentType.JSON;
+            config.staticFiles.add(staticFiles -> {
+                staticFiles.hostedPath = "/";
+                staticFiles.directory  = "/static";
+                staticFiles.location   = Location.CLASSPATH;
+                staticFiles.precompress = true;
+            });
         });
 
         // Configure CORS

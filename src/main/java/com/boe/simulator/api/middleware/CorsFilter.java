@@ -16,7 +16,7 @@ public class CorsFilter implements Handler {
         // For development: defaults to common local dev servers
         this.allowedOrigins = System.getenv().getOrDefault(
             "ALLOWED_ORIGINS",
-            "http://localhost:3000,http://localhost:5173,http://localhost:8080"
+            "http://localhost:3000,http://localhost:4321,http://localhost:5173,http://localhost:8080"
         );
         
         if (allowedOrigins.contains("*")) LOGGER.warning("⚠️  CORS configured with wildcard (*) - NOT recommended for production");
