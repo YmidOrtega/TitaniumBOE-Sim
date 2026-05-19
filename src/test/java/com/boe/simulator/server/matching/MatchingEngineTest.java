@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class MatchingEngineTest {
@@ -61,6 +62,7 @@ class MatchingEngineTest {
         assertEquals(1, book.size(), "Order book should contain one order");
         assertEquals(buyOrder, book.getTopBidOrders().get(0), "The order in the book should be the one we added");
 
-        verify(orderRepository).save(buyOrder);
+        // MatchingEngine no longer persists directly — OrderManager handles async persistence
+        verifyNoInteractions(orderRepository);
     }
 }
