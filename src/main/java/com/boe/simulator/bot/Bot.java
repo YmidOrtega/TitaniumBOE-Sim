@@ -24,12 +24,9 @@ public class Bot {
         this.config = config;
         this.strategy = strategy;
         this.statistics = new BotStatistics(config.botId());
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r);
-            t.setName("Bot-" + config.botId());
-            t.setDaemon(true);
-            return t;
-        });
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(
+                Thread.ofVirtual().name("Bot-" + config.botId()).factory()
+        );
         this.running = false;
     }
 
