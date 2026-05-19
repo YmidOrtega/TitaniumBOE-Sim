@@ -66,11 +66,17 @@ public class AuthenticationService {
                 LOGGER.log(Level.WARNING, "Created {0} demo users for testing", userRepository.count());
                 LOGGER.warning("Set DEMO_MODE=false to disable automatic user creation");
             } else {
-                LOGGER.info("No users found in database.");
-                LOGGER.info("To create users:");
-                LOGGER.info("  1. Set DEMO_MODE=true for demo users (NOT for production)");
-                LOGGER.info("  2. Use the createUser() API programmatically");
-                LOGGER.info("  3. Use a proper user management system");
+                String adminUsername = System.getenv("ADMIN_USERNAME");
+                String adminPassword = System.getenv("ADMIN_PASSWORD");
+
+                if (adminUsername != null && !adminUsername.isBlank()
+                        && adminPassword != null && !adminPassword.isBlank()) {
+                    createUser(adminUsername, adminPassword);
+                    LOGGER.info("Created admin user from ADMIN_USERNAME/ADMIN_PASSWORD environment variables");
+                } else {
+                    LOGGER.warning("No users in database and ADMIN_USERNAME/ADMIN_PASSWORD not set — no users created");
+                    LOGGER.warning("Set ADMIN_USERNAME and ADMIN_PASSWORD env vars to bootstrap the admin user");
+                }
             }
         } else {
             LOGGER.log(Level.INFO, "Found {0} existing users in database", userCount);
