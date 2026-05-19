@@ -56,10 +56,11 @@ public class CboeServer {
 
     public CboeServer(ServerConfiguration config) {
         this.config = config;
-        this.clientExecutor = Executors.newFixedThreadPool(config.getMaxConnections());
+        this.clientExecutor = Executors.newVirtualThreadPerTaskExecutor();
         this.running = new AtomicBoolean(false);
         this.activeConnections = new AtomicInteger(0);
-        this.dbManager = RocksDBManager.getInstance("./data/cboe_server");
+        this.dbManager = RocksDBManager.getInstance(
+                System.getProperty("cboe.db.path", "./data/cboe_server"));
 
         LOGGER.info("Initializing persistence layer...");
 
@@ -69,7 +70,7 @@ public class CboeServer {
         this.authService = new AuthenticationService(dbManager);
         this.sessionManager = new ClientSessionManager(sessionRepo);
         this.errorHandler = new ErrorHandler();
-        this.rateLimiter = new RateLimiter(100, Duration.ofMinutes(1));
+        this.rateLimiter = new RateLimiter(config.getRateLimitPerMinute(), Duration.ofMinutes(1));
         this.healthMetrics = new HealthMetrics();
         this.orderManager = new OrderManager(dbManager);
         this.orderManager.setSessionManager(sessionManager);
@@ -132,8 +133,7 @@ public class CboeServer {
         running.set(true);
 
         // Start acceptor thread
-        acceptorThread = new Thread(this::acceptConnections, "ServerAcceptor");
-        acceptorThread.start();
+        acceptorThread = Thread.ofVirtual().name("ServerAcceptor").start(this::acceptConnections);
 
         LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}",
                 new Object[]{config.getHost(), config.getPort()});
@@ -309,6 +309,14 @@ public class CboeServer {
                 clientExecutor.shutdownNow();
             }
 
+            // Flush async persistence queue before closing DB
+            try {
+                orderManager.getOrderRepository().stopAsyncPersistence();
+                LOGGER.info("✓ Async persistence queue flushed");
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error flushing persistence queue", e);
+            }
+
             // Cerrar base de datos al FINAL
             LOGGER.info("Closing persistence layer...");
             if (dbManager != null && !dbManager.isClosed()) {
@@ -377,7 +385,7 @@ public class CboeServer {
         ServerConfiguration config = ServerConfiguration.builder()
                 .host("0.0.0.0")
                 .port(8080)
-                .maxConnections(10)
+                .maxConnections(10_000)
                 .logLevel(Level.INFO)
                 .build();
 
