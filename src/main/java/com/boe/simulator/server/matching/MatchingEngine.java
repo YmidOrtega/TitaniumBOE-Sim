@@ -57,11 +57,12 @@ public class MatchingEngine {
         // If there is an outstanding amount, add it to the book.
         if (order.getLeavesQty() > 0 && order.isLive()) {
             book.addOrder(order);
-            orderRepository.save(order);
             notifyOrderAdded(order, book);
 
-            LOGGER.log(Level.INFO, "Order added to book: {0} ({1} @ {2})",
-                    new Object[]{order.getClOrdID(), order.getLeavesQty(), order.getPrice()});
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.log(Level.FINE, "Order added to book: {0} ({1} @ {2})",
+                        new Object[]{order.getClOrdID(), order.getLeavesQty(), order.getPrice()});
+            }
         }
 
         return trades;
@@ -73,9 +74,8 @@ public class MatchingEngine {
 
         boolean removed = book.removeOrder(order);
         if (removed) {
-            orderRepository.save(order);
             notifyOrderRemoved(order, book);
-            LOGGER.log(Level.INFO, "Order cancelled from book: {0}", order.getClOrdID());
+            LOGGER.log(Level.FINE, "Order cancelled from book: {0}", order.getClOrdID());
         }
 
         return removed;
@@ -116,7 +116,7 @@ public class MatchingEngine {
                     LOGGER.log(Level.WARNING, "Self-trade prevented: {0}", aggressiveUsername);
                     book.removeOrder(passiveOrder);
                     passiveOrder.cancel();
-                    orderRepository.save(passiveOrder);
+                    orderRepository.saveAsync(passiveOrder);
                     continue;
                 }
             }
@@ -138,9 +138,8 @@ public class MatchingEngine {
             // Update last trade price
             book.setLastTradePrice(execPrice);
 
-            orderRepository.save(aggressiveOrder);
-            orderRepository.save(passiveOrder);
-            tradeRepository.save(trade);
+            orderRepository.saveAsync(passiveOrder);
+            tradeRepository.saveAsync(trade);
 
             notifyTradeExecuted(trade, book);
 
