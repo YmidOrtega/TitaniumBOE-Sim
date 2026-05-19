@@ -3,6 +3,7 @@ package com.boe.simulator.server.order;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
@@ -112,8 +113,10 @@ public class OrderManager {
     private OrderResponse processNewOrderInternal(NewOrderMessage message, OrderExecutionContext context) {
         totalOrdersReceived.incrementAndGet();
 
-        LOGGER.log(Level.INFO, "[{0}] Processing NewOrder: {1}",
-                new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.log(Level.FINE, "[{0}] Processing NewOrder: {1}",
+                    new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
+        }
 
         // 1. Validate message
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
@@ -130,8 +133,10 @@ public class OrderManager {
         
         // 2. Validate symbol
         if (!isValidSymbol(message.getSymbol())) {
-            LOGGER.log(Level.WARNING, "[{0}] Order rejected - invalid symbol: {1}",
-                    new Object[]{context.getSessionIdentifier(), message.getSymbol()});
+            if (LOGGER.isLoggable(Level.WARNING)) {
+                LOGGER.log(Level.WARNING, "[{0}] Order rejected - invalid symbol: {1}",
+                        new Object[]{context.getSessionIdentifier(), message.getSymbol()});
+            }
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
@@ -142,8 +147,10 @@ public class OrderManager {
 
         // 3. Verify duplicate ClOrdID
         if (activeOrdersByClOrdID.containsKey(message.getClOrdID())) {
-            LOGGER.log(Level.WARNING, "[{0}] Order rejected - duplicate ClOrdID: {1}",
-                    new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
+            if (LOGGER.isLoggable(Level.WARNING)) {
+                LOGGER.log(Level.WARNING, "[{0}] Order rejected - duplicate ClOrdID: {1}",
+                        new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
+            }
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
@@ -189,13 +196,15 @@ public class OrderManager {
 
             totalOrdersAccepted.incrementAndGet();
 
-            LOGGER.log(Level.INFO, "[{0}] Order accepted: {1} (OrderID: {2}, Trades: {3})",
-                    new Object[]{
-                            context.getSessionIdentifier(),
-                            order.getClOrdID(),
-                            order.getOrderID(),
-                            trades.size()
-                    });
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.log(Level.FINE, "[{0}] Order accepted: {1} (OrderID: {2}, Trades: {3})",
+                        new Object[]{
+                                context.getSessionIdentifier(),
+                                order.getClOrdID(),
+                                order.getOrderID(),
+                                trades.size()
+                        });
+            }
 
             return OrderResponse.acknowledged(order);
 
@@ -337,17 +346,12 @@ public class OrderManager {
                 .toList();
     }
 
+    private static final Set<String> VALID_SYMBOLS = Set.of(
+            "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "NFLX"
+    );
+
     private boolean isValidSymbol(String symbol) {
-        return symbol != null && (
-                symbol.equals("AAPL") ||
-                        symbol.equals("MSFT") ||
-                        symbol.equals("GOOGL") ||
-                        symbol.equals("GOOG") ||
-                        symbol.equals("AMZN") ||
-                        symbol.equals("META") ||
-                        symbol.equals("TSLA") ||
-                        symbol.equals("NFLX")
-        );
+        return symbol != null && VALID_SYMBOLS.contains(symbol);
     }
 
     private void handleTradeExecution(Trade trade) {
