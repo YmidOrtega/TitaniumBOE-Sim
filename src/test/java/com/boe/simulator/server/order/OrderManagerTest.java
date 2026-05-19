@@ -200,7 +200,7 @@ class OrderManagerTest {
 
         ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
         verify(matchingEngine).processOrder(orderCaptor.capture());
-        verify(orderRepository).save(orderCaptor.getValue());
+        verify(orderRepository).saveAsync(orderCaptor.getValue());
 
         Order capturedOrder = orderCaptor.getValue();
         assertEquals(message.getClOrdID(), capturedOrder.getClOrdID());
@@ -228,7 +228,7 @@ class OrderManagerTest {
         assertEquals(1, orderManager.getTotalOrdersRejected(), "Total rejected orders should be 1");
 
         verify(matchingEngine, never()).processOrder(any(Order.class));
-        verify(orderRepository, never()).save(any(Order.class));
+        verify(orderRepository, never()).saveAsync(any(Order.class));
         assertTrue(orderManager.findByClOrdID(message.getClOrdID()).isEmpty());
     }
 
@@ -256,8 +256,8 @@ class OrderManagerTest {
 
         // Verify matchingEngine.processOrder was called only once for the first order
         verify(matchingEngine, times(1)).processOrder(any(Order.class));
-        // Verify orderRepository.save was called only once for the first order
-        verify(orderRepository, times(1)).save(any(Order.class));
+        // Verify orderRepository.saveAsync was called only once for the first order
+        verify(orderRepository, times(1)).saveAsync(any(Order.class));
     }
 
     @Test
@@ -281,7 +281,7 @@ class OrderManagerTest {
         assertEquals(1, orderManager.getTotalOrdersCancelled(), "Total cancelled orders should be 1");
         assertEquals(OrderState.CANCELLED, orderToCancel.getState());
         verify(matchingEngine).cancelOrder(orderToCancel);
-        verify(orderRepository, times(2)).save(orderToCancel); // Once for new, once for cancel
+        verify(orderRepository, times(2)).saveAsync(orderToCancel); // Once for new, once for cancel
         assertTrue(orderManager.findByClOrdID("CLORD4").isEmpty());
     }
 
