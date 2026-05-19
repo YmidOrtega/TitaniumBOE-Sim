@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -20,10 +22,49 @@ public class TradeRepositoryService implements TradeRepository {
 
     private static final String CF_TRADES = RocksDBManager.CF_MESSAGES;
 
+    private final LinkedBlockingQueue<Trade> writeQueue = new LinkedBlockingQueue<>(500_000);
+    private volatile boolean asyncRunning;
+    private Thread asyncThread;
+
     public TradeRepositoryService(RocksDBManager dbManager) {
         this.dbManager = dbManager;
         this.serializer = SerializationUtil.getInstance();
+        startAsyncPersistence();
         LOGGER.info("TradeRepositoryService initialized");
+    }
+
+    @Override
+    public void saveAsync(Trade trade) {
+        if (!writeQueue.offer(trade)) save(trade);
+    }
+
+    public void stopAsyncPersistence() {
+        asyncRunning = false;
+        if (asyncThread != null) {
+            asyncThread.interrupt();
+            try { asyncThread.join(5_000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+        List<Trade> remaining = new ArrayList<>();
+        writeQueue.drainTo(remaining);
+        remaining.forEach(t -> { try { save(t); } catch (Exception ignored) {} });
+    }
+
+    private void startAsyncPersistence() {
+        asyncRunning = true;
+        asyncThread = Thread.ofVirtual().name("trade-persist").start(() -> {
+            while (asyncRunning) {
+                try {
+                    Trade first = writeQueue.poll(1, TimeUnit.MILLISECONDS);
+                    if (first == null) continue;
+                    try { save(first); } catch (Exception e) {
+                        LOGGER.log(Level.SEVERE, "Async trade persist error", e);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
     }
 
     @Override

@@ -9,6 +9,8 @@ public interface TradeRepository {
 
     void save(Trade trade);
 
+    default void saveAsync(Trade trade) { save(trade); }
+
     Optional<Trade> findById(long tradeId);
 
     List<Trade> findBySymbol(String symbol);
