@@ -34,6 +34,11 @@ public class BinaryPrice {
         return buffer.array();
     }
 
+    // Writes 8 bytes directly into an existing LITTLE_ENDIAN ByteBuffer — no allocation
+    public void putInto(ByteBuffer buf) {
+        buf.putLong(rawValue);
+    }
+
     public static BinaryPrice fromBytes(byte[] bytes, int offset) {
         if (bytes == null || bytes.length < offset + 8) throw new IllegalArgumentException("Byte array is too short to contain a BinaryPrice (8 bytes).");
         ByteBuffer buffer = ByteBuffer.wrap(bytes, offset, 8);

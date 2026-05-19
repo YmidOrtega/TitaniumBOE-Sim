@@ -13,6 +13,10 @@ public class BoeMessageSerializer {
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
     private static final int HEADER_SIZE = 4;
 
+    // Reused per-instance: safe because each ClientConnectionHandler owns its own serializer
+    // and calls deserialize() from a single virtual thread.
+    private final byte[] headerBuf = new byte[HEADER_SIZE];
+
     public byte[] serialize(BoeMessage message) {
         if (message == null || message.getData() == null) throw new IllegalArgumentException("Message cannot be null");
         return message.getData();
@@ -21,11 +25,7 @@ public class BoeMessageSerializer {
     public byte[] serialize(byte[] payload) {
         if (payload == null || payload.length == 0) throw new IllegalArgumentException("Payload cannot be null or empty");
 
-        // Calculate message length according to BOE spec:
-        // MessageLength = 2 (length field itself) + payload length
         int messageLength = 2 + payload.length;
-        
-        // Total bytes to send = StartMarker(2) + MessageLength(2 + payload)
         int totalLength = 2 + messageLength;
 
         if (messageLength > 0xFFFF) throw new IllegalArgumentException("Message too large: " + messageLength + " bytes");
@@ -42,30 +42,26 @@ public class BoeMessageSerializer {
     }
 
     public BoeMessage deserialize(InputStream inputStream) throws IOException {
-        byte[] startMarker = new byte[2];
-        readFully(inputStream, startMarker, 0, 2);
+        // Read the 4-byte header in one call (avoids 2 small byte[] allocations and an extra read)
+        readFully(inputStream, headerBuf, 0, HEADER_SIZE);
 
-        if (startMarker[0] != START_OF_MESSAGE_1 || startMarker[1] != START_OF_MESSAGE_2) throw new IOException("Invalid start of message marker: 0x" + String.format("%02X%02X", startMarker[0], startMarker[1]));
+        if (headerBuf[0] != START_OF_MESSAGE_1 || headerBuf[1] != START_OF_MESSAGE_2)
+            throw new IOException("Invalid start of message marker: 0x"
+                    + String.format("%02X%02X", headerBuf[0], headerBuf[1]));
 
-        byte[] lengthBytes = new byte[2];
-        readFully(inputStream, lengthBytes, 0, 2);
-
-        ByteBuffer lengthBuffer = ByteBuffer.wrap(lengthBytes).order(ByteOrder.LITTLE_ENDIAN);
-        int messageLength = lengthBuffer.getShort() & 0xFFFF;
-
+        // Little-endian decode without allocating a ByteBuffer
+        int messageLength = (headerBuf[2] & 0xFF) | ((headerBuf[3] & 0xFF) << 8);
         if (messageLength < 2) throw new IOException("Invalid message length: " + messageLength);
 
-        // Payload size = MessageLength - 2 (excluding length field itself)
         int payloadLength = messageLength - 2;
 
-        byte[] messageBody = new byte[payloadLength];
-        readFully(inputStream, messageBody, 0, payloadLength);
-
-        // Rebuild full message = Header(4) + Payload
+        // Allocate one array and read the payload directly into it — no intermediate messageBody
         byte[] fullMessage = new byte[HEADER_SIZE + payloadLength];
-        System.arraycopy(startMarker, 0, fullMessage, 0, 2);
-        System.arraycopy(lengthBytes, 0, fullMessage, 2, 2);
-        System.arraycopy(messageBody, 0, fullMessage, HEADER_SIZE, payloadLength);
+        fullMessage[0] = headerBuf[0];
+        fullMessage[1] = headerBuf[1];
+        fullMessage[2] = headerBuf[2];
+        fullMessage[3] = headerBuf[3];
+        readFully(inputStream, fullMessage, HEADER_SIZE, payloadLength);
 
         return new BoeMessage(fullMessage);
     }
