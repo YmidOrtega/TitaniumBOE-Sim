@@ -1,116 +1,265 @@
 ---
 import Layout from '../layouts/Layout.astro';
+const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
+const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
 ---
 <Layout title="Dashboard" page="dashboard">
 
-  <!-- Stats row -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-    <div class="bg-[#161b22] border border-[#30363d] rounded p-3">
-      <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Status</div>
-      <div class="text-sm font-semibold" id="stat-status">—</div>
+  <!-- Top stats bar -->
+  <div class="border-b border-[#162035] bg-[#090e1e] px-6 py-2 flex items-center gap-3 flex-wrap shrink-0">
+    <div class="flex items-center gap-2 text-[11px]">
+      <span class="text-gray-600 uppercase tracking-wider font-medium">Total P&L</span>
+      <span class="text-emerald-400 font-semibold font-mono" id="hdr-pnl">—</span>
     </div>
-    <div class="bg-[#161b22] border border-[#30363d] rounded p-3">
-      <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Active Orders</div>
-      <div class="text-sm font-semibold text-[#58a6ff]" id="stat-orders">—</div>
+    <div class="w-px h-3 bg-[#1e2a45]"></div>
+    <div class="flex items-center gap-2 text-[11px]">
+      <span class="text-gray-600 uppercase tracking-wider font-medium">Natural Vol</span>
+      <span class="text-white font-semibold font-mono" id="hdr-vol">—</span>
     </div>
-    <div class="bg-[#161b22] border border-[#30363d] rounded p-3">
-      <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total Matches</div>
-      <div class="text-sm font-semibold text-[#3fb950]" id="stat-matches">—</div>
+    <div class="w-px h-3 bg-[#1e2a45]"></div>
+    <div class="flex items-center gap-2 text-[11px]">
+      <span class="text-gray-600 uppercase tracking-wider font-medium">Total Trades</span>
+      <span class="text-white font-semibold font-mono" id="hdr-trades">—</span>
+      <span class="text-emerald-400 text-[10px] font-mono" id="hdr-trades-chg"></span>
     </div>
-    <div class="bg-[#161b22] border border-[#30363d] rounded p-3">
-      <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Simulator</div>
-      <div class="text-sm font-semibold" id="stat-sim">—</div>
+    <div class="w-px h-3 bg-[#1e2a45]"></div>
+    <div class="flex items-center gap-2 text-[11px]">
+      <span class="text-gray-600 uppercase tracking-wider font-medium">Active Orders</span>
+      <span class="text-white font-semibold font-mono" id="hdr-orders">—</span>
+      <span class="text-[10px] font-mono" id="hdr-orders-chg"></span>
     </div>
+    <div class="w-px h-3 bg-[#1e2a45]"></div>
+    <div class="flex items-center gap-2 text-[11px]">
+      <span class="text-gray-600 uppercase tracking-wider font-medium">Connected</span>
+      <span class="text-white font-semibold font-mono" id="hdr-clients">1</span>
+    </div>
+    <div class="flex-1"></div>
+    <button id="btn-start-bots" onclick="simToggle()"
+      class="px-3 py-1 rounded text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-all">
+      START BOTS
+    </button>
   </div>
 
-  <!-- Main grid -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <!-- Main scroll area -->
+  <div class="p-5 space-y-4">
 
-    <!-- Trade feed (2/3 width) -->
-    <div class="lg:col-span-2 bg-[#161b22] border border-[#30363d] rounded overflow-hidden">
-      <div class="flex items-center justify-between px-4 py-2.5 border-b border-[#30363d]">
-        <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Live Trade Feed</span>
-        <span class="text-[10px] text-gray-500" id="trade-count">0 trades</span>
+    <!-- Welcome + KPI row -->
+    <div>
+      <h1 class="text-lg font-semibold text-white mb-0.5">Welcome back 👋</h1>
+      <p class="text-[11px] text-gray-500 mb-4">Real-time overview of the Cboe Titanium BOE protocol simulation.</p>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="bg-[#0d1428] border border-[#162035] rounded-xl p-4">
+          <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-2">Total P&L</div>
+          <div class="text-2xl font-bold text-white font-mono" id="kpi-pnl">—</div>
+          <div class="text-[11px] text-gray-600 mt-1">Requires auth</div>
+        </div>
+        <div class="bg-[#0d1428] border border-[#162035] rounded-xl p-4">
+          <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-2">Active Orders</div>
+          <div class="text-2xl font-bold text-white font-mono" id="kpi-orders">—</div>
+          <div class="text-[11px] text-emerald-400 mt-1 font-mono" id="kpi-orders-sub">Live</div>
+        </div>
+        <div class="bg-[#0d1428] border border-[#162035] rounded-xl p-4">
+          <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-2">Total Trades</div>
+          <div class="text-2xl font-bold text-white font-mono" id="kpi-trades">—</div>
+          <div class="text-[11px] text-gray-600 mt-1">All symbols</div>
+        </div>
+        <div class="bg-[#0d1428] border border-[#162035] rounded-xl p-4">
+          <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-2">Best Spread</div>
+          <div class="text-2xl font-bold text-white font-mono" id="kpi-spread">—</div>
+          <div class="text-[11px] text-violet-400 mt-1" id="kpi-spread-sym">AAPL</div>
+        </div>
       </div>
-      <div class="overflow-y-auto" style="height:420px">
+    </div>
+
+    <!-- Middle row: Market | Order Book | Health -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      <!-- Market Overview -->
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
+          <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Market Overview</span>
+          <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Live</span>
+        </div>
         <table class="w-full text-xs">
-          <thead class="sticky top-0 bg-[#161b22]">
-            <tr class="text-[10px] text-gray-500 uppercase">
-              <th class="px-4 py-2 text-left">Time</th>
-              <th class="px-4 py-2 text-left">Symbol</th>
-              <th class="px-4 py-2 text-right">Price</th>
-              <th class="px-4 py-2 text-right">Qty</th>
-              <th class="px-4 py-2 text-left">Buyer</th>
-              <th class="px-4 py-2 text-left">Seller</th>
+          <thead>
+            <tr class="text-[10px] text-gray-600 uppercase tracking-wider border-b border-[#162035]/60">
+              <th class="px-4 py-2 text-left font-medium">Symbol</th>
+              <th class="px-4 py-2 text-right font-medium">Last</th>
+              <th class="px-4 py-2 text-right font-medium">Change</th>
+              <th class="px-4 py-2 text-right font-medium">Vol</th>
+              <th class="px-4 py-2 text-right font-medium">Trades</th>
             </tr>
           </thead>
-          <tbody id="trade-tbody" class="divide-y divide-[#30363d]/50">
-            <tr><td colspan="6" class="px-4 py-8 text-center text-gray-600 text-xs">Waiting for trades…</td></tr>
+          <tbody id="market-tbody" class="divide-y divide-[#162035]/50">
+            {MARKET_SYMS.map(s => (
+              <tr data-sym={s} class="hover:bg-white/[0.025] transition-colors cursor-pointer" onclick={`selectOBSymbol('${s}')`}>
+                <td class="px-4 py-2.5 font-semibold text-violet-300">{s}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-gray-400 mkt-last">—</td>
+                <td class="px-4 py-2.5 text-right font-mono mkt-chg text-gray-600">—</td>
+                <td class="px-4 py-2.5 text-right text-gray-600 mkt-vol">—</td>
+                <td class="px-4 py-2.5 text-right text-gray-600 mkt-cnt">—</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+
+      <!-- Order Book compact -->
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
+          <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Order Book</span>
+          <select id="ob-sym-select" onchange="selectOBSymbol(this.value)"
+            class="text-[11px] bg-[#0a1020] border border-[#1e2a45] rounded-lg px-2 py-1 text-violet-300 outline-none cursor-pointer">
+            {SYMBOLS.map(s => <option value={s}>{s}</option>)}
+          </select>
+        </div>
+        <!-- Asks -->
+        <div class="px-3 pt-3 space-y-0.5" id="ob-asks" style="min-height:88px">
+          <div class="text-[11px] text-gray-600 text-center py-4">Waiting…</div>
+        </div>
+        <!-- Spread -->
+        <div class="mx-3 my-1 flex items-center justify-between bg-[#080d1a] rounded-lg px-3 py-1.5 text-[11px]">
+          <span class="text-gray-600">Spread</span>
+          <span class="font-mono font-semibold text-white" id="ob-spread">—</span>
+          <span class="text-gray-600 font-mono" id="ob-spread-pct"></span>
+        </div>
+        <!-- Bids -->
+        <div class="px-3 pb-3 space-y-0.5" id="ob-bids" style="min-height:88px">
+          <div class="text-[11px] text-gray-600 text-center py-4">Waiting…</div>
+        </div>
+      </div>
+
+      <!-- System Health -->
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-[#162035]">
+          <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">System Health</span>
+        </div>
+        <div class="flex flex-col items-center pt-5 pb-3">
+          <!-- SVG Gauge -->
+          <div class="relative w-28 h-28 mb-4">
+            <svg class="w-full h-full" viewBox="0 0 120 120" style="transform:rotate(-90deg)">
+              <circle cx="60" cy="60" r="48" fill="none" stroke="#1e2a45" stroke-width="9"/>
+              <circle cx="60" cy="60" r="48" fill="none" stroke="url(#hGrad)" stroke-width="9"
+                stroke-linecap="round" stroke-dasharray="301.59" id="health-arc"
+                stroke-dashoffset="301.59" style="transition:stroke-dashoffset 1s ease"/>
+              <defs>
+                <linearGradient id="hGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#7c3aed"/>
+                  <stop offset="100%" stop-color="#c4b5fd"/>
+                </linearGradient>
+              </defs>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span class="text-2xl font-bold font-mono" id="health-pct">—</span>
+              <span class="text-[10px] text-gray-600">Health</span>
+            </div>
+          </div>
+          <!-- Metrics -->
+          <div class="w-full px-5 space-y-2 text-xs">
+            <div class="flex justify-between">
+              <span class="text-gray-600">Status</span>
+              <span class="font-medium" id="h-status">—</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Active Orders</span>
+              <span class="text-gray-300 font-mono" id="h-orders">—</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Total Matches</span>
+              <span class="text-gray-300 font-mono" id="h-matches">—</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Simulator</span>
+              <span class="font-medium" id="h-sim">—</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Running Bots</span>
+              <span class="text-gray-300 font-mono" id="h-bots">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Right column -->
-    <div class="flex flex-col gap-4">
+    <!-- Bottom row: Live Trades | Positions | Bots + Events -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-      <!-- Server info -->
-      <div class="bg-[#161b22] border border-[#30363d] rounded p-4">
-        <div class="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Server</div>
-        <div class="space-y-2 text-xs">
-          <div class="flex justify-between">
-            <span class="text-gray-500">BOE Protocol</span>
-            <span class="text-[#58a6ff]">:8080</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500">REST API</span>
-            <span class="text-[#58a6ff]">:8081</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500">WebSocket</span>
-            <span class="text-[#58a6ff]">/ws/feed</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500">API Docs</span>
-            <a href="/api/docs" target="_blank" class="text-[#58a6ff] hover:underline">/api/docs</a>
-          </div>
+      <!-- Live Trades -->
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
+          <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Live Trades</span>
+          <span class="text-[10px] text-gray-600 font-mono" id="live-count">0 trades</span>
+        </div>
+        <div class="overflow-y-auto" style="height:210px">
+          <table class="w-full text-xs">
+            <thead class="sticky top-0 bg-[#0d1428]">
+              <tr class="text-[10px] text-gray-600 uppercase tracking-wider border-b border-[#162035]/50">
+                <th class="px-3 py-2 text-left font-medium">Time</th>
+                <th class="px-3 py-2 text-left font-medium">Sym</th>
+                <th class="px-3 py-2 text-right font-medium">Price</th>
+                <th class="px-3 py-2 text-right font-medium">Qty</th>
+              </tr>
+            </thead>
+            <tbody id="live-tbody" class="divide-y divide-[#162035]/40">
+              <tr><td colspan="4" class="px-3 py-8 text-center text-gray-600">Waiting for trades…</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Simulator control -->
-      <div class="bg-[#161b22] border border-[#30363d] rounded p-4">
-        <div class="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Market Simulator</div>
-        <div class="flex items-center justify-between mb-3">
-          <div>
-            <div class="text-xs text-gray-500 mb-0.5">State</div>
-            <div class="text-sm font-semibold" id="sim-state">—</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500 mb-0.5">Bots</div>
-            <div class="text-sm font-semibold text-[#58a6ff]" id="sim-bots">—</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500 mb-0.5">Orders</div>
-            <div class="text-sm font-semibold text-[#3fb950]" id="sim-orders-sent">—</div>
-          </div>
+      <!-- Your Positions -->
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
+          <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Your Positions</span>
+          <a href="/trades" class="text-[10px] text-violet-400 hover:text-violet-300 transition-colors">View all →</a>
         </div>
-        <div class="flex gap-2">
-          <button id="btn-start" onclick="simAction('start')"
-            class="flex-1 py-1.5 text-xs rounded bg-[#3fb950]/10 text-[#3fb950] border border-[#3fb950]/30 hover:bg-[#3fb950]/20 transition-colors">
-            Start
-          </button>
-          <button id="btn-stop" onclick="simAction('stop')"
-            class="flex-1 py-1.5 text-xs rounded bg-[#f85149]/10 text-[#f85149] border border-[#f85149]/30 hover:bg-[#f85149]/20 transition-colors">
-            Stop
-          </button>
+        <div class="overflow-y-auto" style="height:210px">
+          <table class="w-full text-xs">
+            <thead class="sticky top-0 bg-[#0d1428]">
+              <tr class="text-[10px] text-gray-600 uppercase tracking-wider border-b border-[#162035]/50">
+                <th class="px-3 py-2 text-left font-medium">Symbol</th>
+                <th class="px-3 py-2 text-right font-medium">Qty</th>
+                <th class="px-3 py-2 text-right font-medium">Avg Px</th>
+                <th class="px-3 py-2 text-right font-medium">P&L</th>
+              </tr>
+            </thead>
+            <tbody id="positions-tbody" class="divide-y divide-[#162035]/40">
+              <tr><td colspan="4" class="px-3 py-8 text-center text-gray-600">Login required</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Symbols -->
-      <div class="bg-[#161b22] border border-[#30363d] rounded p-4">
-        <div class="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Symbols</div>
-        <div id="symbols-grid" class="grid grid-cols-4 gap-1.5 text-[10px]">
-          <span class="text-gray-600">loading…</span>
+      <!-- Bots + Events -->
+      <div class="flex flex-col gap-3">
+        <!-- Trading Bots -->
+        <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
+            <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Trading Bots</span>
+            <button onclick="simToggle()"
+              class="text-[10px] px-2.5 py-1 rounded-lg bg-violet-600/15 text-violet-300 border border-violet-500/20 hover:bg-violet-600/25 transition-all font-medium">
+              MANAGE BOTS
+            </button>
+          </div>
+          <div class="p-3 space-y-2" id="bots-panel">
+            {['Market Maker','Trend Follower','Random Trader'].map(name => (
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-400">{name}</span>
+                <span class="bot-badge px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-700/30 text-gray-500">Idle</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <!-- Recent Events -->
+        <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden flex-1">
+          <div class="px-4 py-3 border-b border-[#162035]">
+            <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Recent Events</span>
+          </div>
+          <div id="events-list" class="p-3 space-y-1.5 overflow-y-auto" style="max-height:120px">
+            <div class="text-[11px] text-gray-600">Waiting…</div>
+          </div>
         </div>
       </div>
 
@@ -120,109 +269,291 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
-  let tradeCount = 0;
-  let prevLastPrice = {};
+  const ALL_SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
+  const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
 
-  // Fetch health
+  let liveTradeCount = 0;
+  let prevPrice: Record<string, number> = {};
+  let marketData: Record<string, any> = {};
+  let obSymbol = 'AAPL';
+  let recentEvents: { time: string; text: string }[] = [];
+  let prevHealthOrders = 0;
+  let prevHealthTrades = 0;
+  let simRunning = false;
+
+  MARKET_SYMS.forEach(s => { marketData[s] = { last: 0, prev: 0, vol: 0, cnt: 0 }; });
+
+  // ── Health ────────────────────────────────────────────────────────────────
   async function fetchHealth() {
     try {
       const r = await fetch('/api/health');
       const d = await r.json();
-      const el = document.getElementById('stat-status');
-      el.textContent = d.status ?? '—';
-      el.style.color = d.status === 'healthy' ? '#3fb950' : '#f85149';
-      document.getElementById('stat-orders').textContent  = d.activeOrders ?? '—';
-      document.getElementById('stat-matches').textContent = d.totalMatches  ?? '—';
+
+      const activeOrders = d.activeOrders ?? 0;
+      const totalMatches = d.totalMatches ?? 0;
+      const healthy = d.status === 'healthy';
+      const pct = healthy ? 98 : 30;
+
+      // Header
+      document.getElementById('hdr-orders')!.textContent = activeOrders.toLocaleString();
+
+      const ordChg = document.getElementById('hdr-orders-chg')!;
+      if (prevHealthOrders > 0) {
+        const delta = activeOrders - prevHealthOrders;
+        ordChg.textContent = (delta >= 0 ? '+' : '') + delta.toLocaleString();
+        (ordChg as HTMLElement).style.color = delta >= 0 ? '#22c55e' : '#f87171';
+      }
+      prevHealthOrders = activeOrders;
+
+      // KPI cards
+      document.getElementById('kpi-orders')!.textContent = activeOrders.toLocaleString();
+      document.getElementById('h-orders')!.textContent = activeOrders.toLocaleString();
+      document.getElementById('h-matches')!.textContent = totalMatches.toLocaleString();
+
+      // Gauge
+      const arc = document.getElementById('health-arc')!;
+      const circumference = 301.59;
+      (arc as any).style.strokeDashoffset = circumference - (circumference * pct / 100);
+      const pctEl = document.getElementById('health-pct')!;
+      pctEl.textContent = pct + '%';
+      (pctEl as HTMLElement).style.color = healthy ? '#a78bfa' : '#f87171';
+
+      const statusEl = document.getElementById('h-status')!;
+      statusEl.textContent = d.status ?? '—';
+      (statusEl as HTMLElement).style.color = healthy ? '#22c55e' : '#ef4444';
     } catch (_) {}
   }
 
-  // Fetch simulator
+  // ── Simulator ────────────────────────────────────────────────────────────
   async function fetchSim() {
     try {
       const r = await fetch('/api/simulator/status');
       const d = await r.json();
       const st = d.data ?? d;
-      const running = st.running ?? st.isRunning ?? false;
-      const el = document.getElementById('sim-state');
-      el.textContent = running ? 'Running' : 'Stopped';
-      el.style.color = running ? '#3fb950' : '#f85149';
-      document.getElementById('stat-sim').textContent = running ? 'Running' : 'Stopped';
-      document.getElementById('stat-sim').style.color = running ? '#3fb950' : '#f85149';
-      document.getElementById('sim-bots').textContent       = st.totalBots ?? st.activeBots ?? '—';
-      document.getElementById('sim-orders-sent').textContent = st.totalOrdersSent ?? st.ordersPlaced ?? '—';
+      simRunning = st.running ?? st.isRunning ?? false;
+      const botCount = st.activeBots ?? st.totalBots ?? 3;
+
+      document.getElementById('h-sim')!.textContent = simRunning ? 'Running' : 'Stopped';
+      (document.getElementById('h-sim') as HTMLElement).style.color = simRunning ? '#22c55e' : '#9ca3af';
+      document.getElementById('h-bots')!.textContent = String(botCount);
+
+      // Bots panel badges
+      document.querySelectorAll('.bot-badge').forEach(b => {
+        (b as HTMLElement).textContent = simRunning ? 'Active' : 'Idle';
+        (b as HTMLElement).style.background = simRunning ? 'rgba(34,197,94,0.12)' : 'rgba(107,114,128,0.15)';
+        (b as HTMLElement).style.color = simRunning ? '#22c55e' : '#6b7280';
+      });
+
+      // Start bots button
+      const btn = document.getElementById('btn-start-bots')!;
+      if (simRunning) {
+        btn.textContent = 'STOP BOTS';
+        btn.style.background = 'rgba(239,68,68,0.12)';
+        btn.style.color = '#f87171';
+        btn.style.borderColor = 'rgba(239,68,68,0.2)';
+      } else {
+        btn.textContent = 'START BOTS';
+        btn.style.background = 'rgba(34,197,94,0.12)';
+        btn.style.color = '#22c55e';
+        btn.style.borderColor = 'rgba(34,197,94,0.2)';
+      }
     } catch (_) {}
   }
 
-  // Fetch symbols
-  async function fetchSymbols() {
-    try {
-      const r = await fetch('/api/symbols');
-      const d = await r.json();
-      const syms = d.data ?? d ?? SYMBOLS;
-      const grid = document.getElementById('symbols-grid');
-      grid.innerHTML = syms.map(s =>
-        `<a href="/orders?symbol=${s}" class="px-1.5 py-1 rounded bg-[#30363d]/40 text-gray-300 hover:text-[#58a6ff] hover:bg-[#58a6ff]/10 text-center transition-colors cursor-pointer">${s}</a>`
-      ).join('');
-    } catch (_) {
-      document.getElementById('symbols-grid').innerHTML =
-        SYMBOLS.map(s => `<a href="/orders?symbol=${s}" class="px-1.5 py-1 rounded bg-[#30363d]/40 text-gray-300 hover:text-[#58a6ff] text-center">${s}</a>`).join('');
-    }
-  }
-
-  // Simulator control
-  window.simAction = async (action) => {
+  // ── Sim toggle ────────────────────────────────────────────────────────────
+  (window as any).simToggle = async () => {
+    const action = simRunning ? 'stop' : 'start';
     await fetch(`/api/simulator/${action}`, { method: 'POST' });
+    addEvent(`Simulator ${action} requested`);
     setTimeout(fetchSim, 500);
   };
 
-  // Trade row
-  function addTrade(msg) {
-    const tbody = document.getElementById('trade-tbody');
-    if (tbody.children.length === 1 && tbody.children[0].children.length === 1) {
-      tbody.innerHTML = '';
+  // ── Symbol data ───────────────────────────────────────────────────────────
+  async function fetchSymbolData(sym: string) {
+    try {
+      const r = await fetch(`/api/symbols/${sym}`);
+      if (!r.ok) return;
+      const raw = await r.json();
+      const d = raw.data ?? raw;
+
+      const last = parseFloat(d.lastTradePrice ?? d.last ?? d.bestBid ?? 0);
+      if (last > 0 && marketData[sym]) {
+        marketData[sym].prev = marketData[sym].last || last;
+        marketData[sym].last = last;
+      }
+
+      const bids = d.bids ?? [];
+      const asks = d.asks ?? [];
+      const bestBid = bids.length ? parseFloat(bids[0].price) : null;
+      const bestAsk = asks.length ? parseFloat(asks[asks.length - 1].price) : null;
+
+      if (bestBid && bestAsk && sym === 'AAPL') {
+        const spread = (bestAsk - bestBid).toFixed(4);
+        document.getElementById('kpi-spread')!.textContent = spread;
+      }
+
+      updateMarketRow(sym);
+    } catch (_) {}
+  }
+
+  function updateMarketRow(sym: string) {
+    const row = document.querySelector<HTMLTableRowElement>(`tr[data-sym="${sym}"]`);
+    if (!row) return;
+    const md = marketData[sym];
+    if (!md?.last) return;
+
+    const last = md.last as number;
+    const prev = (md.prev as number) || last;
+    const chgPct = prev > 0 ? ((last - prev) / prev * 100) : 0;
+    const up = chgPct >= 0;
+    const color = up ? '#22c55e' : '#f87171';
+
+    const lastEl = row.querySelector('.mkt-last') as HTMLElement;
+    lastEl.textContent = last.toFixed(2);
+    lastEl.style.color = '#e5e7eb';
+
+    const chgEl = row.querySelector('.mkt-chg') as HTMLElement;
+    chgEl.textContent = (up ? '▲ +' : '▼ ') + Math.abs(chgPct).toFixed(2) + '%';
+    chgEl.style.color = color;
+
+    (row.querySelector('.mkt-vol') as HTMLElement).textContent = ((md.vol as number) || 0).toLocaleString();
+    (row.querySelector('.mkt-cnt') as HTMLElement).textContent = String((md.cnt as number) || 0);
+  }
+
+  // ── Order Book ───────────────────────────────────────────────────────────
+  function renderOB(msg: any) {
+    if (msg.symbol !== obSymbol) return;
+
+    const bids = (msg.bids ?? []).slice(0, 6) as any[];
+    const asks = (msg.asks ?? []).slice(-6) as any[];
+    const maxQ = Math.max(...bids.map((l: any) => l.quantity ?? 0), ...asks.map((l: any) => l.quantity ?? 0), 1);
+
+    const asksEl = document.getElementById('ob-asks')!;
+    if (asks.length === 0) {
+      asksEl.innerHTML = '<div class="text-[11px] text-gray-600 text-center py-4">No asks</div>';
+    } else {
+      asksEl.innerHTML = [...asks].reverse().map((l: any) => {
+        const pct = ((l.quantity ?? 0) / maxQ * 100).toFixed(0);
+        return `<div class="flex items-center justify-between text-[11px] py-0.5 px-1 relative rounded overflow-hidden">
+          <div class="absolute inset-0 bg-rose-500/8 rounded" style="width:${pct}%;right:0;left:auto"></div>
+          <span class="font-mono text-rose-400 z-10">${parseFloat(l.price).toFixed(2)}</span>
+          <span class="text-gray-600 z-10 font-mono">${l.quantity}</span>
+        </div>`;
+      }).join('');
     }
 
-    const price = parseFloat(msg.price ?? 0);
-    const prev  = prevLastPrice[msg.symbol] ?? price;
-    const color = price > prev ? '#3fb950' : price < prev ? '#f85149' : '#e6edf3';
-    prevLastPrice[msg.symbol] = price;
+    const bidsEl = document.getElementById('ob-bids')!;
+    if (bids.length === 0) {
+      bidsEl.innerHTML = '<div class="text-[11px] text-gray-600 text-center py-4">No bids</div>';
+    } else {
+      bidsEl.innerHTML = bids.map((l: any) => {
+        const pct = ((l.quantity ?? 0) / maxQ * 100).toFixed(0);
+        return `<div class="flex items-center justify-between text-[11px] py-0.5 px-1 relative rounded overflow-hidden">
+          <div class="absolute inset-0 bg-emerald-500/8 rounded" style="width:${pct}%"></div>
+          <span class="font-mono text-emerald-400 z-10">${parseFloat(l.price).toFixed(2)}</span>
+          <span class="text-gray-600 z-10 font-mono">${l.quantity}</span>
+        </div>`;
+      }).join('');
+    }
 
-    const t = new Date(msg.timestamp ?? msg.executionTime ?? Date.now());
-    const time = t.toLocaleTimeString('en-US', { hour12: false });
+    const bestBid = bids.length ? parseFloat(bids[0].price) : null;
+    const bestAsk = asks.length ? parseFloat(asks[asks.length - 1].price) : null;
+    if (bestBid && bestAsk) {
+      const spread = (bestAsk - bestBid).toFixed(4);
+      const pct = ((bestAsk - bestBid) / bestAsk * 100).toFixed(2);
+      document.getElementById('ob-spread')!.textContent = spread;
+      document.getElementById('ob-spread-pct')!.textContent = `(${pct}%)`;
+      document.getElementById('kpi-spread')!.textContent = spread;
+      document.getElementById('kpi-spread-sym')!.textContent = obSymbol;
+    }
+  }
+
+  (window as any).selectOBSymbol = (sym: string) => {
+    if (obSymbol !== sym) {
+      (window as any).wsUnsubscribe(obSymbol);
+    }
+    obSymbol = sym;
+    const sel = document.getElementById('ob-sym-select') as HTMLSelectElement;
+    if (sel) sel.value = sym;
+    (window as any).wsSubscribe(sym);
+    fetchSymbolData(sym);
+    document.getElementById('kpi-spread-sym')!.textContent = sym;
+  };
+
+  // ── Live Trades ──────────────────────────────────────────────────────────
+  function addLiveTrade(msg: any) {
+    const tbody = document.getElementById('live-tbody')!;
+    if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+
+    const price = parseFloat(msg.price ?? 0);
+    const prev = prevPrice[msg.symbol] ?? price;
+    const color = price > prev ? '#22c55e' : price < prev ? '#f87171' : '#d1d5db';
+    prevPrice[msg.symbol] = price;
+
+    const time = new Date(msg.timestamp ?? Date.now()).toLocaleTimeString('en-US', { hour12: false });
 
     const row = document.createElement('tr');
     row.className = 'hover:bg-white/[0.02] transition-colors';
     row.innerHTML = `
-      <td class="px-4 py-1.5 text-gray-500">${time}</td>
-      <td class="px-4 py-1.5 text-[#58a6ff] font-medium">${msg.symbol ?? '—'}</td>
-      <td class="px-4 py-1.5 text-right font-mono font-medium" style="color:${color}">${price.toFixed(4)}</td>
-      <td class="px-4 py-1.5 text-right text-gray-300">${msg.quantity ?? msg.qty ?? '—'}</td>
-      <td class="px-4 py-1.5 text-gray-400">${msg.buyUsername ?? '—'}</td>
-      <td class="px-4 py-1.5 text-gray-400">${msg.sellUsername ?? '—'}</td>
+      <td class="px-3 py-1.5 text-gray-600 font-mono">${time}</td>
+      <td class="px-3 py-1.5 font-semibold text-violet-300">${msg.symbol ?? '—'}</td>
+      <td class="px-3 py-1.5 text-right font-mono font-medium" style="color:${color}">${price.toFixed(2)}</td>
+      <td class="px-3 py-1.5 text-right text-gray-400 font-mono">${msg.quantity ?? '—'}</td>
     `;
     tbody.insertBefore(row, tbody.firstChild);
-    if (tbody.children.length > 200) tbody.removeChild(tbody.lastChild);
+    if (tbody.children.length > 60) tbody.removeChild(tbody.lastChild!);
 
-    tradeCount++;
-    document.getElementById('trade-count').textContent = `${tradeCount} trade${tradeCount !== 1 ? 's' : ''}`;
+    liveTradeCount++;
+    document.getElementById('live-count')!.textContent = `${liveTradeCount.toLocaleString()} trades`;
+    document.getElementById('hdr-trades')!.textContent = liveTradeCount.toLocaleString();
+    document.getElementById('kpi-trades')!.textContent = liveTradeCount.toLocaleString();
+
+    // Update market data
+    if (marketData[msg.symbol]) {
+      marketData[msg.symbol].cnt++;
+      marketData[msg.symbol].vol += msg.quantity ?? 0;
+      const lp = parseFloat(msg.price ?? 0);
+      if (lp > 0) {
+        marketData[msg.symbol].prev = marketData[msg.symbol].last || lp;
+        marketData[msg.symbol].last = lp;
+      }
+      updateMarketRow(msg.symbol);
+    }
+
+    addEvent(`${msg.symbol} ${msg.quantity ?? ''}@${price.toFixed(2)} ${msg.buyUsername ? '· ' + msg.buyUsername : ''}`);
   }
 
-  // Init
+  // ── Events ────────────────────────────────────────────────────────────────
+  function addEvent(text: string) {
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    recentEvents.unshift({ time, text });
+    if (recentEvents.length > 12) recentEvents.pop();
+    const el = document.getElementById('events-list')!;
+    el.innerHTML = recentEvents.map(e =>
+      `<div class="flex gap-2 text-[11px] leading-snug">
+        <span class="text-gray-700 font-mono shrink-0">${e.time}</span>
+        <span class="text-gray-400">${e.text}</span>
+      </div>`
+    ).join('');
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
   fetchHealth();
   fetchSim();
-  fetchSymbols();
+  MARKET_SYMS.forEach(fetchSymbolData);
 
   setInterval(fetchHealth, 5000);
-  setInterval(fetchSim, 3000);
+  setInterval(fetchSim, 4000);
+  setInterval(() => MARKET_SYMS.forEach(fetchSymbolData), 15000);
 
-  // Subscribe to all symbols for trade feed
-  window.wsAddHandler({
+  (window as any).wsAddHandler({
     onopen() {
-      SYMBOLS.forEach(s => window.wsSubscribe(s));
+      ALL_SYMBOLS.forEach((s: string) => (window as any).wsSubscribe(s));
+      addEvent('WebSocket connected');
     },
-    onmessage(msg) {
-      if (msg.type === 'trade') addTrade(msg);
+    onmessage(msg: any) {
+      if (msg.type === 'trade') addLiveTrade(msg);
+      if (msg.type === 'orderbook') renderOB(msg);
     }
   });
 </script>
