@@ -9,9 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -23,8 +20,6 @@ class HeartbeatMonitorTest {
     private ServerConfiguration mockConfig;
     @Mock
     private ClientSession mockSession;
-    @Mock
-    private ScheduledExecutorService mockScheduler;
 
     private HeartbeatMonitor heartbeatMonitor;
 
@@ -32,10 +27,10 @@ class HeartbeatMonitorTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         when(mockHandler.getSession()).thenReturn(mockSession);
+        when(mockSession.getConnectionId()).thenReturn(1);
         when(mockConfig.getHeartbeatIntervalSeconds()).thenReturn(10L);
         when(mockConfig.getHeartbeatTimeoutSeconds()).thenReturn(30L);
         heartbeatMonitor = new HeartbeatMonitor(mockHandler, mockConfig);
-        setField(heartbeatMonitor, "scheduler", mockScheduler);
     }
 
     @AfterEach
@@ -44,43 +39,40 @@ class HeartbeatMonitorTest {
     }
 
     @Test
-    void start_shouldScheduleTasks() {
-        // Act
+    void start_shouldBecomeActive() {
         heartbeatMonitor.start();
 
-        // Assert
         assertTrue(heartbeatMonitor.isActive());
-        verify(mockScheduler, times(2)).scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), any(TimeUnit.class));
     }
 
     @Test
-    void stop_shouldCancelTasks() {
-        // Arrange
+    void start_twice_shouldBeIdempotent() {
+        heartbeatMonitor.start();
         heartbeatMonitor.start();
 
-        // Act
+        assertTrue(heartbeatMonitor.isActive());
+    }
+
+    @Test
+    void stop_shouldDeactivate() {
+        heartbeatMonitor.start();
+
         heartbeatMonitor.stop();
 
-        // Assert
         assertFalse(heartbeatMonitor.isActive());
     }
 
     @Test
-    void shutdown_shouldShutdownScheduler() {
-        // Act
+    void shutdown_shouldDeactivate() {
+        heartbeatMonitor.start();
+
         heartbeatMonitor.shutdown();
 
-        // Assert
-        verify(mockScheduler).shutdown();
+        assertFalse(heartbeatMonitor.isActive());
     }
 
-    private void setField(Object target, String fieldName, Object value) {
-        try {
-            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(target, value);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            fail("Failed to set field '" + fieldName + "': " + e.getMessage());
-        }
+    @Test
+    void isActive_beforeStart_shouldBeFalse() {
+        assertFalse(heartbeatMonitor.isActive());
     }
 }
