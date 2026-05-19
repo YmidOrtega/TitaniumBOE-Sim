@@ -104,13 +104,14 @@ public class ClientConnectionHandler implements Runnable {
                 }
 
                 byte messageType = message.getMessageType();
-                String messageTypeName = BoeMessageFactory.getMessageTypeName(messageType);
 
-                LOGGER.log(Level.INFO, "[Session {0}] ← Received {1} (length: {2} bytes)", new Object[]{
-                        session.getConnectionId(),
-                        messageTypeName,
-                        message.getLength()
-                });
+                if (LOGGER.isLoggable(Level.FINE)) {
+                    LOGGER.log(Level.FINE, "[Session {0}] ← Received {1} (length: {2} bytes)", new Object[]{
+                            session.getConnectionId(),
+                            BoeMessageFactory.getMessageTypeName(messageType),
+                            message.getLength()
+                    });
+                }
 
                 processMessage(message);
 
@@ -243,13 +244,15 @@ public class ClientConnectionHandler implements Runnable {
     }
 
     private void handleNewOrder(NewOrderMessage newOrder) {
-        LOGGER.log(Level.INFO, "[Session {0}] Processing NewOrder: ClOrdID={1}, Symbol={2}, Side={3}, Qty={4}", new Object[]{
-                session.getConnectionId(),
-                newOrder.getClOrdID(),
-                newOrder.getSymbol(),
-                newOrder.getSide() == 1 ? "Buy" : "Sell",
-                newOrder.getOrderQty()
-        });
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.log(Level.FINE, "[Session {0}] Processing NewOrder: ClOrdID={1}, Symbol={2}, Side={3}, Qty={4}", new Object[]{
+                    session.getConnectionId(),
+                    newOrder.getClOrdID(),
+                    newOrder.getSymbol(),
+                    newOrder.getSide() == 1 ? "Buy" : "Sell",
+                    newOrder.getOrderQty()
+            });
+        }
 
 
         if (!session.isAuthenticated()) {
@@ -374,11 +377,13 @@ public class ClientConnectionHandler implements Runnable {
             byte[] ackBytes = ack.toBytes();
             sendMessage(ackBytes);
 
-            LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderAcknowledgment: ClOrdID={1}, OrderID={2}", new Object[]{
-                    session.getConnectionId(),
-                    order.getClOrdID(),
-                    order.getOrderID()
-            });
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.log(Level.FINE, "[Session {0}] → Sent OrderAcknowledgment: ClOrdID={1}, OrderID={2}", new Object[]{
+                        session.getConnectionId(),
+                        order.getClOrdID(),
+                        order.getOrderID()
+                });
+            }
 
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending OrderAcknowledgment", e);
