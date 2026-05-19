@@ -164,30 +164,35 @@ public class OrderAcknowledgmentMessage {
 
     private void writeOptionalFields(ByteBuffer buffer) {
         // Bitfield 1
-        if ((bitfields[0] & 0x01) != 0) buffer.put(toFixedLengthBytes(clearingFirm, 4)); // ClearingFirm
-
-        if ((bitfields[0] & 0x02) != 0) buffer.put(toFixedLengthBytes(clearingAccount, 4)); // ClearingAccount
-
-        if ((bitfields[0] & 0x04) != 0) buffer.put(BinaryPrice.fromPrice(price).toBytes()); // Price
-
-        if ((bitfields[0] & 0x40) != 0) buffer.put(toFixedLengthBytes(symbol, 8)); // Symbol
-
-        if ((bitfields[0] & 0x80) != 0) buffer.put(capacity); // Capacity
-
+        if ((bitfields[0] & 0x01) != 0) writeFixedString(buffer, clearingFirm, 4);
+        if ((bitfields[0] & 0x02) != 0) writeFixedString(buffer, clearingAccount, 4);
+        if ((bitfields[0] & 0x04) != 0) BinaryPrice.fromPrice(price).putInto(buffer); // 8 bytes, no temp array
+        if ((bitfields[0] & 0x40) != 0) writeFixedString(buffer, symbol, 8);
+        if ((bitfields[0] & 0x80) != 0) buffer.put(capacity);
 
         // Bitfield 2
-        if ((bitfields[1] & 0x01) != 0) buffer.put(toFixedLengthBytes(account, 16)); // Account
-
-        if ((bitfields[1] & 0x80) != 0) buffer.put(openClose); // OpenClose
-
+        if ((bitfields[1] & 0x01) != 0) writeFixedString(buffer, account, 16);
+        if ((bitfields[1] & 0x80) != 0) buffer.put(openClose);
 
         // Bitfield 3
         if ((bitfields[2] & 0x01) != 0) buffer.putInt(convertMaturityDateToInt(maturityDate));
+        if ((bitfields[2] & 0x02) != 0) BinaryPrice.fromPrice(strikePrice).putInto(buffer);
+        if ((bitfields[2] & 0x04) != 0) buffer.put(putOrCall);
+    }
 
-        if ((bitfields[2] & 0x02) != 0) buffer.put(BinaryPrice.fromPrice(strikePrice).toBytes()); // StrikePrice
-
-        if ((bitfields[2] & 0x04) != 0) buffer.put(putOrCall);  // PutOrCall
-
+    // Writes a fixed-width ASCII string field directly into the buffer — no intermediate byte[] allocation.
+    // Fields shorter than `length` are right-padded with spaces (0x20), matching BOE spec.
+    private static void writeFixedString(ByteBuffer buf, String str, int length) {
+        int start = buf.position();
+        // Fill with spaces first
+        for (int i = 0; i < length; i++) buf.put((byte) 0x20);
+        // Overwrite from the start with the actual characters (ASCII — single byte per char)
+        if (str != null && !str.isEmpty()) {
+            int n = Math.min(str.length(), length);
+            buf.position(start);
+            for (int i = 0; i < n; i++) buf.put((byte) str.charAt(i));
+            buf.position(start + length);
+        }
     }
 
     private int calculateOptionalSize() {

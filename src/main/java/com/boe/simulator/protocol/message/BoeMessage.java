@@ -11,12 +11,12 @@ public class BoeMessage {
 
     public BoeMessage(byte[] data) {
         if (data == null || data.length < HEADER_SIZE) throw new IllegalArgumentException("Message data must be at least " + HEADER_SIZE + " bytes");
-        this.data = Arrays.copyOf(data, data.length);
+        this.data = data; // ownership transferred — caller must not mutate after this
         this.length = data.length;
     }
 
     public byte[] getData() {
-        return Arrays.copyOf(data, data.length);
+        return data; // callers only read — no defensive copy needed
     }
 
     public int getLength() {
