@@ -13,7 +13,10 @@ public class ServerConfiguration {
     // Heartbeat settings
     private final long heartbeatIntervalSeconds;
     private final long heartbeatTimeoutSeconds;
-    
+
+    // Rate limiting
+    private final int rateLimitPerMinute;
+
     // Logging
     private final Level logLevel;
 
@@ -26,6 +29,7 @@ public class ServerConfiguration {
         this.connectionTimeout = builder.connectionTimeout;
         this.heartbeatIntervalSeconds = builder.heartbeatIntervalSeconds;
         this.heartbeatTimeoutSeconds = builder.heartbeatTimeoutSeconds;
+        this.rateLimitPerMinute = builder.rateLimitPerMinute;
         this.logLevel = builder.logLevel;
     }
     
@@ -52,6 +56,7 @@ public class ServerConfiguration {
     public int getConnectionTimeout() { return connectionTimeout; }
     public long getHeartbeatIntervalSeconds() { return heartbeatIntervalSeconds; }
     public long getHeartbeatTimeoutSeconds() { return heartbeatTimeoutSeconds; }
+    public int getRateLimitPerMinute() { return rateLimitPerMinute; }
     public Level getLogLevel() { return logLevel; }
     
     @Override
@@ -74,6 +79,7 @@ public class ServerConfiguration {
         private int connectionTimeout = 30000; // 30 seconds
         private long heartbeatIntervalSeconds = 10;
         private long heartbeatTimeoutSeconds = 30;
+        private int rateLimitPerMinute = 100;
         private Level logLevel = Level.INFO;
         
         public Builder host(String host) {
@@ -108,6 +114,12 @@ public class ServerConfiguration {
         public Builder heartbeatTimeoutSeconds(long seconds) {
             if (seconds < 5) throw new IllegalArgumentException("Heartbeat timeout must be at least 5 seconds");
             this.heartbeatTimeoutSeconds = seconds;
+            return this;
+        }
+
+        public Builder rateLimitPerMinute(int limit) {
+            if (limit < 1) throw new IllegalArgumentException("Rate limit must be at least 1");
+            this.rateLimitPerMinute = limit;
             return this;
         }
         
