@@ -36,9 +36,9 @@ COPY --from=builder /app/target/boe-simulator-*.jar /app/boe-simulator.jar
 RUN mkdir -p /app/data && \
     chmod 755 /app/data
 
-# Create non-root user for security
-RUN addgroup -S appgroup && \
-    adduser -S appuser -G appgroup && \
+# Create non-root user for security (Debian syntax)
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup appuser && \
     chown -R appuser:appgroup /app
 
 # Switch to non-root user
