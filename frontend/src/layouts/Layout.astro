@@ -4,95 +4,172 @@ export interface Props {
   page?: string;
 }
 const { title, page = '' } = Astro.props;
+
+const nav = [
+  { label: 'Dashboard',      href: '/',          key: 'dashboard', icon: '⊞' },
+  { label: 'Order Book',     href: '/orders',    key: 'orders',    icon: '📈' },
+  { label: 'Trades',         href: '/trades',    key: 'trades',    icon: '⚡' },
+  { label: 'Bots',           href: '/simulator', key: 'simulator', icon: '🤖' },
+];
 ---
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{title} — TitaniumBOE</title>
+  <title>{title} — TitaniumBOE-Sim</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e2a45; border-radius: 2px; }
+  </style>
 </head>
-<body class="bg-[#0d1117] text-[#e6edf3] min-h-screen font-mono antialiased">
+<body class="bg-[#070c1a] text-white min-h-screen flex antialiased overflow-hidden">
 
-  <nav class="border-b border-[#30363d] bg-[#161b22] sticky top-0 z-50">
-    <div class="max-w-screen-xl mx-auto px-4 flex items-center h-11 gap-6">
-      <a href="/" class="text-[#58a6ff] font-semibold text-xs tracking-widest uppercase shrink-0">
-        ⬡ TitaniumBOE
-      </a>
+  <!-- Sidebar -->
+  <aside class="w-52 shrink-0 bg-[#090e1e] border-r border-[#162035] flex flex-col h-screen sticky top-0 z-30">
 
-      <div class="flex items-center gap-0.5">
-        <a href="/"         class={`px-3 py-1 rounded text-xs transition-colors ${page==='dashboard' ? 'bg-[#58a6ff]/10 text-[#58a6ff]' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}>Dashboard</a>
-        <a href="/orders"   class={`px-3 py-1 rounded text-xs transition-colors ${page==='orders'    ? 'bg-[#58a6ff]/10 text-[#58a6ff]' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}>Order Book</a>
-        <a href="/trades"   class={`px-3 py-1 rounded text-xs transition-colors ${page==='trades'    ? 'bg-[#58a6ff]/10 text-[#58a6ff]' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}>Trades</a>
-        <a href="/simulator" class={`px-3 py-1 rounded text-xs transition-colors ${page==='simulator' ? 'bg-[#58a6ff]/10 text-[#58a6ff]' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}>Simulator</a>
-      </div>
-
-      <div class="flex-1"></div>
-
-      <div class="flex items-center gap-2 text-xs text-gray-500">
-        <span id="ws-dot" class="w-1.5 h-1.5 rounded-full bg-gray-600 transition-colors"></span>
-        <span id="ws-label">connecting…</span>
+    <!-- Logo -->
+    <div class="px-4 py-4 border-b border-[#162035]">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-base font-bold shrink-0">◈</div>
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-white leading-tight truncate">TitaniumBOE-Sim</div>
+          <div class="text-[10px] text-violet-400/60 leading-tight">Cboe BOE Protocol</div>
+        </div>
       </div>
     </div>
-  </nav>
 
-  <main class="max-w-screen-xl mx-auto px-4 py-5">
+    <!-- Navigation -->
+    <nav class="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+      {nav.map(item => (
+        <a
+          href={item.href}
+          class={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
+            page === item.key
+              ? 'bg-violet-600/20 text-violet-300 border border-violet-500/25 shadow-sm'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
+          }`}
+        >
+          <span class="text-base leading-none">{item.icon}</span>
+          {item.label}
+        </a>
+      ))}
+
+      <div class="pt-3 pb-1 px-3">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest">System</div>
+      </div>
+
+      <a href="/api/docs" target="_blank"
+        class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-400 hover:text-gray-200 hover:bg-white/[0.04] transition-all">
+        <span class="text-base leading-none">📄</span>
+        API Docs
+      </a>
+    </nav>
+
+    <!-- Bottom status -->
+    <div class="px-3 py-3 border-t border-[#162035] space-y-2">
+      <div class="bg-[#0d1428] rounded-lg px-3 py-2.5">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">BOE Protocol</div>
+        <div class="flex items-center gap-2 text-xs">
+          <span id="ws-dot" class="w-1.5 h-1.5 rounded-full bg-gray-600 transition-colors shrink-0"></span>
+          <span id="ws-label" class="text-gray-500">Connecting…</span>
+        </div>
+      </div>
+      <div class="bg-[#0d1428] rounded-lg px-3 py-2.5">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">Trading Bots</div>
+        <div class="flex items-center justify-between text-xs">
+          <span id="sidebar-bots-label" class="text-gray-500">—</span>
+          <span id="sidebar-bots-state" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-500">—</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
     <slot />
-  </main>
+  </div>
 
   <script>
-    // Global WebSocket shared across pages
-    let ws = null;
-    let wsHandlers = [];
+    let ws: WebSocket | null = null;
+    const wsHandlers: any[] = [];
 
     function connectWS() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       ws = new WebSocket(`${proto}://${location.host}/ws/feed`);
 
       ws.onopen = () => {
-        document.getElementById('ws-dot').style.background = '#3fb950';
-        document.getElementById('ws-label').textContent = 'live';
-        wsHandlers.forEach(h => h.onopen && h.onopen());
+        const dot = document.getElementById('ws-dot');
+        const lbl = document.getElementById('ws-label');
+        if (dot) dot.style.background = '#22c55e';
+        if (lbl) { lbl.textContent = 'Connected'; (lbl as HTMLElement).style.color = '#22c55e'; }
+        wsHandlers.forEach(h => h.onopen?.());
       };
 
       ws.onclose = () => {
-        document.getElementById('ws-dot').style.background = '#f85149';
-        document.getElementById('ws-label').textContent = 'reconnecting…';
+        const dot = document.getElementById('ws-dot');
+        const lbl = document.getElementById('ws-label');
+        if (dot) dot.style.background = '#ef4444';
+        if (lbl) { lbl.textContent = 'Reconnecting…'; (lbl as HTMLElement).style.color = '#6b7280'; }
         setTimeout(connectWS, 3000);
       };
 
       ws.onerror = () => {
-        document.getElementById('ws-dot').style.background = '#d29922';
-        document.getElementById('ws-label').textContent = 'error';
+        const dot = document.getElementById('ws-dot');
+        if (dot) dot.style.background = '#f59e0b';
       };
 
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
-          wsHandlers.forEach(h => h.onmessage && h.onmessage(msg));
+          wsHandlers.forEach(h => h.onmessage?.(msg));
         } catch (_) {}
       };
     }
 
-    window.wsSubscribe = (symbol) => {
+    (window as any).wsSubscribe = (symbol: string) => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ action: 'subscribe', symbol }));
       }
     };
 
-    window.wsUnsubscribe = (symbol) => {
+    (window as any).wsUnsubscribe = (symbol: string) => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ action: 'unsubscribe', symbol }));
       }
     };
 
-    window.wsAddHandler = (handler) => {
+    (window as any).wsAddHandler = (handler: any) => {
       wsHandlers.push(handler);
     };
 
+    async function fetchSidebarSim() {
+      try {
+        const r = await fetch('/api/simulator/status');
+        const d = await r.json();
+        const st = d.data ?? d;
+        const running = st.running ?? st.isRunning ?? false;
+        const bots = st.activeBots ?? st.totalBots ?? '—';
+        const lbl = document.getElementById('sidebar-bots-label');
+        const state = document.getElementById('sidebar-bots-state');
+        if (lbl) lbl.textContent = `${bots} active`;
+        if (state) {
+          state.textContent = running ? 'Running' : 'Stopped';
+          state.style.background = running ? 'rgba(34,197,94,0.15)' : 'rgba(107,114,128,0.2)';
+          state.style.color = running ? '#22c55e' : '#6b7280';
+        }
+      } catch (_) {}
+    }
+
+    fetchSidebarSim();
+    setInterval(fetchSidebarSim, 5000);
     connectWS();
   </script>
 
