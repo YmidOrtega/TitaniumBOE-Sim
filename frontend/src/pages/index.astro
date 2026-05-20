@@ -381,31 +381,38 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
   };
 
   // ── Symbol data ───────────────────────────────────────────────────────────
-  async function fetchSymbolData(sym: string) {
+  async function fetchAllSymbols() {
     try {
-      const r = await fetch(`/api/symbols/${sym}`);
+      const r = await fetch('/api/symbols');
       if (!r.ok) return;
       const raw = await r.json();
-      const d = raw.data ?? raw;
+      const list: any[] = raw.data ?? raw;
 
-      const last = parseFloat(d.lastTradePrice ?? d.last ?? d.bestBid ?? 0);
-      if (last > 0 && marketData[sym]) {
-        marketData[sym].prev = marketData[sym].last || last;
-        marketData[sym].last = last;
+      for (const d of list) {
+        const sym = d.symbol;
+        if (!MARKET_SYMS.includes(sym) && !ALL_SYMBOLS.includes(sym)) continue;
+
+        const last = parseFloat(d.lastPrice ?? d.lastTradePrice ?? d.bestBid ?? 0);
+        if (last > 0 && marketData[sym]) {
+          marketData[sym].prev = marketData[sym].last || last;
+          marketData[sym].last = last;
+        }
+
+        const bestBid = d.bestBid ? parseFloat(d.bestBid) : null;
+        const bestAsk = d.bestAsk ? parseFloat(d.bestAsk) : null;
+
+        if (bestBid && bestAsk && sym === 'AAPL') {
+          const spread = (bestAsk - bestBid).toFixed(4);
+          document.getElementById('kpi-spread')!.textContent = spread;
+        }
+
+        updateMarketRow(sym);
       }
-
-      const bids = d.bids ?? [];
-      const asks = d.asks ?? [];
-      const bestBid = bids.length ? parseFloat(bids[0].price) : null;
-      const bestAsk = asks.length ? parseFloat(asks[asks.length - 1].price) : null;
-
-      if (bestBid && bestAsk && sym === 'AAPL') {
-        const spread = (bestAsk - bestBid).toFixed(4);
-        document.getElementById('kpi-spread')!.textContent = spread;
-      }
-
-      updateMarketRow(sym);
     } catch (_) {}
+  }
+
+  async function fetchSymbolData(sym: string) {
+    await fetchAllSymbols();
   }
 
   function updateMarketRow(sym: string) {
@@ -627,20 +634,28 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
   detectDemoMode();
   fetchHealth();
   fetchSim();
-  MARKET_SYMS.forEach(fetchSymbolData);
+  fetchAllSymbols();
 
-  setInterval(fetchHealth, 5000);
-  setInterval(fetchSim, 4000);
-  setInterval(() => MARKET_SYMS.forEach(fetchSymbolData), 15000);
+  setInterval(fetchHealth, 2000);
+  setInterval(fetchSim, 3000);
+  setInterval(fetchAllSymbols, 10000);
 
-  (window as any).wsAddHandler({
-    onopen() {
-      ALL_SYMBOLS.forEach((s: string) => (window as any).wsSubscribe(s));
-      addEvent('WebSocket connected');
-    },
-    onmessage(msg: any) {
-      if (msg.type === 'trade') addLiveTrade(msg);
-      if (msg.type === 'orderbook') renderOB(msg);
+  // Deferred to handle dev-mode script-loading order (Layout may define wsAddHandler after this module)
+  function registerWsHandler() {
+    if (typeof (window as any).wsAddHandler === 'function') {
+      (window as any).wsAddHandler({
+        onopen() {
+          ALL_SYMBOLS.forEach((s: string) => (window as any).wsSubscribe(s));
+          addEvent('WebSocket connected');
+        },
+        onmessage(msg: any) {
+          if (msg.type === 'trade') addLiveTrade(msg);
+          if (msg.type === 'orderbook') renderOB(msg);
+        }
+      });
+    } else {
+      setTimeout(registerWsHandler, 50);
     }
-  });
+  }
+  setTimeout(registerWsHandler, 0);
 </script>
