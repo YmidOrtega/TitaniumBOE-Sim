@@ -1,64 +1,73 @@
 ---
 import Layout from '../layouts/Layout.astro';
+const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
 ---
 <Layout title="Trades" page="trades">
 
-  <div class="flex items-center gap-2 mb-4 flex-wrap">
-    <span class="text-xs text-gray-500">Filter:</span>
+  <!-- Page header -->
+  <div class="border-b border-[#162035] bg-[#090e1e] px-6 py-3 flex items-center gap-3 shrink-0 flex-wrap">
+    <div class="mr-2">
+      <h1 class="text-sm font-semibold text-white">Live Trades</h1>
+      <p class="text-[11px] text-gray-600">All matched orders across symbols</p>
+    </div>
     <button onclick="filterSymbol(null)"
-      class="filter-btn px-3 py-1 rounded text-xs border border-[#58a6ff]/60 bg-[#58a6ff]/10 text-[#58a6ff] transition-colors"
+      class="filter-btn px-3 py-1.5 rounded-lg text-[11px] font-medium border border-violet-500/40 bg-violet-600/15 text-violet-300 transition-all"
       data-sym="all">All</button>
-    {['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'].map(s => (
+    {SYMBOLS.map(s => (
       <button onclick={`filterSymbol('${s}')`}
-        class="filter-btn px-3 py-1 rounded text-xs border border-[#30363d] text-gray-400 hover:text-gray-200 hover:border-[#58a6ff]/40 transition-colors"
+        class="filter-btn px-3 py-1.5 rounded-lg text-[11px] font-medium border border-[#1e2a45] text-gray-500 hover:text-gray-300 hover:border-violet-500/30 transition-all"
         data-sym={s}>{s}</button>
     ))}
     <div class="flex-1"></div>
-    <span class="text-xs text-gray-500" id="trades-count">0 trades</span>
+    <span class="text-[11px] text-gray-600 font-mono" id="trades-count">0 trades</span>
     <button onclick="clearTrades()"
-      class="px-3 py-1 rounded text-xs border border-[#30363d] text-gray-500 hover:text-gray-300 transition-colors">
+      class="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-[#1e2a45] text-gray-500 hover:text-gray-300 hover:border-rose-500/30 transition-all">
       Clear
     </button>
   </div>
 
-  <div class="bg-[#161b22] border border-[#30363d] rounded overflow-hidden">
-    <div class="grid grid-cols-4 gap-3 mb-4 p-4 border-b border-[#30363d]">
-      <div>
-        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total Trades</div>
-        <div class="text-lg font-semibold text-[#58a6ff]" id="kpi-total">0</div>
-      </div>
-      <div>
-        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Last Price</div>
-        <div class="text-lg font-semibold font-mono" id="kpi-last">—</div>
-      </div>
-      <div>
-        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total Volume</div>
-        <div class="text-lg font-semibold text-[#3fb950]" id="kpi-vol">0</div>
-      </div>
-      <div>
-        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Avg Price</div>
-        <div class="text-lg font-semibold font-mono text-[#d29922]" id="kpi-avg">—</div>
-      </div>
+  <!-- KPI row -->
+  <div class="px-5 pt-4 grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+    <div class="bg-[#0d1428] border border-[#162035] rounded-xl px-4 py-3">
+      <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Total Trades</div>
+      <div class="text-xl font-bold font-mono text-violet-300" id="kpi-total">0</div>
     </div>
+    <div class="bg-[#0d1428] border border-[#162035] rounded-xl px-4 py-3">
+      <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Last Price</div>
+      <div class="text-xl font-bold font-mono text-white" id="kpi-last">—</div>
+    </div>
+    <div class="bg-[#0d1428] border border-[#162035] rounded-xl px-4 py-3">
+      <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Total Volume</div>
+      <div class="text-xl font-bold font-mono text-emerald-400" id="kpi-vol">0</div>
+    </div>
+    <div class="bg-[#0d1428] border border-[#162035] rounded-xl px-4 py-3">
+      <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Avg Price</div>
+      <div class="text-xl font-bold font-mono text-amber-400" id="kpi-avg">—</div>
+    </div>
+  </div>
 
-    <div class="overflow-y-auto" style="height:calc(100vh - 260px); min-height:400px">
-      <table class="w-full text-xs">
-        <thead class="sticky top-0 bg-[#161b22] border-b border-[#30363d]">
-          <tr class="text-[10px] text-gray-500 uppercase tracking-wider">
-            <th class="px-4 py-2.5 text-left">#</th>
-            <th class="px-4 py-2.5 text-left">Time</th>
-            <th class="px-4 py-2.5 text-left">Symbol</th>
-            <th class="px-4 py-2.5 text-right">Price</th>
-            <th class="px-4 py-2.5 text-right">Qty</th>
-            <th class="px-4 py-2.5 text-right">Notional</th>
-            <th class="px-4 py-2.5 text-left">Buyer</th>
-            <th class="px-4 py-2.5 text-left">Seller</th>
-          </tr>
-        </thead>
-        <tbody id="trades-tbody" class="divide-y divide-[#30363d]/40">
-          <tr><td colspan="8" class="px-4 py-12 text-center text-gray-600">Waiting for trades…</td></tr>
-        </tbody>
-      </table>
+  <!-- Table -->
+  <div class="p-5 pt-3 flex-1 overflow-hidden">
+    <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden h-full flex flex-col">
+      <div class="overflow-y-auto flex-1">
+        <table class="w-full text-xs">
+          <thead class="sticky top-0 bg-[#0d1428] z-10">
+            <tr class="text-[10px] text-gray-600 uppercase tracking-wider border-b border-[#162035]">
+              <th class="px-4 py-2.5 text-left font-medium">#</th>
+              <th class="px-4 py-2.5 text-left font-medium">Time</th>
+              <th class="px-4 py-2.5 text-left font-medium">Symbol</th>
+              <th class="px-4 py-2.5 text-right font-medium">Price</th>
+              <th class="px-4 py-2.5 text-right font-medium">Qty</th>
+              <th class="px-4 py-2.5 text-right font-medium">Notional</th>
+              <th class="px-4 py-2.5 text-left font-medium">Buyer</th>
+              <th class="px-4 py-2.5 text-left font-medium">Seller</th>
+            </tr>
+          </thead>
+          <tbody id="trades-tbody" class="divide-y divide-[#162035]/40">
+            <tr><td colspan="8" class="px-4 py-12 text-center text-gray-600">Waiting for trades…</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -66,103 +75,84 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
-  let allTrades = [];
-  let activeFilter = null;
-  let prevPrice = {};
+  let allTrades: any[] = [];
+  let activeFilter: string | null = null;
+  let prevPrice: Record<string, number> = {};
   let tradeSeq = 0;
 
-  window.filterSymbol = function(sym) {
+  (window as any).filterSymbol = function(sym: string | null) {
     activeFilter = sym;
-    document.querySelectorAll('.filter-btn').forEach(b => {
+    document.querySelectorAll<HTMLElement>('.filter-btn').forEach(b => {
       const match = sym === null ? b.dataset.sym === 'all' : b.dataset.sym === sym;
-      b.className = `filter-btn px-3 py-1 rounded text-xs border transition-colors ${
+      b.className = `filter-btn px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
         match
-          ? 'border-[#58a6ff]/60 bg-[#58a6ff]/10 text-[#58a6ff]'
-          : 'border-[#30363d] text-gray-400 hover:text-gray-200 hover:border-[#58a6ff]/40'
+          ? 'border-violet-500/40 bg-violet-600/15 text-violet-300'
+          : 'border-[#1e2a45] text-gray-500 hover:text-gray-300 hover:border-violet-500/30'
       }`;
     });
     renderTrades();
   };
 
-  window.clearTrades = function() {
-    allTrades = [];
-    tradeSeq = 0;
-    prevPrice = {};
-    renderTrades();
-    updateKpis([]);
+  (window as any).clearTrades = function() {
+    allTrades = []; tradeSeq = 0; prevPrice = {};
+    renderTrades(); updateKpis([]);
   };
 
-  function addTrade(msg) {
+  function addTrade(msg: any) {
     tradeSeq++;
-    const trade = { ...msg, _seq: tradeSeq };
-    allTrades.unshift(trade);
+    allTrades.unshift({ ...msg, _seq: tradeSeq });
     if (allTrades.length > 500) allTrades.pop();
-
     const filtered = activeFilter ? allTrades.filter(t => t.symbol === activeFilter) : allTrades;
     renderTrades(filtered);
     updateKpis(filtered);
   }
 
-  function renderTrades(list) {
+  function renderTrades(list?: any[]) {
     const filtered = list ?? (activeFilter ? allTrades.filter(t => t.symbol === activeFilter) : allTrades);
-    document.getElementById('trades-count').textContent = `${filtered.length} trades`;
-
-    const tbody = document.getElementById('trades-tbody');
+    document.getElementById('trades-count')!.textContent = `${filtered.length.toLocaleString()} trades`;
+    const tbody = document.getElementById('trades-tbody')!;
     if (filtered.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-12 text-center text-gray-600">No trades</td></tr>';
       return;
     }
-
-    tbody.innerHTML = filtered.slice(0, 200).map(t => {
+    tbody.innerHTML = filtered.slice(0, 200).map((t: any) => {
       const price = parseFloat(t.price ?? 0);
-      const prev  = prevPrice[t.symbol] ?? price;
-      const color = price > prev ? '#3fb950' : price < prev ? '#f85149' : '#e6edf3';
+      const prev = prevPrice[t.symbol] ?? price;
+      const color = price > prev ? '#22c55e' : price < prev ? '#f87171' : '#d1d5db';
       prevPrice[t.symbol] = price;
-
       const time = new Date(t.timestamp ?? Date.now()).toLocaleTimeString('en-US', { hour12: false });
       const notional = (price * (t.quantity ?? 0)).toFixed(0);
-
       return `<tr class="hover:bg-white/[0.02] transition-colors">
-        <td class="px-4 py-1.5 text-gray-600">${t._seq}</td>
-        <td class="px-4 py-1.5 text-gray-500">${time}</td>
-        <td class="px-4 py-1.5 text-[#58a6ff] font-medium">${t.symbol ?? '—'}</td>
-        <td class="px-4 py-1.5 text-right font-mono font-medium" style="color:${color}">${price.toFixed(4)}</td>
-        <td class="px-4 py-1.5 text-right text-gray-300">${t.quantity ?? '—'}</td>
-        <td class="px-4 py-1.5 text-right text-gray-500">$${parseInt(notional).toLocaleString()}</td>
+        <td class="px-4 py-1.5 text-gray-700 font-mono">${t._seq}</td>
+        <td class="px-4 py-1.5 text-gray-500 font-mono">${time}</td>
+        <td class="px-4 py-1.5 font-semibold text-violet-300">${t.symbol ?? '—'}</td>
+        <td class="px-4 py-1.5 text-right font-mono font-semibold" style="color:${color}">${price.toFixed(4)}</td>
+        <td class="px-4 py-1.5 text-right text-gray-300 font-mono">${t.quantity ?? '—'}</td>
+        <td class="px-4 py-1.5 text-right text-gray-500 font-mono">$${parseInt(notional).toLocaleString()}</td>
         <td class="px-4 py-1.5 text-gray-400">${t.buyUsername ?? '—'}</td>
         <td class="px-4 py-1.5 text-gray-400">${t.sellUsername ?? '—'}</td>
       </tr>`;
     }).join('');
   }
 
-  function updateKpis(filtered) {
-    const list = filtered ?? (activeFilter ? allTrades.filter(t => t.symbol === activeFilter) : allTrades);
-    document.getElementById('kpi-total').textContent = list.length;
-
-    if (list.length > 0) {
-      const last = list[0];
-      const p = parseFloat(last.price ?? 0).toFixed(4);
-      document.getElementById('kpi-last').textContent = p;
-
-      const vol = list.reduce((s, t) => s + (t.quantity ?? 0), 0);
-      document.getElementById('kpi-vol').textContent = vol.toLocaleString();
-
-      const notional = list.reduce((s, t) => s + parseFloat(t.price ?? 0) * (t.quantity ?? 0), 0);
-      const avg = vol > 0 ? (notional / vol).toFixed(4) : '—';
-      document.getElementById('kpi-avg').textContent = avg;
+  function updateKpis(filtered: any[]) {
+    document.getElementById('kpi-total')!.textContent = filtered.length.toLocaleString();
+    if (filtered.length > 0) {
+      const last = filtered[0];
+      document.getElementById('kpi-last')!.textContent = parseFloat(last.price ?? 0).toFixed(4);
+      const vol = filtered.reduce((s, t) => s + (t.quantity ?? 0), 0);
+      document.getElementById('kpi-vol')!.textContent = vol.toLocaleString();
+      const notional = filtered.reduce((s, t) => s + parseFloat(t.price ?? 0) * (t.quantity ?? 0), 0);
+      document.getElementById('kpi-avg')!.textContent = vol > 0 ? (notional / vol).toFixed(4) : '—';
     } else {
-      document.getElementById('kpi-last').textContent = '—';
-      document.getElementById('kpi-vol').textContent = '0';
-      document.getElementById('kpi-avg').textContent = '—';
+      document.getElementById('kpi-last')!.textContent = '—';
+      document.getElementById('kpi-vol')!.textContent = '0';
+      document.getElementById('kpi-avg')!.textContent = '—';
     }
   }
 
-  window.wsAddHandler({
-    onopen() {
-      SYMBOLS.forEach(s => window.wsSubscribe(s));
-    },
-    onmessage(msg) {
-      if (msg.type === 'trade') addTrade(msg);
-    }
+  (window as any).wsAddHandler({
+    onopen() { SYMBOLS.forEach((s: string) => (window as any).wsSubscribe(s)); },
+    onmessage(msg: any) { if (msg.type === 'trade') addTrade(msg); }
   });
 </script>
