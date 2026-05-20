@@ -170,7 +170,8 @@ public class MarketSimulator {
                 aggStats.totalOrders(),
                 aggStats.successfulOrders(),
                 aggStats.failedOrders(),
-                aggStats.totalVolume()
+                aggStats.totalVolume(),
+                matchingEngine.getTotalMatches()
         );
     }
 
@@ -186,6 +187,7 @@ public class MarketSimulator {
             long totalOrders,
             long successfulOrders,
             long failedOrders,
-            long totalVolume
+            long totalVolume,
+            long totalMatches
     ) {}
 }

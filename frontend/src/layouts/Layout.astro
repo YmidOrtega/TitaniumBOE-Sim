@@ -6,11 +6,18 @@ export interface Props {
 const { title, page = '' } = Astro.props;
 
 const nav = [
-  { label: 'Dashboard',      href: '/',          key: 'dashboard', icon: '⊞' },
-  { label: 'Order Book',     href: '/orders',    key: 'orders',    icon: '📈' },
-  { label: 'Trades',         href: '/trades',    key: 'trades',    icon: '⚡' },
-  { label: 'Bots',           href: '/simulator', key: 'simulator', icon: '🤖' },
+  { label: 'Dashboard',  href: '/',          key: 'dashboard' },
+  { label: 'Order Book', href: '/orders',    key: 'orders'    },
+  { label: 'Trades',     href: '/trades',    key: 'trades'    },
+  { label: 'Bots',       href: '/simulator', key: 'simulator' },
 ];
+
+const icons: Record<string, string> = {
+  dashboard: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`,
+  orders:    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+  trades:    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  simulator: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9 9l2 2 4-4"/></svg>`,
+};
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -57,20 +64,12 @@ const nav = [
               : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
           }`}
         >
-          <span class="text-base leading-none">{item.icon}</span>
+          <span class={`shrink-0 ${page === item.key ? 'text-violet-400' : 'text-gray-600'}`}
+            set:html={icons[item.key]} />
           {item.label}
         </a>
       ))}
 
-      <div class="pt-3 pb-1 px-3">
-        <div class="text-[10px] text-gray-600 uppercase tracking-widest">System</div>
-      </div>
-
-      <a href="/api/docs" target="_blank"
-        class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-400 hover:text-gray-200 hover:bg-white/[0.04] transition-all">
-        <span class="text-base leading-none">📄</span>
-        API Docs
-      </a>
     </nav>
 
     <!-- Bottom status -->
