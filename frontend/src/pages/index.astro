@@ -5,50 +5,63 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
 ---
 <Layout title="Dashboard" page="dashboard">
 
-  <!-- Top stats bar -->
-  <div class="border-b border-[#162035] bg-[#090e1e] px-6 py-2 flex items-center gap-3 flex-wrap shrink-0">
-    <div class="flex items-center gap-2 text-[11px]">
-      <span class="text-gray-600 uppercase tracking-wider font-medium">Total P&L</span>
-      <span class="text-emerald-400 font-semibold font-mono" id="hdr-pnl">—</span>
-    </div>
-    <div class="w-px h-3 bg-[#1e2a45]"></div>
-    <div class="flex items-center gap-2 text-[11px]">
-      <span class="text-gray-600 uppercase tracking-wider font-medium">Natural Vol</span>
-      <span class="text-white font-semibold font-mono" id="hdr-vol">—</span>
-    </div>
-    <div class="w-px h-3 bg-[#1e2a45]"></div>
-    <div class="flex items-center gap-2 text-[11px]">
-      <span class="text-gray-600 uppercase tracking-wider font-medium">Total Trades</span>
-      <span class="text-white font-semibold font-mono" id="hdr-trades">—</span>
-      <span class="text-emerald-400 text-[10px] font-mono" id="hdr-trades-chg"></span>
-    </div>
-    <div class="w-px h-3 bg-[#1e2a45]"></div>
-    <div class="flex items-center gap-2 text-[11px]">
-      <span class="text-gray-600 uppercase tracking-wider font-medium">Active Orders</span>
-      <span class="text-white font-semibold font-mono" id="hdr-orders">—</span>
-      <span class="text-[10px] font-mono" id="hdr-orders-chg"></span>
-    </div>
-    <div class="w-px h-3 bg-[#1e2a45]"></div>
-    <div class="flex items-center gap-2 text-[11px]">
-      <span class="text-gray-600 uppercase tracking-wider font-medium">Connected</span>
-      <span class="text-white font-semibold font-mono" id="hdr-clients">1</span>
-    </div>
-    <div class="flex-1"></div>
-    <button id="btn-start-bots" onclick="simToggle()"
-      class="px-3 py-1 rounded text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-all">
-      START BOTS
-    </button>
-  </div>
-
   <!-- Main scroll area -->
   <div class="p-5 space-y-4">
 
-    <!-- Welcome + KPI row -->
-    <div>
-      <h1 class="text-lg font-semibold text-white mb-0.5">Welcome back 👋</h1>
-      <p class="text-[11px] text-gray-500 mb-4">Real-time overview of the Cboe Titanium BOE protocol simulation.</p>
+    <!-- Welcome row + action buttons -->
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <h1 class="text-lg font-semibold text-white mb-0.5">
+          Welcome back, <span id="trader-name">Trader</span> 👋
+        </h1>
+        <p class="text-[11px] text-gray-500">Real-time overview of the Cboe Titanium BOE protocol simulation.</p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="btn-demo-mode" onclick="toggleDemoMode()"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all">
+          <span class="w-1.5 h-1.5 rounded-full" id="demo-dot"></span>
+          <span id="demo-label">Demo Mode</span>
+        </button>
+        <button id="btn-start-bots" onclick="simToggle()"
+          class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-all">
+          START BOTS
+        </button>
+      </div>
+    </div>
 
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <!-- Stats ticker row -->
+    <div class="flex items-center gap-0 bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden divide-x divide-[#162035]">
+      <div class="flex-1 px-4 py-3 min-w-0">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Total P&L</div>
+        <div class="text-sm font-bold font-mono text-emerald-400" id="hdr-pnl">—</div>
+      </div>
+      <div class="flex-1 px-4 py-3 min-w-0">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Natural Vol</div>
+        <div class="flex items-baseline gap-1.5">
+          <span class="text-sm font-bold font-mono text-white" id="hdr-vol">—</span>
+        </div>
+      </div>
+      <div class="flex-1 px-4 py-3 min-w-0">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Total Trades</div>
+        <div class="flex items-baseline gap-1.5">
+          <span class="text-sm font-bold font-mono text-white" id="hdr-trades">—</span>
+          <span class="text-[10px] font-mono text-emerald-400" id="hdr-trades-chg"></span>
+        </div>
+      </div>
+      <div class="flex-1 px-4 py-3 min-w-0">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Active Orders</div>
+        <div class="flex items-baseline gap-1.5">
+          <span class="text-sm font-bold font-mono text-white" id="hdr-orders">—</span>
+          <span class="text-[10px] font-mono" id="hdr-orders-chg"></span>
+        </div>
+      </div>
+      <div class="flex-1 px-4 py-3 min-w-0">
+        <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-1">Connected</div>
+        <div class="text-sm font-bold font-mono text-violet-300" id="hdr-clients">1</div>
+      </div>
+    </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-[#0d1428] border border-[#162035] rounded-xl p-4">
           <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-2">Total P&L</div>
           <div class="text-2xl font-bold text-white font-mono" id="kpi-pnl">—</div>
@@ -70,7 +83,6 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
           <div class="text-[11px] text-violet-400 mt-1" id="kpi-spread-sym">AAPL</div>
         </div>
       </div>
-    </div>
 
     <!-- Middle row: Market | Order Book | Health -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -537,7 +549,82 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
     ).join('');
   }
 
+  // ── Trader name ──────────────────────────────────────────────────────────
+  function detectTraderName() {
+    const stored = localStorage.getItem('traderName');
+    if (stored) {
+      document.getElementById('trader-name')!.textContent = stored;
+      return;
+    }
+    // Try demo credentials — if they work, we're in demo mode and user is TRD1
+    fetch('/api/positions', {
+      headers: { 'Authorization': 'Basic ' + btoa('TRD1:Pass1234!') }
+    }).then(r => {
+      if (r.ok) {
+        document.getElementById('trader-name')!.textContent = 'TRD1';
+        localStorage.setItem('traderName', 'TRD1');
+        setDemoUI(true);
+      }
+    }).catch(() => {});
+  }
+
+  // ── Demo Mode ────────────────────────────────────────────────────────────
+  let isDemoMode = false;
+
+  function setDemoUI(demo: boolean) {
+    isDemoMode = demo;
+    const btn = document.getElementById('btn-demo-mode')!;
+    const dot = document.getElementById('demo-dot')!;
+    const lbl = document.getElementById('demo-label')!;
+    if (demo) {
+      btn.style.cssText = 'background:rgba(251,191,36,0.12);color:#fbbf24;border-color:rgba(251,191,36,0.25)';
+      dot.style.background = '#fbbf24';
+      lbl.textContent = 'Demo Mode';
+    } else {
+      btn.style.cssText = 'background:rgba(139,92,246,0.12);color:#a78bfa;border-color:rgba(139,92,246,0.25)';
+      dot.style.background = '#22c55e';
+      lbl.textContent = 'Live Mode';
+    }
+  }
+
+  async function detectDemoMode() {
+    try {
+      // Try demo credentials — if 200, we're in demo mode
+      const r = await fetch('/api/positions', {
+        headers: { 'Authorization': 'Basic ' + btoa('TRD1:Pass1234!') }
+      });
+      setDemoUI(r.ok);
+    } catch (_) {
+      setDemoUI(false);
+    }
+  }
+
+  (window as any).toggleDemoMode = async () => {
+    // In a real scenario this would hit an admin endpoint
+    // For now we toggle the visual state and notify
+    const next = !isDemoMode;
+    setDemoUI(next);
+    if (next) {
+      // Try to use demo credentials
+      const r = await fetch('/api/positions', {
+        headers: { 'Authorization': 'Basic ' + btoa('TRD1:Pass1234!') }
+      });
+      if (!r.ok) {
+        setDemoUI(false);
+        alert('Demo Mode requires DEMO_MODE=true on the server.');
+      } else {
+        document.getElementById('trader-name')!.textContent = 'TRD1';
+        localStorage.setItem('traderName', 'TRD1');
+      }
+    } else {
+      localStorage.removeItem('traderName');
+      document.getElementById('trader-name')!.textContent = 'Trader';
+    }
+  };
+
   // ── Init ──────────────────────────────────────────────────────────────────
+  detectTraderName();
+  detectDemoMode();
   fetchHealth();
   fetchSim();
   MARKET_SYMS.forEach(fetchSymbolData);

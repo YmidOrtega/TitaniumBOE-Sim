@@ -21,10 +21,10 @@ public record BotConfig(
                 "MARKET_MAKER",
                 symbols,
                 username,
-                Duration.ofSeconds(5),
+                Duration.ofSeconds(3),
                 50,
                 200,
-                new BigDecimal("0.02"), // 2% spread
+                new BigDecimal("0.003"), // 0.3% spread
                 true
         );
     }
@@ -35,10 +35,10 @@ public record BotConfig(
                 "RANDOM_TRADER",
                 symbols,
                 username,
-                Duration.ofSeconds(3),
+                Duration.ofSeconds(1),
                 10,
                 100,
-                new BigDecimal("0.01"), // 1% price variation
+                new BigDecimal("0.003"), // 0.3% price variation
                 true
         );
     }
@@ -49,10 +49,10 @@ public record BotConfig(
                 "TREND_FOLLOWER",
                 symbols,
                 username,
-                Duration.ofSeconds(4),
+                Duration.ofSeconds(2),
                 25,
                 150,
-                new BigDecimal("0.005"), // 0.5% price variation
+                new BigDecimal("0.003"), // 0.3% price variation
                 true
         );
     }
