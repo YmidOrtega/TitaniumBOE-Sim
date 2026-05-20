@@ -129,6 +129,7 @@ public class RestApiServer {
         app.get("/api/swagger", SwaggerHandler::handle);
 
         app.get("/api/symbols", symbolController::getSymbols);
+        app.get("/api/symbols/{symbol}", symbolController::getSymbol);
 
         // Protected routes
         app.before("/api/orders*", authFilter);
