@@ -94,12 +94,12 @@ public class RestApiServer {
         // Create Javalin app without OpenAPI plugins (using custom handlers instead)
         app = Javalin.create(config -> {
             config.showJavalinBanner = false;
-            config.http.defaultContentType = ContentType.JSON;
+            config.http.disableCompression();  // disable gzip — it sets wrong Content-Length for static files
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/";
                 staticFiles.directory  = "/static";
                 staticFiles.location   = Location.CLASSPATH;
-                staticFiles.precompress = true;
+                staticFiles.precompress = false;
             });
         });
 
