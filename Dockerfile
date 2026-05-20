@@ -10,6 +10,8 @@ COPY pom.xml ./
 RUN mvn dependency:go-offline -B
 
 # Copy source and frontend
+# Increment CACHE_BUST to force Railway to rebuild from this layer onward
+ARG CACHE_BUST=1
 COPY src ./src
 COPY frontend ./frontend
 
