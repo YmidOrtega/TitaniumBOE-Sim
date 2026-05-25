@@ -88,7 +88,7 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
       <!-- Market Overview -->
-      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden h-[320px]">
         <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
           <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Market Overview</span>
           <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Live</span>
@@ -118,7 +118,7 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
       </div>
 
       <!-- Order Book compact -->
-      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden h-[320px]">
         <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
           <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Order Book</span>
           <select id="ob-sym-select" onchange="selectOBSymbol(this.value)"
@@ -143,7 +143,7 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
       </div>
 
       <!-- System Health -->
-      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
+      <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden h-[320px]">
         <div class="px-4 py-3 border-b border-[#162035]">
           <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">System Health</span>
         </div>
@@ -244,7 +244,7 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
       </div>
 
       <!-- Bots + Events -->
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-3 h-[280px]">
         <!-- Trading Bots -->
         <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden">
           <div class="flex items-center justify-between px-4 py-3 border-b border-[#162035]">
@@ -265,11 +265,11 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
         </div>
 
         <!-- Recent Events -->
-        <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden flex-1">
-          <div class="px-4 py-3 border-b border-[#162035]">
+        <div class="bg-[#0d1428] border border-[#162035] rounded-xl overflow-hidden flex-1 flex flex-col">
+          <div class="px-4 py-3 border-b border-[#162035] shrink-0">
             <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Recent Events</span>
           </div>
-          <div id="events-list" class="p-3 space-y-1.5 overflow-y-auto" style="max-height:120px">
+          <div id="events-list" class="p-3 space-y-1.5 overflow-y-auto flex-1 min-h-0">
             <div class="text-[11px] text-gray-600">Waiting…</div>
           </div>
         </div>
