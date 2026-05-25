@@ -224,6 +224,26 @@ public class RocksDBManager {
         }
     }
 
+    public synchronized void clearColumnFamily(String cfName) throws RocksDBException {
+        ColumnFamilyHandle handle = getColumnFamilyHandle(cfName);
+        List<byte[]> keys = new ArrayList<>();
+        try (RocksIterator it = db.newIterator(handle)) {
+            it.seekToFirst();
+            while (it.isValid()) {
+                keys.add(it.key().clone());
+                it.next();
+            }
+        }
+        try (WriteBatch batch = new WriteBatch();
+             WriteOptions opts = new WriteOptions()) {
+            for (byte[] key : keys) {
+                batch.delete(handle, key);
+            }
+            db.write(opts, batch);
+        }
+        LOGGER.log(Level.INFO, "Cleared {0} keys from column family: {1}", new Object[]{keys.size(), cfName});
+    }
+
     public String getDbPath() {
         return dbPath;
     }

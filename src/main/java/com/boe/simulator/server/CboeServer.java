@@ -5,6 +5,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -341,6 +344,22 @@ public class CboeServer {
         }
     }
 
+    public void performDailyReset() {
+        LOGGER.info("======= DAILY RESET STARTED =======");
+        try {
+            orderManager.reset();
+
+            dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_MESSAGES);
+            dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_AUDIT);
+            dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_SESSIONS);
+
+            LOGGER.info("Daily reset complete: orders, trades, audit and sessions cleared. Users and config preserved.");
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Daily reset failed", e);
+        }
+        LOGGER.info("======= DAILY RESET FINISHED =======");
+    }
+
     // Status methods
     public boolean isRunning() {
         return running.get();
@@ -384,6 +403,12 @@ public class CboeServer {
 
     public MarketSimulator getMarketSimulator() {
         return marketSimulator;
+    }
+
+    private static long secondsUntilMidnight() {
+        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
+        ZonedDateTime midnight = now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.of("UTC"));
+        return Duration.between(now, midnight).getSeconds();
     }
 
     public static void main(String[] args) {
@@ -436,6 +461,16 @@ public class CboeServer {
                 if (server.isRunning()) LOGGER.log(Level.INFO, "Server status - Active connections: {0}", server.getActiveConnections());
             }, 0, 10, TimeUnit.SECONDS);
 
+            ScheduledExecutorService dailyResetScheduler = Executors.newSingleThreadScheduledExecutor(
+                    r -> Thread.ofVirtual().name("daily-reset").unstarted(r));
+            long secondsUntilMidnight = secondsUntilMidnight();
+            dailyResetScheduler.scheduleAtFixedRate(
+                    server::performDailyReset,
+                    secondsUntilMidnight,
+                    TimeUnit.DAYS.toSeconds(1),
+                    TimeUnit.SECONDS);
+            LOGGER.log(Level.INFO, "Daily reset scheduled: first run in {0}s (at midnight UTC)", secondsUntilMidnight);
+
             // Keep the main thread alive
             try {
                 acceptorThread.join();
@@ -445,6 +480,7 @@ public class CboeServer {
 
             // Shutdown del scheduler al finalizar
             scheduler.shutdownNow();
+            dailyResetScheduler.shutdownNow();
 
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Server I/O error", e);

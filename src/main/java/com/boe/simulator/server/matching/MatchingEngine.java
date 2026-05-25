@@ -235,6 +235,13 @@ public class MatchingEngine {
                 .sum();
     }
 
+    public void reset() {
+        orderBooks.clear();
+        totalMatches.set(0);
+        totalTradeVolume.set(0);
+        LOGGER.info("MatchingEngine reset: all order books cleared");
+    }
+
     public void printStatistics() {
         LOGGER.info("========== Matching Engine Statistics ==========");
         LOGGER.log(Level.INFO, "Active Symbols: {0}", orderBooks.size());
