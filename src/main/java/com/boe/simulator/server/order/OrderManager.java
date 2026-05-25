@@ -439,6 +439,13 @@ public class OrderManager {
         return orderRepository.findByClOrdID(clOrdID);
     }
 
+    public void reset() {
+        activeOrdersByClOrdID.clear();
+        activeOrdersByOrderID.clear();
+        matchingEngine.reset();
+        LOGGER.info("OrderManager reset: in-memory orders and order books cleared");
+    }
+
     public void printStatistics() {
         LOGGER.info("========== Order Statistics ==========");
         LOGGER.log(Level.INFO, "Total Received: {0}", totalOrdersReceived.get());
