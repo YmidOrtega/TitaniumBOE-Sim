@@ -3,7 +3,7 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class ClientHeartbeatMessage {
+public final class ClientHeartbeatMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x03;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
@@ -21,6 +21,10 @@ public class ClientHeartbeatMessage {
         this.sequenceNumber = sequenceNumber;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // BOE spec: MessageLength = length of everything AFTER StartOfMessage
         // = MessageLength field itself (2) + MessageType (1) + MatchingUnit (1) + SequenceNumber (4)

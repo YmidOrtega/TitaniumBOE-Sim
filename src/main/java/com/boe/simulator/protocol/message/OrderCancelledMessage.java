@@ -7,7 +7,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class OrderCancelledMessage {
+public final class OrderCancelledMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x23;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
@@ -65,6 +65,10 @@ public class OrderCancelledMessage {
         return msg;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         int baseSize = 2 + 2 + 1 + 1 + 4 + 8 + 20 + 8 + 1 + 4 + 1; // Base fields
         int optionalSize = 0;

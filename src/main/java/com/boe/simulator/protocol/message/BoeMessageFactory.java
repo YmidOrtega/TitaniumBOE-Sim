@@ -27,13 +27,13 @@ public class BoeMessageFactory {
         SERVER
     }
 
-    public static Object createMessage(BoeMessage message) {
+    public static BoeProtocolMessage createMessage(BoeMessage message) {
         byte messageType = message.getMessageType();
         Context context = isRequest(messageType) ? Context.SERVER : Context.CLIENT;
         return createMessage(message, context);
     }
 
-    public static Object createMessage(BoeMessage message, Context context) {
+    public static BoeProtocolMessage createMessage(BoeMessage message, Context context) {
         byte messageType = message.getMessageType();
         byte[] data = message.getData();
 

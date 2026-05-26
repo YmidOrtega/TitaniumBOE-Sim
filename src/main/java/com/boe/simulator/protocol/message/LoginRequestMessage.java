@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class LoginRequestMessage {
+public final class LoginRequestMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x37;
 
     // Start of Message marker
@@ -46,6 +46,10 @@ public class LoginRequestMessage {
         this.numberOfParamGroups = 0;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate message length:
         // Total payload (after the MessageLength field) = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes

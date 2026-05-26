@@ -235,7 +235,7 @@ public class BoeConnectionHandler {
         LOGGER.log(Level.INFO, "Processing {0}, length: {1}", new Object[]{messageTypeName, message.getLength()});
 
         try {
-            Object specificMessage = BoeMessageFactory.createMessage(message);
+            BoeProtocolMessage specificMessage = BoeMessageFactory.createMessage(message);
 
             switch (specificMessage) {
                 case null -> {
@@ -276,7 +276,7 @@ public class BoeConnectionHandler {
         }
     }
 
-    private void notifyTradingListeners(Object message) {
+    private void notifyTradingListeners(BoeProtocolMessage message) {
         if (tradingListeners.isEmpty()) return;
 
         switch (message) {

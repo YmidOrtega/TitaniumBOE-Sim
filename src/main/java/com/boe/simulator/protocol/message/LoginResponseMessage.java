@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class LoginResponseMessage {
+public final class LoginResponseMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x07;
     
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
@@ -81,6 +81,10 @@ public class LoginResponseMessage {
         this.numberOfUnits = buffer.get() & 0xFF;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate message length according to BOE spec:
         // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + Status(1) + Text(60) + LastReceivedSeq(4) + NumUnits(1) = 72 bytes

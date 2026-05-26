@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class OrderRejectedMessage {
+public final class OrderRejectedMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x26;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
@@ -42,6 +42,10 @@ public class OrderRejectedMessage {
         this.transactTime = System.nanoTime();
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         int totalSize = 2 + 2 + 1 + 1 + 4 + 8 + 20 + 1 + 60;
 

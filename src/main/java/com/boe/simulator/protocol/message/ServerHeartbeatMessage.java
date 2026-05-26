@@ -3,7 +3,7 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class ServerHeartbeatMessage {
+public final class ServerHeartbeatMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x04;
     
     // Start of Message marker
@@ -52,6 +52,10 @@ public class ServerHeartbeatMessage {
         this.sequenceNumber = buffer.getInt();
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate message length according to BOE spec:
         // MessageLength = from MessageType to end

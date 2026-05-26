@@ -140,7 +140,7 @@ public class ClientConnectionHandler implements Runnable {
 
         try {
             // Create specific message object
-            Object specificMessage = BoeMessageFactory.createMessage(message);
+            BoeProtocolMessage specificMessage = BoeMessageFactory.createMessage(message);
 
             // Dispatch to appropriate handler
             switch (specificMessage) {
@@ -201,7 +201,7 @@ public class ClientConnectionHandler implements Runnable {
             sessionManager.getStatistics().incrementFailedLogins();
             LOGGER.log(Level.WARNING, "[Session {0}] Authentication failed: {1}", new Object[]{
                     session.getConnectionId(),
-                    authResult.getMessage()
+                    authResult.message()
             });
             
             // Close connection gracefully after failed authentication
@@ -322,7 +322,7 @@ public class ClientConnectionHandler implements Runnable {
         try {
             LoginResponseMessage response = new LoginResponseMessage(
                     authResult.toLoginResponseStatusByte(),
-                    authResult.getMessage(),
+                    authResult.message(),
                     lastReceivedSeq,
                     1
             );
@@ -336,7 +336,7 @@ public class ClientConnectionHandler implements Runnable {
             LOGGER.log(Level.INFO, "[Session {0}] → Sent LoginResponse: status={1}, msg=''{2}''", new Object[]{
                     session.getConnectionId(),
                     (char)authResult.toLoginResponseStatusByte(),
-                    authResult.getMessage()
+                    authResult.message()
             });
 
         } catch (IOException | IllegalStateException e) {

@@ -10,7 +10,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class OrderExecutedMessage {
+public final class OrderExecutedMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x21;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
@@ -76,6 +76,10 @@ public class OrderExecutedMessage {
         if (cumQty > 0) bitfields[0] |= 0x04;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         int baseSize = 2 + 2 + 1 + 1 + 4 + 8 + 20 + 8 + 8 + 4 + 4 + 8 + 1 + 1;
         int optionalSize = calculateOptionalSize();
