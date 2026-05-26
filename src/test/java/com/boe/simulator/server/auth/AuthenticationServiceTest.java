@@ -47,7 +47,7 @@ class AuthenticationServiceTest {
 
         // Assert
         assertTrue(result.isAccepted());
-        assertEquals("Login successful", result.getMessage());
+        assertEquals("Login successful", result.message());
         assertTrue(authenticationService.hasActiveSession(TEST_USERNAME));
         assertEquals(1, authenticationService.getActiveSessionCount());
         verify(userRepository).updateLastLogin(TEST_USERNAME);
@@ -60,7 +60,7 @@ class AuthenticationServiceTest {
 
         // Assert
         assertTrue(result.isRejected());
-        assertEquals("Username cannot be empty", result.getMessage());
+        assertEquals("Username cannot be empty", result.message());
         assertFalse(authenticationService.hasActiveSession(TEST_USERNAME));
     }
 
@@ -74,7 +74,7 @@ class AuthenticationServiceTest {
 
         // Assert
         assertTrue(result.isRejected());
-        assertEquals("Invalid username or password", result.getMessage());
+        assertEquals("Invalid username or password", result.message());
         assertFalse(authenticationService.hasActiveSession(TEST_USERNAME));
     }
 
@@ -89,7 +89,7 @@ class AuthenticationServiceTest {
 
         // Assert
         assertTrue(result.isRejected());
-        assertEquals("User account is inactive", result.getMessage());
+        assertEquals("User account is inactive", result.message());
         assertFalse(authenticationService.hasActiveSession(TEST_USERNAME));
     }
 
@@ -104,7 +104,7 @@ class AuthenticationServiceTest {
 
         // Assert
         assertTrue(result.isRejected());
-        assertEquals("Invalid username or password", result.getMessage());
+        assertEquals("Invalid username or password", result.message());
         assertFalse(authenticationService.hasActiveSession(TEST_USERNAME));
     }
 
@@ -120,7 +120,7 @@ class AuthenticationServiceTest {
 
         // Assert
         assertTrue(result.isSessionInUse());
-        assertEquals("Session already active for this user", result.getMessage());
+        assertEquals("Session already active for this user", result.message());
         assertTrue(authenticationService.hasActiveSession(TEST_USERNAME));
         assertEquals(1, authenticationService.getActiveSessionCount()); // Still one active session
     }

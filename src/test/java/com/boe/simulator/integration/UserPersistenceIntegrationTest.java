@@ -169,19 +169,19 @@ public class UserPersistenceIntegrationTest {
         AuthenticationResult validLogin = authService.authenticate("USER", "PASS", "TEST1");
         assert validLogin.isAccepted() : "Login should be accepted";
         System.out.println("✓ Login exitoso con credenciales válidas");
-        System.out.println("  - Mensaje: " + validLogin.getMessage());
+        System.out.println("  - Mensaje: " + validLogin.message());
         
         // Test login with invalid password
         AuthenticationResult invalidLogin = authService.authenticate("USER", "WRONGPASS", "TEST2");
         assert invalidLogin.isRejected() : "Login should be rejected";
         System.out.println("✓ Login rechazado con password inválido");
-        System.out.println("  - Mensaje: " + invalidLogin.getMessage());
+        System.out.println("  - Mensaje: " + invalidLogin.message());
         
         // Test duplicate session
         AuthenticationResult duplicate = authService.authenticate("USER", "PASS", "TEST3");
         assert duplicate.isSessionInUse() : "Should detect duplicate session";
         System.out.println("✓ Sesión duplicada detectada");
-        System.out.println("  - Mensaje: " + duplicate.getMessage());
+        System.out.println("  - Mensaje: " + duplicate.message());
         
         // End session
         authService.endSession("USER");
