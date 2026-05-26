@@ -27,7 +27,7 @@ public class OrderRepository {
     private final RocksDBManager dbManager;
     private final SerializationUtil serializer;
 
-    private static final String CF_ORDERS = RocksDBManager.CF_MESSAGES;
+    private static final String CF_ORDERS = RocksDBManager.CF_ORDERS;
 
     // Write-behind queue: keeps disk I/O off the NewOrder → ACK hot path
     private final LinkedBlockingQueue<Order> writeQueue = new LinkedBlockingQueue<>(1_000_000);
