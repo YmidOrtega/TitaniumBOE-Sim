@@ -3,7 +3,7 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class LogoutRequestMessage {
+public final class LogoutRequestMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x02;
     
     // Start of Message marker
@@ -23,6 +23,10 @@ public class LogoutRequestMessage {
         this.sequenceNumber = sequenceNumber;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate message length according to BOE spec:
         // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) = 6 bytes

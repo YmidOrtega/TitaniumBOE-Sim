@@ -11,7 +11,7 @@ import java.util.Arrays;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
 
-public class NewOrderMessage {
+public final class NewOrderMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x38;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
@@ -188,6 +188,10 @@ public class NewOrderMessage {
         return maturity.atStartOfDay(ZoneId.of("America/New_York")).toInstant();
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate size
         int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1 + 4 + 1;

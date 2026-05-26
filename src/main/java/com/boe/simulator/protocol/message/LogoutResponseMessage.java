@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class LogoutResponseMessage {
+public final class LogoutResponseMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x08;
     
     // Start of Message marker
@@ -80,6 +80,10 @@ public class LogoutResponseMessage {
         this.numberOfUnits = buffer.get() & 0xFF;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate message length according to BOE spec:
         // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + LogoutReason(1) + LogoutText(60) + LastReceivedSeq(4) + NumUnits(1) = 72 bytesint messageLength = 1 + 1 + 4 + 1 + LOGOUT_REASON_SIZE + 4 + 1;

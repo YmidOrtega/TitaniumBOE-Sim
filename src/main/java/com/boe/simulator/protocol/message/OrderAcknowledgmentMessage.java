@@ -12,7 +12,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
 
-public class OrderAcknowledgmentMessage {
+public final class OrderAcknowledgmentMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x25;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
@@ -101,6 +101,10 @@ public class OrderAcknowledgmentMessage {
         if (putOrCall != 0) bitfields[2] |= 0x04;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate size
         int baseSize = 2 + 2 + 1 + 1 + 4 + 8 + 20 + 8 + 1 + 4 + 4 + 1 + 1 + 1;

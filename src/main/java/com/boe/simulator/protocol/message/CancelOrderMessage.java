@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class CancelOrderMessage {
+public final class CancelOrderMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x39;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
@@ -80,6 +80,10 @@ public class CancelOrderMessage {
         return msg;
     }
 
+    @Override
+    public byte getMessageType() { return MESSAGE_TYPE; }
+
+    @Override
     public byte[] toBytes() {
         // Calculate size
         int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1; // Header + OrigClOrdID + NumberOfBitfields
