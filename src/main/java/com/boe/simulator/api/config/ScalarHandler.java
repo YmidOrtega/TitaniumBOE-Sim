@@ -22,7 +22,7 @@ public class ScalarHandler {
                     <script
                         id="api-reference"
                         data-url="/openapi"></script>
-                    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+                    <script src="/scalar/standalone.js"></script>
                 </body>
                 </html>
                 """;
