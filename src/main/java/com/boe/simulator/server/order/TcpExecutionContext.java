@@ -2,7 +2,7 @@ package com.boe.simulator.server.order;
 
 import com.boe.simulator.server.session.ClientSession;
 
-public class TcpExecutionContext implements OrderExecutionContext {
+public final class TcpExecutionContext implements OrderExecutionContext {
     private final ClientSession session;
 
     public TcpExecutionContext(ClientSession session) {

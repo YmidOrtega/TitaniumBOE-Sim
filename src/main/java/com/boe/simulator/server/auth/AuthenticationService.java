@@ -38,46 +38,10 @@ public class AuthenticationService {
         long userCount = userRepository.count();
 
         if (userCount == 0) {
-            // Check both system property (for tests) and environment variable
-            String demoMode = System.getProperty("DEMO_MODE", System.getenv().getOrDefault("DEMO_MODE", "false"));
-            
-            if ("true".equalsIgnoreCase(demoMode)) {
-                LOGGER.warning("════════════════════════════════════════════════════");
-                LOGGER.warning("⚠️  DEMO MODE ENABLED - Creating sample users");
-                LOGGER.warning("⚠️  These credentials are for DEMONSTRATION ONLY");
-                LOGGER.warning("⚠️  DO NOT USE IN PRODUCTION ENVIRONMENTS");
-                LOGGER.warning("════════════════════════════════════════════════════");
-                
-                // Create demo users with credentials from environment or defaults
-                // NOTE: Username max 4 chars, Password max 10 chars (BOE protocol limits)
-                createUser(
-                    System.getenv().getOrDefault("DEMO_USER_1", "TRD1"),
-                    System.getenv().getOrDefault("DEMO_PASS_1", "Pass1234!")
-                );
-                createUser(
-                    System.getenv().getOrDefault("DEMO_USER_2", "TRD2"),
-                    System.getenv().getOrDefault("DEMO_PASS_2", "Pass5678!")
-                );
-                createUser(
-                    System.getenv().getOrDefault("DEMO_ADMIN", "ADMN"),
-                    System.getenv().getOrDefault("DEMO_ADMIN_PASS", "Admin999!")
-                );
-                
-                LOGGER.log(Level.WARNING, "Created {0} demo users for testing", userRepository.count());
-                LOGGER.warning("Set DEMO_MODE=false to disable automatic user creation");
-            } else {
-                String adminUsername = System.getenv("ADMIN_USERNAME");
-                String adminPassword = System.getenv("ADMIN_PASSWORD");
-
-                if (adminUsername != null && !adminUsername.isBlank()
-                        && adminPassword != null && !adminPassword.isBlank()) {
-                    createUser(adminUsername, adminPassword);
-                    LOGGER.info("Created admin user from ADMIN_USERNAME/ADMIN_PASSWORD environment variables");
-                } else {
-                    LOGGER.warning("No users in database and ADMIN_USERNAME/ADMIN_PASSWORD not set — no users created");
-                    LOGGER.warning("Set ADMIN_USERNAME and ADMIN_PASSWORD env vars to bootstrap the admin user");
-                }
-            }
+            createUser(System.getenv().getOrDefault("DEMO_USER_1", "TRD1"),  System.getenv().getOrDefault("DEMO_PASS_1", "Pass1234!"));
+            createUser(System.getenv().getOrDefault("DEMO_USER_2", "TRD2"),  System.getenv().getOrDefault("DEMO_PASS_2", "Pass5678!"));
+            createUser(System.getenv().getOrDefault("DEMO_ADMIN",  "ADMN"),  System.getenv().getOrDefault("DEMO_ADMIN_PASS", "Admin999!"));
+            LOGGER.log(Level.INFO, "Seeded {0} demo users (override with DEMO_USER_1/DEMO_PASS_1 env vars)", userRepository.count());
         } else {
             LOGGER.log(Level.INFO, "Found {0} existing users in database", userCount);
         }

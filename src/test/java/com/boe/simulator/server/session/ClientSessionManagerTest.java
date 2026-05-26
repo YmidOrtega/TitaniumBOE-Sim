@@ -205,7 +205,7 @@ class ClientSessionManagerTest {
 
         // Assert
         assertEquals(2, sessionInfoList.size());
-        assertTrue(sessionInfoList.stream().anyMatch(info -> info.getConnectionId() == 1));
-        assertTrue(sessionInfoList.stream().anyMatch(info -> info.getConnectionId() == 2));
+        assertTrue(sessionInfoList.stream().anyMatch(info -> info.connectionId() == 1));
+        assertTrue(sessionInfoList.stream().anyMatch(info -> info.connectionId() == 2));
     }
 }

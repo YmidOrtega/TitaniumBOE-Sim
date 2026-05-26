@@ -3,7 +3,7 @@ package com.boe.simulator.client.interactive.commands;
 import com.boe.simulator.client.interactive.CommandExecutor;
 import com.boe.simulator.client.interactive.SessionContext;
 
-public class HelpCommand implements Command {
+public final class HelpCommand implements Command {
 
     private final CommandExecutor executor;
 

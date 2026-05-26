@@ -3,7 +3,7 @@ package com.boe.simulator.client.interactive.commands;
 import com.boe.simulator.client.interactive.SessionContext;
 import com.boe.simulator.protocol.message.CancelOrderMessage;
 
-public class CancelCommand implements Command {
+public final class CancelCommand implements Command {
 
     @Override
     public void execute(SessionContext context, String[] args) {

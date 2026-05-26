@@ -45,7 +45,7 @@ public class SessionContext {
 
         // Remove trading listener
         Object listener = sessionData.get("tradingListener");
-        if (listener instanceof NotificationTradingListener && client != null) client.getConnectionHandler().removeTradingListener((NotificationTradingListener) listener);
+        if (listener instanceof NotificationTradingListener ntl && client != null) client.getConnectionHandler().removeTradingListener(ntl);
 
         // Stop notification manager
         if (notificationManager != null) notificationManager.stop();

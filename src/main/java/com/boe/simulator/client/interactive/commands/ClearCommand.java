@@ -2,7 +2,7 @@ package com.boe.simulator.client.interactive.commands;
 
 import com.boe.simulator.client.interactive.SessionContext;
 
-public class ClearCommand implements Command {
+public final class ClearCommand implements Command {
 
     @Override
     public void execute(SessionContext context, String[] args) {

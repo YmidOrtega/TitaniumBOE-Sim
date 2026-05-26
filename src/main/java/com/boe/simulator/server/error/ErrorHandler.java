@@ -48,23 +48,18 @@ public class ErrorHandler {
     }
 
     private ErrorSeverity classifyError(Throwable error) {
-        if (error instanceof SocketTimeoutException) return ErrorSeverity.INFORMATIONAL;
-        
-        if (error instanceof SocketException) {
-            String msg = error.getMessage();
-            if (msg != null && (msg.contains("Connection reset") || msg.contains("Broken pipe"))) return ErrorSeverity.INFORMATIONAL;
-            return ErrorSeverity.RECOVERABLE;
-        }
-        
-        if (error instanceof IOException) {
-            String msg = error.getMessage();
-            if (msg != null && msg.contains("End of stream")) return ErrorSeverity.INFORMATIONAL;
-
-            return ErrorSeverity.RECOVERABLE;
-        }
-        
-        if (error instanceof IllegalArgumentException) return ErrorSeverity.RECOVERABLE;
-        return ErrorSeverity.CRITICAL;
+        return switch (error) {
+            case SocketTimeoutException t -> ErrorSeverity.INFORMATIONAL;
+            case SocketException e when e.getMessage() != null &&
+                    (e.getMessage().contains("Connection reset") || e.getMessage().contains("Broken pipe"))
+                    -> ErrorSeverity.INFORMATIONAL;
+            case SocketException e -> ErrorSeverity.RECOVERABLE;
+            case IOException e when e.getMessage() != null && e.getMessage().contains("End of stream")
+                    -> ErrorSeverity.INFORMATIONAL;
+            case IOException e -> ErrorSeverity.RECOVERABLE;
+            case IllegalArgumentException e -> ErrorSeverity.RECOVERABLE;
+            default -> ErrorSeverity.CRITICAL;
+        };
     }
 
     private void logError(int connectionId, String context, Throwable error, Level level) {

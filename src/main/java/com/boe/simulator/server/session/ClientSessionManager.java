@@ -252,7 +252,7 @@ public class ClientSessionManager {
 
     public List<SessionInfo> getSessionInfoList() {
         return handlers.values().stream()
-            .map(h -> new SessionInfo(h.getSession()))
+            .map(h -> SessionInfo.from(h.getSession()))
             .collect(Collectors.toList());
     }
 

@@ -5,7 +5,7 @@ import com.boe.simulator.client.interactive.SessionContext;
 import com.boe.simulator.client.interactive.notification.NotificationTradingListener;
 import com.boe.simulator.client.interactive.util.ColorOutput;
 
-public class ConnectCommand implements Command {
+public final class ConnectCommand implements Command {
 
     @Override
     public void execute(SessionContext context, String[] args) throws Exception {

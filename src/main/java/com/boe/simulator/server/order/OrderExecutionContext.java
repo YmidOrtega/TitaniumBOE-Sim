@@ -3,7 +3,7 @@ package com.boe.simulator.server.order;
 
 import com.boe.simulator.server.session.ClientSession;
 
-public interface OrderExecutionContext {
+public sealed interface OrderExecutionContext permits RestExecutionContext, TcpExecutionContext {
     String getUsername();
     String getSessionIdentifier();
     boolean supportsNotifications();

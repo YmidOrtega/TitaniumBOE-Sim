@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 import com.boe.simulator.client.interactive.SessionContext;
 import com.boe.simulator.protocol.message.NewOrderMessage;
 
-public class OrderCommand implements Command {
+public final class OrderCommand implements Command {
 
     @Override
     public void execute(SessionContext context, String[] args) {
