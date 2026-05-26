@@ -15,6 +15,7 @@ public class MatchingEngine {
     private static final Logger LOGGER = Logger.getLogger(MatchingEngine.class.getName());
 
     private final Map<String, OrderBook> orderBooks;
+    private final Map<String, Object> symbolLocks;
     private final OrderRepository orderRepository;
     private final TradeRepository tradeRepository;
     private final AtomicLong tradeIdGenerator;
@@ -30,6 +31,7 @@ public class MatchingEngine {
 
     public MatchingEngine(OrderRepository orderRepository, TradeRepository tradeRepository, boolean allowSelfTrade) {
         this.orderBooks = new ConcurrentHashMap<>();
+        this.symbolLocks = new ConcurrentHashMap<>();
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
         this.tradeIdGenerator = new AtomicLong(1000000);
@@ -47,6 +49,9 @@ public class MatchingEngine {
 
     public List<Trade> processOrder(Order order) {
         String symbol = order.getSymbol();
+        Object symbolLock = symbolLocks.computeIfAbsent(symbol, k -> new Object());
+
+        synchronized (symbolLock) {
         OrderBook book = orderBooks.computeIfAbsent(symbol, OrderBook::new);
 
         List<Trade> trades = new ArrayList<>();
@@ -66,6 +71,7 @@ public class MatchingEngine {
         }
 
         return trades;
+        } // end synchronized
     }
 
     public boolean cancelOrder(Order order) {
