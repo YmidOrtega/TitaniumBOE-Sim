@@ -3,6 +3,13 @@ package com.boe.simulator.server.order;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+
+import com.boe.simulator.protocol.types.Capacity;
+import com.boe.simulator.protocol.types.OpenClose;
+import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.PutOrCall;
+import com.boe.simulator.protocol.types.RoutingInst;
+import com.boe.simulator.protocol.types.Side;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -305,25 +312,25 @@ public class OrderRepository {
                     order.getOrderID(),
                     order.getSessionSubID(),
                     order.getUsername(),
-                    order.getSide(),
+                    order.getSide().wireValue(),
                     order.getOrderQty(),
                     order.getLeavesQty(),
                     order.getCumQty(),
                     order.getPrice() != null ? order.getPrice().toString() : null,
-                    order.getOrdType(),
+                    order.getOrdType().wireValue(),
                     order.getSymbol(),
                     order.getMaturityDate() != null ? order.getMaturityDate().toString() : null,
                     order.getStrikePrice() != null ? order.getStrikePrice().toString() : null,
-                    order.getPutOrCall(),
-                    order.getCapacity(),
+                    order.getPutOrCall() != null ? order.getPutOrCall().wireValue() : 0,
+                    order.getCapacity() != null ? order.getCapacity().wireValue() : 0,
                     order.getAccount(),
                     order.getClearingFirm(),
                     order.getClearingAccount(),
-                    order.getOpenClose(),
+                    order.getOpenClose() != null ? order.getOpenClose().wireValue() : OpenClose.NONE.wireValue(),
                     order.getState().name(),
                     order.getCreatedAt().toString(),
                     order.getLastModified().toString(),
-                    order.getRoutingInst(),
+                    order.getRoutingInst() != null ? order.getRoutingInst().wireValue() : RoutingInst.BOOK_ONLY.wireValue(),
                     order.getReceivedSequence(),
                     order.getLastSentSequence()
             );
@@ -335,16 +342,16 @@ public class OrderRepository {
                     .orderID(orderID)
                     .sessionSubID(sessionSubID)
                     .username(username)
-                    .side(side)
+                    .side(Side.fromByte(side))
                     .orderQty(orderQty)
-                    .ordType(ordType)
+                    .ordType(OrdType.fromByte(ordType))
                     .symbol(symbol)
-                    .capacity(capacity)
+                    .capacity(capacity != 0 ? Capacity.fromByte(capacity) : Capacity.AGENCY)
                     .account(account)
                     .clearingFirm(clearingFirm)
                     .clearingAccount(clearingAccount)
-                    .openClose(openClose)
-                    .routingInst(routingInst)
+                    .openClose(openClose != 0 ? OpenClose.fromByte(openClose) : OpenClose.NONE)
+                    .routingInst(RoutingInst.fromByte(routingInst))
                     .receivedSequence(receivedSequence);
 
             if (price != null) builder.price(new BigDecimal(price));
@@ -356,7 +363,7 @@ public class OrderRepository {
             if (strikePrice != null) builder.strikePrice(new BigDecimal(strikePrice));
 
 
-            builder.putOrCall(putOrCall);
+            if (putOrCall != 0) builder.putOrCall(PutOrCall.fromByte(putOrCall));
 
             Order order = builder.build();
 

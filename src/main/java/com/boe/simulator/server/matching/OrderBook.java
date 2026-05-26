@@ -1,5 +1,6 @@
 package com.boe.simulator.server.matching;
 
+import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.order.Order;
 
 import java.math.BigDecimal;
@@ -52,11 +53,11 @@ public class OrderBook {
 
         long stamp = lock.writeLock();
         try {
-            TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == 1 ? bids : asks;
+            TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == Side.BUY ? bids : asks;
             side.computeIfAbsent(price, k -> new LinkedList<>()).addLast(order);
             orderIndex.put(order.getOrderID(), order);
 
-            if (order.getSide() == 1) totalBidQuantity += order.getLeavesQty();
+            if (order.getSide() == Side.BUY) totalBidQuantity += order.getLeavesQty();
             else totalAskQuantity += order.getLeavesQty();
         } finally {
             lock.unlockWrite(stamp);
@@ -72,14 +73,14 @@ public class OrderBook {
             if (removed == null) return false;
 
             BigDecimal price = order.getPrice();
-            TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == 1 ? bids : asks;
+            TreeMap<BigDecimal, LinkedList<Order>> side = order.getSide() == Side.BUY ? bids : asks;
 
             LinkedList<Order> level = side.get(price);
             if (level != null) {
                 boolean success = level.remove(order);
                 if (level.isEmpty()) side.remove(price);
 
-                if (order.getSide() == 1) totalBidQuantity -= order.getLeavesQty();
+                if (order.getSide() == Side.BUY) totalBidQuantity -= order.getLeavesQty();
                 else totalAskQuantity -= order.getLeavesQty();
 
                 LOGGER.log(Level.FINE, "Removed order from book: {0}", order.getClOrdID());

@@ -12,6 +12,12 @@ import java.util.logging.Logger;
 import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.protocol.message.CancelOrderMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
+import com.boe.simulator.protocol.types.Capacity;
+import com.boe.simulator.protocol.types.OpenClose;
+import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.PutOrCall;
+import com.boe.simulator.protocol.types.RoutingInst;
+import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
@@ -168,15 +174,17 @@ public class OrderManager {
                     .orderID(orderID)
                     .sessionSubID(context.getSessionIdentifier()) // "TCP-123" o "REST-API"
                     .username(context.getUsername())
-                    .side(message.getSide())
+                    .side(Side.fromByte(message.getSide()))
                     .orderQty(message.getOrderQty())
                     .price(message.getPrice())
-                    .ordType(message.getOrdType() != 0 ? message.getOrdType() : (byte)2)
+                    .ordType(message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : OrdType.LIMIT)
                     .symbol(message.getSymbol())
-                    .capacity(message.getCapacity())
+                    .capacity(message.getCapacity() != 0 ? Capacity.fromByte(message.getCapacity()) : Capacity.AGENCY)
+                    .openClose(message.getOpenClose() != 0 ? OpenClose.fromByte(message.getOpenClose()) : OpenClose.NONE)
+                    .putOrCall(message.getPutOrCall() != 0 ? PutOrCall.fromByte(message.getPutOrCall()) : null)
                     .account(message.getAccount() != null ? message.getAccount() : "")
                     .clearingFirm(message.getClearingFirm() != null ? message.getClearingFirm() : "")
-                    .routingInst(message.getRoutingInst() != 0 ? message.getRoutingInst() : (byte)'B')
+                    .routingInst(message.getRoutingInst() != 0 ? RoutingInst.fromByte(message.getRoutingInst()) : RoutingInst.BOOK_ONLY)
                     .receivedSequence(message.getSequenceNumber())
                     .matchingUnit(message.getMatchingUnit())
                     .build();

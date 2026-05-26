@@ -5,36 +5,43 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.boe.simulator.protocol.types.Capacity;
+import com.boe.simulator.protocol.types.OpenClose;
+import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.PutOrCall;
+import com.boe.simulator.protocol.types.RoutingInst;
+import com.boe.simulator.protocol.types.Side;
+
 public class Order {
 
     // Identificadores
-    private final String clOrdID;           // Client Order ID
-    private final long orderID;             // System Order ID (generado por servidor)
-    private final String sessionSubID;      // Sesión que creó la orden
-    private final String username;          // Usuario propietario
+    private final String clOrdID;
+    private final long orderID;
+    private final String sessionSubID;
+    private final String username;
 
     // Atributos básicos
-    private final byte side;                // 1=Buy, 2=Sell
-    private final int orderQty;             // Cantidad original
-    private int leavesQty;                  // Cantidad pendiente
-    private int cumQty;                     // Cantidad ejecutada
-    private final BigDecimal price;         // Precio (null para market orders)
-    private final byte ordType;             // 1=Market, 2=Limit
+    private final Side side;
+    private final int orderQty;
+    private int leavesQty;
+    private int cumQty;
+    private final BigDecimal price;
+    private final OrdType ordType;
 
     // Symbology
     private final String symbol;
     private final Instant maturityDate;
     private final BigDecimal strikePrice;
-    private final byte putOrCall;           // 0=Put, 1=Call
+    private final PutOrCall putOrCall;
 
     // Atributos de cuenta
-    private final byte capacity;            // C=Customer, F=Firm, M=MarketMaker, etc
+    private final Capacity capacity;
     private final String account;
     private final String clearingFirm;
     private final String clearingAccount;
-    private final byte openClose;
+    private final OpenClose openClose;
     @SuppressWarnings("unused")
-    private final byte matchingUnit;// O=Open, C=Close, N=None
+    private final byte matchingUnit;
 
     // Estado y timestamps
     private OrderState state;
@@ -42,7 +49,7 @@ public class Order {
     private Instant lastModified;
 
     // Routing
-    private final byte routingInst;
+    private final RoutingInst routingInst;
 
     // Sequence tracking
     private final int receivedSequence;
@@ -126,25 +133,25 @@ public class Order {
     public long getOrderID() { return orderID; }
     public String getSessionSubID() { return sessionSubID; }
     public String getUsername() { return username; }
-    public byte getSide() { return side; }
+    public Side getSide() { return side; }
     public int getOrderQty() { return orderQty; }
     public int getLeavesQty() { return leavesQty; }
     public int getCumQty() { return cumQty; }
     public BigDecimal getPrice() { return price; }
-    public byte getOrdType() { return ordType; }
+    public OrdType getOrdType() { return ordType; }
     public String getSymbol() { return symbol; }
     public Instant getMaturityDate() { return maturityDate; }
     public BigDecimal getStrikePrice() { return strikePrice; }
-    public byte getPutOrCall() { return putOrCall; }
-    public byte getCapacity() { return capacity; }
+    public PutOrCall getPutOrCall() { return putOrCall; }
+    public Capacity getCapacity() { return capacity; }
     public String getAccount() { return account; }
     public String getClearingFirm() { return clearingFirm; }
     public String getClearingAccount() { return clearingAccount; }
-    public byte getOpenClose() { return openClose; }
+    public OpenClose getOpenClose() { return openClose; }
     public OrderState getState() { return state; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getLastModified() { return lastModified; }
-    public byte getRoutingInst() { return routingInst; }
+    public RoutingInst getRoutingInst() { return routingInst; }
     public int getReceivedSequence() { return receivedSequence; }
     public int getLastSentSequence() { return lastSentSequence; }
     public Map<String, Object> getOptionalFields() { return new HashMap<>(optionalFields); }
@@ -182,7 +189,7 @@ public class Order {
                 "clOrdID='" + clOrdID + '\'' +
                 ", orderID=" + orderID +
                 ", symbol='" + symbol + '\'' +
-                ", side=" + (side == 1 ? "Buy" : "Sell") +
+                ", side=" + side +
                 ", qty=" + orderQty +
                 ", price=" + price +
                 ", state=" + state +
@@ -195,7 +202,7 @@ public class Order {
     }
 
     public byte getMatchingUnit() {
-        return (byte) (ordType == 1 ? 1 : 2);
+        return matchingUnit;
     }
 
     public static class Builder {
@@ -203,20 +210,20 @@ public class Order {
         private long orderID;
         private String sessionSubID;
         private String username;
-        private byte side;
+        private Side side;
         private int orderQty;
         private BigDecimal price;
-        private byte ordType = 2; // Default: Limit
+        private OrdType ordType = OrdType.LIMIT;
         private String symbol;
         private Instant maturityDate;
         private BigDecimal strikePrice;
-        private byte putOrCall;
-        private byte capacity;
+        private PutOrCall putOrCall;
+        private Capacity capacity;
         private String account = "";
         private String clearingFirm = "";
         private String clearingAccount = "";
-        private byte openClose = 'N';
-        private byte routingInst = 'B'; // Default: Book only
+        private OpenClose openClose = OpenClose.NONE;
+        private RoutingInst routingInst = RoutingInst.BOOK_ONLY;
         private int receivedSequence;
         private final Map<String, Object> optionalFields = new HashMap<>();
         private byte matchingUnit = 0;
@@ -246,7 +253,7 @@ public class Order {
             return this;
         }
 
-        public Builder side(byte side) {
+        public Builder side(Side side) {
             this.side = side;
             return this;
         }
@@ -261,7 +268,7 @@ public class Order {
             return this;
         }
 
-        public Builder ordType(byte ordType) {
+        public Builder ordType(OrdType ordType) {
             this.ordType = ordType;
             return this;
         }
@@ -281,12 +288,12 @@ public class Order {
             return this;
         }
 
-        public Builder putOrCall(byte putOrCall) {
+        public Builder putOrCall(PutOrCall putOrCall) {
             this.putOrCall = putOrCall;
             return this;
         }
 
-        public Builder capacity(byte capacity) {
+        public Builder capacity(Capacity capacity) {
             this.capacity = capacity;
             return this;
         }
@@ -306,12 +313,12 @@ public class Order {
             return this;
         }
 
-        public Builder openClose(byte openClose) {
+        public Builder openClose(OpenClose openClose) {
             this.openClose = openClose;
             return this;
         }
 
-        public Builder routingInst(byte routingInst) {
+        public Builder routingInst(RoutingInst routingInst) {
             this.routingInst = routingInst;
             return this;
         }
@@ -332,11 +339,11 @@ public class Order {
 
             if (orderQty <= 0 || orderQty > 999999) throw new IllegalArgumentException("Invalid OrderQty: " + orderQty);
 
-            if (side != 1 && side != 2) throw new IllegalArgumentException("Invalid Side: " + side);
+            if (side == null) throw new IllegalArgumentException("Side is required");
 
             if (symbol == null || symbol.isEmpty()) throw new IllegalArgumentException("Symbol is required");
 
-            if (ordType == 2 && price == null) throw new IllegalArgumentException("Price is required for limit orders");
+            if (ordType == OrdType.LIMIT && price == null) throw new IllegalArgumentException("Price is required for limit orders");
 
             return new Order(this);
         }

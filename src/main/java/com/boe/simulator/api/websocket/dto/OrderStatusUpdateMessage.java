@@ -42,7 +42,7 @@ public final class OrderStatusUpdateMessage extends WebSocketMessage {
         this.clOrdID = order.getClOrdID();
         this.orderID = order.getOrderID();
         this.symbol = order.getSymbol();
-        this.side = order.getSide() == 1 ? "BUY" : "SELL";
+        this.side = order.getSide().name();
         this.orderQty = order.getOrderQty();
         this.leavesQty = order.getLeavesQty();
         this.cumQty = order.getCumQty();

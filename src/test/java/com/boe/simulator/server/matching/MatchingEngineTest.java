@@ -1,5 +1,7 @@
 package com.boe.simulator.server.matching;
 
+import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.order.Order;
 import com.boe.simulator.server.order.OrderRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,14 +33,14 @@ class MatchingEngineTest {
         matchingEngine = new MatchingEngine(orderRepository, tradeRepository);
     }
 
-    private Order createOrder(String clOrdID, byte side, double price, int quantity, String symbol) {
+    private Order createOrder(String clOrdID, Side side, double price, int quantity, String symbol) {
         Order order = Order.builder()
                 .clOrdID(clOrdID)
                 .side(side)
                 .price(new BigDecimal(price))
                 .orderQty(quantity)
                 .symbol(symbol)
-                .ordType((byte) '2') // Limit order
+                .ordType(OrdType.LIMIT)
                 .username("testUser")
                 .orderID(1L)
                 .build();
@@ -50,7 +52,7 @@ class MatchingEngineTest {
     @Test
     void processOrder_whenNoMatch_addsOrderToBook() {
         // Arrange
-        Order buyOrder = createOrder("B1", (byte) 1, 100.0, 10, "AAPL");
+        Order buyOrder = createOrder("B1", Side.BUY, 100.0, 10, "AAPL");
 
         // Act
         List<Trade> trades = matchingEngine.processOrder(buyOrder);

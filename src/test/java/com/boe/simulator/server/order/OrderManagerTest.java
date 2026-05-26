@@ -171,7 +171,7 @@ class OrderManagerTest {
     private NewOrderMessage createNewOrderMessage(String clOrdID, int side, double price, int quantity, String symbol) {
         // Default values for other fields not directly controlled by this helper
         byte ordType = (byte) '2'; // Limit order
-        byte capacity = (byte) 'C';
+        byte capacity = (byte) 'A';
         byte openClose = (byte) 0;
         String maturityDate = null;
         BigDecimal strikePrice = null;
