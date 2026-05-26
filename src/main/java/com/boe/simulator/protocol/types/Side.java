@@ -1,8 +1,9 @@
 package com.boe.simulator.protocol.types;
 
 public enum Side {
-    BUY('B'),
-    SELL('S');
+    // Wire values per spec v2.11.90: '1'=Buy, '2'=Sell (ASCII, Alphanumeric field)
+    BUY('1'),
+    SELL('2');
 
     private final byte wireValue;
 
@@ -17,11 +18,14 @@ public enum Side {
     public boolean isBuy()  { return this == BUY; }
     public boolean isSell() { return this == SELL; }
 
-    /** Accepts spec wire values ('B'/'S') and legacy numeric values (1/2). */
+    /** Accepts spec values ('1'/'2'), legacy numeric (1/2), and old enum values ('B'/'S'). */
     public static Side fromByte(byte b) {
         return switch (b) {
-            case (byte) 'B', 1 -> BUY;
-            case (byte) 'S', 2 -> SELL;
+            case (byte) '1', 1 -> BUY;
+            case (byte) '2', 2 -> SELL;
+            // legacy: pre-Phase-2 wire values stored in RocksDB
+            case (byte) 'B' -> BUY;
+            case (byte) 'S' -> SELL;
             default -> throw new IllegalArgumentException(
                     "Unknown Side: 0x" + Integer.toHexString(b & 0xFF));
         };

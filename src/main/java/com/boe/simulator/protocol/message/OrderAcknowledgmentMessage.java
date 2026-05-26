@@ -71,7 +71,7 @@ public final class OrderAcknowledgmentMessage extends BoeProtocolMessage {
         msg.maturityDate = order.getMaturityDate();
         msg.strikePrice = order.getStrikePrice();
         msg.putOrCall = order.getPutOrCall() != null ? order.getPutOrCall().wireValue() : 0;
-        msg.openClose = order.getOpenClose() != null ? order.getOpenClose().wireValue() : (byte) ' ';
+        msg.openClose = order.getOpenClose() != null ? order.getOpenClose().wireValue() : (byte) 0x00;
         msg.clearingFirm = order.getClearingFirm();
         msg.clearingAccount = order.getClearingAccount();
         msg.setupBitfields();
@@ -184,13 +184,10 @@ public final class OrderAcknowledgmentMessage extends BoeProtocolMessage {
         if ((bitfields[2] & 0x04) != 0) buffer.put(putOrCall);
     }
 
-    // Writes a fixed-width ASCII string field directly into the buffer — no intermediate byte[] allocation.
-    // Fields shorter than `length` are right-padded with spaces (0x20), matching BOE spec.
+    // Writes a fixed-width ASCII string field — NUL-padded (0x00) per BOE spec v2.11.90.
     private static void writeFixedString(ByteBuffer buf, String str, int length) {
         int start = buf.position();
-        // Fill with spaces first
-        for (int i = 0; i < length; i++) buf.put((byte) 0x20);
-        // Overwrite from the start with the actual characters (ASCII — single byte per char)
+        for (int i = 0; i < length; i++) buf.put((byte) 0x00);
         if (str != null && !str.isEmpty()) {
             int n = Math.min(str.length(), length);
             buf.position(start);
@@ -332,7 +329,7 @@ public final class OrderAcknowledgmentMessage extends BoeProtocolMessage {
         return "OrderAcknowledgment{" +
                 "clOrdID='" + clOrdID + '\'' +
                 ", orderID=" + orderID +
-                ", side=" + (side == 1 ? "Buy" : "Sell") +
+                ", side=" + (side == (byte) '1' ? "Buy" : "Sell") +
                 ", qty=" + orderQty +
                 ", leavesQty=" + leavesQty +
                 ", symbol='" + symbol + '\'' +
