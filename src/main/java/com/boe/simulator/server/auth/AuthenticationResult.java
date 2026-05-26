@@ -34,9 +34,9 @@ public record AuthenticationResult(Status status, String message) {
 
     public byte toLoginResponseStatusByte() {
         return switch (status) {
-            case ACCEPTED -> 'A';
-            case REJECTED -> 'R';
-            case SESSION_IN_USE -> 'S';
+            case ACCEPTED       -> 'A';
+            case REJECTED       -> 'N'; // spec: 'N' = not authorized
+            case SESSION_IN_USE -> 'B'; // spec: 'B' = session in use
         };
     }
 }

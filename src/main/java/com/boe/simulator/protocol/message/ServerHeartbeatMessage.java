@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public final class ServerHeartbeatMessage extends BoeProtocolMessage {
-    private static final byte MESSAGE_TYPE = 0x04;
+    private static final byte MESSAGE_TYPE = 0x09;
     
     // Start of Message marker
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
@@ -43,7 +43,7 @@ public final class ServerHeartbeatMessage extends BoeProtocolMessage {
         
         // Read MessageType (1 byte)
         byte messageType = buffer.get();
-        if (messageType != MESSAGE_TYPE) throw new IllegalArgumentException("Invalid message type: expected 0x04, got 0x" + String.format("%02X", messageType));
+        if (messageType != MESSAGE_TYPE) throw new IllegalArgumentException("Invalid message type: expected 0x09, got 0x" + String.format("%02X", messageType));
         
         // Read MatchingUnit (1 byte)
         this.matchingUnit = buffer.get();

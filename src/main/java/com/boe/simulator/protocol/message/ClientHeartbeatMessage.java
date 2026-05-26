@@ -54,14 +54,14 @@ public final class ClientHeartbeatMessage extends BoeProtocolMessage {
     }
 
     public static ClientHeartbeatMessage parseFromBytes(byte[] data) {
-        if (data == null || data.length < 5) throw new IllegalArgumentException("Invalid ClientHeartbeat message data: expected 5 bytes, got " + (data == null ? "null" : data.length));
+        if (data == null || data.length < 10) throw new IllegalArgumentException("Invalid ClientHeartbeat message data: expected 10 bytes, got " + (data == null ? "null" : data.length));
 
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
 
-        // MatchingUnit (1 byte)
-        byte matchingUnit = buffer.get();
+        // Skip StartOfMessage(2) + MessageLength(2) + MessageType(1) = 5 bytes
+        buffer.position(5);
 
-        // SequenceNumber (4 bytes)
+        byte matchingUnit = buffer.get();
         int sequenceNumber = buffer.getInt();
 
         return new ClientHeartbeatMessage(matchingUnit, sequenceNumber);

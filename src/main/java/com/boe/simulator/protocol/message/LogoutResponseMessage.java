@@ -3,7 +3,6 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 public final class LogoutResponseMessage extends BoeProtocolMessage {
     private static final byte MESSAGE_TYPE = 0x08;
@@ -22,9 +21,10 @@ public final class LogoutResponseMessage extends BoeProtocolMessage {
     private byte matchingUnit;
     private int sequenceNumber;
     
-    public static final byte REASON_USER_REQUESTED = (byte) 'U';
-    public static final byte REASON_ADMIN_LOGOUT = (byte) 'A';
-    public static final byte REASON_END_OF_DAY = (byte) 'E';
+    public static final byte REASON_USER_REQUESTED      = (byte) 'U';
+    public static final byte REASON_END_OF_DAY          = (byte) 'E';
+    public static final byte REASON_ADMIN_LOGOUT        = (byte) 'A';
+    public static final byte REASON_PROTOCOL_VIOLATION  = (byte) '!';
 
     public LogoutResponseMessage(byte[] messageData) {
         if (messageData == null || messageData.length < 4) throw new IllegalArgumentException("Invalid message data");
@@ -129,16 +129,13 @@ public final class LogoutResponseMessage extends BoeProtocolMessage {
         return buffer.array();
     }
 
-    private byte[] toFixedLengthBytes(String str, int length) {
+    // NUL-padded per BOE spec v2.11.90 (Text field type)
+    private static byte[] toFixedLengthBytes(String str, int length) {
         byte[] result = new byte[length];
-        Arrays.fill(result, (byte) 0x20);
-        
         if (str != null && !str.isEmpty()) {
             byte[] strBytes = str.getBytes(StandardCharsets.US_ASCII);
-            int copyLength = Math.min(strBytes.length, length);
-            System.arraycopy(strBytes, 0, result, 0, copyLength);
+            System.arraycopy(strBytes, 0, result, 0, Math.min(strBytes.length, length));
         }
-        
         return result;
     }
 

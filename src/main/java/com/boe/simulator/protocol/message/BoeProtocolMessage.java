@@ -6,7 +6,8 @@ public abstract sealed class BoeProtocolMessage
                 LogoutRequestMessage, LogoutResponseMessage,
                 NewOrderMessage, OrderAcknowledgmentMessage,
                 OrderCancelledMessage, OrderExecutedMessage,
-                OrderRejectedMessage, ServerHeartbeatMessage {
+                OrderRejectedMessage, ReplayCompleteMessage,
+                ServerHeartbeatMessage {
 
     public abstract byte[] toBytes();
 
