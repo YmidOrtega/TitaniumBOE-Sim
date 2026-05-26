@@ -14,7 +14,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = TradeUpdateMessage.class, name = "trade"),
         @JsonSubTypes.Type(value = OrderStatusUpdateMessage.class, name = "order_status")
 })
-public abstract class WebSocketMessage {
+public abstract sealed class WebSocketMessage
+        permits OrderBookUpdateMessage, OrderStatusUpdateMessage, TradeUpdateMessage {
 
     @JsonIgnore
     private final String type;
