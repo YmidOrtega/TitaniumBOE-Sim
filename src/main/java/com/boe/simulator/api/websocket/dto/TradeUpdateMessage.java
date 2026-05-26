@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.math.BigDecimal;
 
-public class TradeUpdateMessage extends WebSocketMessage {
+public final class TradeUpdateMessage extends WebSocketMessage {
 
     @JsonProperty("tradeId")
     private final long tradeId;

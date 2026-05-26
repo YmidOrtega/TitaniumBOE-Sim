@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.util.List;
 
-public class OrderBookUpdateMessage extends WebSocketMessage {
+public final class OrderBookUpdateMessage extends WebSocketMessage {
 
     @JsonProperty("symbol")
     private final String symbol;
