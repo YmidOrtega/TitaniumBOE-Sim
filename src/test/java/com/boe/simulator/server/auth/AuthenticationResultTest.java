@@ -12,8 +12,8 @@ class AuthenticationResultTest {
         AuthenticationResult result = AuthenticationResult.accepted("message");
 
         // Assert
-        assertEquals(AuthenticationResult.Status.ACCEPTED, result.getStatus());
-        assertEquals("message", result.getMessage());
+        assertEquals(AuthenticationResult.Status.ACCEPTED, result.status());
+        assertEquals("message", result.message());
         assertTrue(result.isAccepted());
         assertFalse(result.isRejected());
         assertFalse(result.isSessionInUse());
@@ -25,8 +25,8 @@ class AuthenticationResultTest {
         AuthenticationResult result = AuthenticationResult.rejected("message");
 
         // Assert
-        assertEquals(AuthenticationResult.Status.REJECTED, result.getStatus());
-        assertEquals("message", result.getMessage());
+        assertEquals(AuthenticationResult.Status.REJECTED, result.status());
+        assertEquals("message", result.message());
         assertFalse(result.isAccepted());
         assertTrue(result.isRejected());
         assertFalse(result.isSessionInUse());
@@ -38,8 +38,8 @@ class AuthenticationResultTest {
         AuthenticationResult result = AuthenticationResult.sessionInUse("message");
 
         // Assert
-        assertEquals(AuthenticationResult.Status.SESSION_IN_USE, result.getStatus());
-        assertEquals("message", result.getMessage());
+        assertEquals(AuthenticationResult.Status.SESSION_IN_USE, result.status());
+        assertEquals("message", result.message());
         assertFalse(result.isAccepted());
         assertFalse(result.isRejected());
         assertTrue(result.isSessionInUse());
