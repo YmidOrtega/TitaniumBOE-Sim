@@ -4,23 +4,30 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 
-public class BinaryPrice {
-
-    private final long rawValue;
-
-    private BinaryPrice(long rawValue) {
-        this.rawValue = rawValue;
-    }
+public record BinaryPrice(long rawValue) {
 
     public static BinaryPrice fromPrice(BigDecimal price) {
-        if(price == null) throw new IllegalArgumentException("Price cannot be null");
-        BigDecimal bigDecimalPrice = price.setScale(4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(10000));
-        long binaryPrice = bigDecimalPrice.longValueExact();
-        return new BinaryPrice(binaryPrice);
+        if (price == null) throw new IllegalArgumentException("Price cannot be null");
+        long raw = price.setScale(4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(10000))
+                        .longValueExact();
+        return new BinaryPrice(raw);
     }
 
     public static BinaryPrice fromRaw(long rawValue) {
         return new BinaryPrice(rawValue);
+    }
+
+    public static BinaryPrice fromBytes(byte[] bytes, int offset) {
+        if (bytes == null || bytes.length < offset + 8)
+            throw new IllegalArgumentException("Byte array is too short to contain a BinaryPrice (8 bytes).");
+        ByteBuffer buffer = ByteBuffer.wrap(bytes, offset, 8);
+        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        return new BinaryPrice(buffer.getLong());
+    }
+
+    public static BinaryPrice fromBytes(byte[] bytes) {
+        return fromBytes(bytes, 0);
     }
 
     public BigDecimal toPrice() {
@@ -38,17 +45,4 @@ public class BinaryPrice {
     public void putInto(ByteBuffer buf) {
         buf.putLong(rawValue);
     }
-
-    public static BinaryPrice fromBytes(byte[] bytes, int offset) {
-        if (bytes == null || bytes.length < offset + 8) throw new IllegalArgumentException("Byte array is too short to contain a BinaryPrice (8 bytes).");
-        ByteBuffer buffer = ByteBuffer.wrap(bytes, offset, 8);
-        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-        long rawValue = buffer.getLong();
-        return new BinaryPrice(rawValue);
-    }
-
-    public static BinaryPrice fromBytes(byte[] bytes) {
-        return fromBytes(bytes, 0);
-    }
-
 }
