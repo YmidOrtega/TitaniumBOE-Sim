@@ -2,6 +2,7 @@ package com.boe.simulator.protocol.types;
 
 public enum Capacity {
     AGENCY('A'),
+    CUSTOMER('C'),
     MARKET_MAKER('M'),
     PRINCIPAL('P'),
     FIRM('F'),
