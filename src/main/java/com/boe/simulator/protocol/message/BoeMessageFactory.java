@@ -6,13 +6,14 @@ import java.util.logging.Logger;
 public class BoeMessageFactory {
     private static final Logger LOGGER = Logger.getLogger(BoeMessageFactory.class.getName());
 
-    // Message type constants - Session messages
-    public static final byte LOGIN_REQUEST = 0x37;
+    // Message type constants - Session messages (per spec v2.11.90)
+    public static final byte LOGIN_REQUEST  = 0x37;
     public static final byte LOGOUT_REQUEST = 0x02;
     public static final byte CLIENT_HEARTBEAT = 0x03;
-    public static final byte SERVER_HEARTBEAT = 0x04;
-    public static final byte LOGIN_RESPONSE = 0x07;
+    public static final byte LOGIN_RESPONSE = 0x24;
     public static final byte LOGOUT_RESPONSE = 0x08;
+    public static final byte SERVER_HEARTBEAT = 0x09;
+    public static final byte REPLAY_COMPLETE = 0x13;
 
     // Message type constants - Order messages
     public static final byte NEW_ORDER = 0x38;
@@ -46,6 +47,7 @@ public class BoeMessageFactory {
                 case SERVER_HEARTBEAT -> new ServerHeartbeatMessage(data);
                 case LOGIN_RESPONSE -> new LoginResponseMessage(data);
                 case LOGOUT_RESPONSE -> new LogoutResponseMessage(data);
+                case REPLAY_COMPLETE -> new ReplayCompleteMessage(data);
                 case LOGIN_REQUEST -> parseLoginRequest(data);
                 case LOGOUT_REQUEST -> parseLogoutRequest(data);
                 case CLIENT_HEARTBEAT -> parseClientHeartbeat(data);
@@ -114,12 +116,13 @@ public class BoeMessageFactory {
     public static String getMessageTypeName(byte messageType) {
         return switch (messageType) {
             // Session messages
-            case LOGIN_REQUEST -> "LoginRequest";
-            case LOGOUT_REQUEST -> "LogoutRequest";
+            case LOGIN_REQUEST    -> "LoginRequest";
+            case LOGOUT_REQUEST   -> "LogoutRequest";
             case CLIENT_HEARTBEAT -> "ClientHeartbeat";
             case SERVER_HEARTBEAT -> "ServerHeartbeat";
-            case LOGIN_RESPONSE -> "LoginResponse";
-            case LOGOUT_RESPONSE -> "LogoutResponse";
+            case LOGIN_RESPONSE   -> "LoginResponse";
+            case LOGOUT_RESPONSE  -> "LogoutResponse";
+            case REPLAY_COMPLETE  -> "ReplayComplete";
 
             // Order messages
             case NEW_ORDER -> "NewOrder";
@@ -145,6 +148,7 @@ public class BoeMessageFactory {
         return messageType == LOGIN_RESPONSE ||
                 messageType == LOGOUT_RESPONSE ||
                 messageType == SERVER_HEARTBEAT ||
+                messageType == REPLAY_COMPLETE ||
                 messageType == ORDER_EXECUTED ||
                 messageType == ORDER_ACKNOWLEDGMENT ||
                 messageType == ORDER_REJECTED ||

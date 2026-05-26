@@ -330,14 +330,19 @@ public class ClientConnectionHandler implements Runnable {
             response.setMatchingUnit(session.getMatchingUnit());
             response.setSequenceNumber(session.getNextSentSequenceNumber());
 
-            byte[] responseBytes = response.toBytes();
-            sendMessage(responseBytes);
+            sendMessage(response.toBytes());
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent LoginResponse: status={1}, msg=''{2}''", new Object[]{
                     session.getConnectionId(),
                     (char)authResult.toLoginResponseStatusByte(),
                     authResult.message()
             });
+
+            if (authResult.isAccepted()) {
+                ReplayCompleteMessage replayComplete = new ReplayCompleteMessage(session.getMatchingUnit(), 0);
+                sendMessage(replayComplete.toBytes());
+                LOGGER.log(Level.INFO, "[Session {0}] → Sent ReplayComplete", session.getConnectionId());
+            }
 
         } catch (IOException | IllegalStateException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LoginResponse", e);

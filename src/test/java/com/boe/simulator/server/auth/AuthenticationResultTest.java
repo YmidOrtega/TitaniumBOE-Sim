@@ -47,9 +47,9 @@ class AuthenticationResultTest {
 
     @Test
     void toLoginResponseStatusByte_shouldReturnCorrectByte() {
-        // Assert
+        // Per spec v2.11.90: A=Accepted, N=Not authorized, B=Session in use
         assertEquals((byte) 'A', AuthenticationResult.accepted("").toLoginResponseStatusByte());
-        assertEquals((byte) 'R', AuthenticationResult.rejected("").toLoginResponseStatusByte());
-        assertEquals((byte) 'S', AuthenticationResult.sessionInUse("").toLoginResponseStatusByte());
+        assertEquals((byte) 'N', AuthenticationResult.rejected("").toLoginResponseStatusByte());
+        assertEquals((byte) 'B', AuthenticationResult.sessionInUse("").toLoginResponseStatusByte());
     }
 }
