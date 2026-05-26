@@ -7,6 +7,11 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.boe.simulator.protocol.message.NewOrderMessage;
+import com.boe.simulator.protocol.types.Capacity;
+import com.boe.simulator.protocol.types.OpenClose;
+import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.PutOrCall;
+import com.boe.simulator.protocol.types.Side;
 
 public class OrderValidator {
     @SuppressWarnings("unused")
@@ -28,7 +33,8 @@ public class OrderValidator {
         if (clOrdIDError != null) errors.add(clOrdIDError);
 
         // 2. Validar Side
-        if (message.getSide() != 1 && message.getSide() != 2) errors.add("Invalid Side: must be 1 (Buy) or 2 (Sell)");
+        try { Side.fromByte(message.getSide()); }
+        catch (IllegalArgumentException e) { errors.add("Invalid Side: " + e.getMessage()); }
 
         // 3. Validar OrderQty
         String qtyError = validateOrderQty(message.getOrderQty());
@@ -42,8 +48,8 @@ public class OrderValidator {
         }
 
         // 5. Validar Price (requerido para limit orders)
-        byte ordType = message.getOrdType();
-        if (ordType == 2) { // Limit order
+        OrdType ordType = message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : OrdType.LIMIT;
+        if (ordType == OrdType.LIMIT) {
             if (message.getPrice() == null) errors.add("Price is required for limit orders");
             else {
                 String priceError = validatePrice(message.getPrice());
@@ -52,16 +58,17 @@ public class OrderValidator {
         }
 
         // 6. Validar Capacity (requerido)
-        if (message.getCapacity() == 0 || message.getCapacity() == ' ') return ValidationResult.invalid("Capacity is required");
-        else {
-            String capacityError = validateCapacity(message.getCapacity());
-            if (capacityError != null) errors.add(capacityError);
+        if (message.getCapacity() == 0 || message.getCapacity() == ' ') {
+            return ValidationResult.invalid("Capacity is required");
+        } else {
+            try { Capacity.fromByte(message.getCapacity()); }
+            catch (IllegalArgumentException e) { errors.add("Invalid Capacity: " + e.getMessage()); }
         }
 
         // 7. Validar OpenClose (si está presente)
         if (message.getOpenClose() != 0) {
-            String openCloseError = validateOpenClose(message.getOpenClose());
-            if (openCloseError != null) errors.add(openCloseError);
+            try { OpenClose.fromByte(message.getOpenClose()); }
+            catch (IllegalArgumentException e) { errors.add("Invalid OpenClose: " + e.getMessage()); }
         }
 
         // 8. Validar symbology completa (si es option)
@@ -82,7 +89,8 @@ public class OrderValidator {
 
         // 10. Validar PutOrCall (si está presente)
         if (message.getPutOrCall() != 0) {
-            if (message.getPutOrCall() != '0' && message.getPutOrCall() != '1') errors.add("Invalid PutOrCall: must be 0 (Put) or 1 (Call)");
+            try { PutOrCall.fromByte(message.getPutOrCall()); }
+            catch (IllegalArgumentException e) { errors.add("Invalid PutOrCall: " + e.getMessage()); }
         }
 
         if (errors.isEmpty()) return ValidationResult.valid();
@@ -129,23 +137,6 @@ public class OrderValidator {
         if (!SYMBOL_PATTERN.matcher(symbol).matches()) return "Symbol must contain only uppercase letters and numbers";
 
         return null;
-    }
-
-    private String validateCapacity(byte capacity) {
-        // C=Customer, M=MarketMaker, F=Firm, U=ProfessionalCustomer,
-        // N=AwayMarketMaker, B=BrokerDealer, J=JointBackOffice
-        return switch (capacity) {
-            case 'C', 'M', 'F', 'U', 'N', 'B', 'J' -> null;
-            default -> "Invalid Capacity: " + (char)capacity;
-        };
-    }
-
-    private String validateOpenClose(byte openClose) {
-        // O=Open, C=Close, N=None
-        return switch (openClose) {
-            case 'O', 'C', 'N' -> null;
-            default -> "Invalid OpenClose: " + (char)openClose;
-        };
     }
 
     private String validateOptionSymbology(boolean hasMaturity, boolean hasStrike, boolean hasPutCall) {

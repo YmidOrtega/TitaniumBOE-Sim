@@ -1,5 +1,8 @@
 package com.boe.simulator.api.service;
 
+import com.boe.simulator.protocol.types.Capacity;
+import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.order.Order;
 import com.boe.simulator.server.order.OrderRepository;
@@ -36,12 +39,12 @@ public class MarketDataSeeder {
                 .orderID(orderIdCounter++)
                 .sessionSubID("MARKET-MAKER")
                 .username("SYSTEM")
-                .side((byte) 1)
+                .side(Side.BUY)
                 .orderQty(quantity)
                 .price(bidPrice)
-                .ordType((byte) 2)
+                .ordType(OrdType.LIMIT)
                 .symbol(symbol)
-                .capacity((byte) 'M')
+                .capacity(Capacity.MARKET_MAKER)
                 .account("SEED")
                 .build();
 
@@ -53,12 +56,12 @@ public class MarketDataSeeder {
                 .orderID(orderIdCounter++)
                 .sessionSubID("MARKET-MAKER")
                 .username("SYSTEM")
-                .side((byte) 2)
+                .side(Side.SELL)
                 .orderQty(quantity)
                 .price(askPrice)
-                .ordType((byte) 2)
+                .ordType(OrdType.LIMIT)
                 .symbol(symbol)
-                .capacity((byte) 'M')
+                .capacity(Capacity.MARKET_MAKER)
                 .account("SEED")
                 .build();
 

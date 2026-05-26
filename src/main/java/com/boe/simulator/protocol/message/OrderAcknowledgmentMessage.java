@@ -57,21 +57,21 @@ public final class OrderAcknowledgmentMessage extends BoeProtocolMessage {
         msg.transactTime = System.nanoTime();
         msg.clOrdID = order.getClOrdID();
         msg.orderID = order.getOrderID();
-        msg.side = order.getSide();
+        msg.side = order.getSide().wireValue();
         msg.orderQty = order.getOrderQty();
         msg.leavesQty = order.getLeavesQty();
-        msg.ordType = order.getOrdType();
+        msg.ordType = order.getOrdType().wireValue();
         msg.workingPrice = 'Y';
 
         // Copy optional fields
         msg.price = order.getPrice();
         msg.symbol = order.getSymbol();
-        msg.capacity = order.getCapacity();
+        msg.capacity = order.getCapacity() != null ? order.getCapacity().wireValue() : 0;
         msg.account = order.getAccount();
         msg.maturityDate = order.getMaturityDate();
         msg.strikePrice = order.getStrikePrice();
-        msg.putOrCall = order.getPutOrCall();
-        msg.openClose = order.getOpenClose();
+        msg.putOrCall = order.getPutOrCall() != null ? order.getPutOrCall().wireValue() : 0;
+        msg.openClose = order.getOpenClose() != null ? order.getOpenClose().wireValue() : (byte) ' ';
         msg.clearingFirm = order.getClearingFirm();
         msg.clearingAccount = order.getClearingAccount();
         msg.setupBitfields();

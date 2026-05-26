@@ -1,6 +1,8 @@
 package com.boe.simulator.server.matching;
 
 import com.boe.simulator.api.websocket.WebSocketService;
+import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.order.Order;
 import com.boe.simulator.server.order.OrderRepository;
 
@@ -88,12 +90,12 @@ public class MatchingEngine {
     }
 
     private boolean canMatch(Order incomingOrder, OrderBook book) {
-        if (incomingOrder.getOrdType() == 1) return true; // Market order
+        if (incomingOrder.getOrdType() == OrdType.MARKET) return true;
 
         BigDecimal incomingPrice = incomingOrder.getPrice();
         if (incomingPrice == null) return false;
 
-        if (incomingOrder.getSide() == 1) { // Buy
+        if (incomingOrder.getSide() == Side.BUY) {
             BigDecimal bestAsk = book.getBestAsk();
             return bestAsk != null && incomingPrice.compareTo(bestAsk) >= 0;
         } else { // Sell
@@ -106,7 +108,7 @@ public class MatchingEngine {
         List<Trade> trades = new ArrayList<>();
 
         while (aggressiveOrder.getLeavesQty() > 0 && canMatch(aggressiveOrder, book)) {
-            List<Order> passiveOrders = aggressiveOrder.getSide() == 1 ? book.getTopAskOrders() : book.getTopBidOrders();
+            List<Order> passiveOrders = aggressiveOrder.getSide() == Side.BUY ? book.getTopAskOrders() : book.getTopBidOrders();
 
             if (passiveOrders.isEmpty()) break;
 
@@ -177,7 +179,7 @@ public class MatchingEngine {
     private Trade createTrade(Order aggressive, Order passive, int qty, BigDecimal price) {
         long tradeId = tradeIdGenerator.getAndIncrement();
 
-        boolean aggressiveIsBuy = aggressive.getSide() == 1;
+        boolean aggressiveIsBuy = aggressive.getSide() == Side.BUY;
 
         return Trade.builder()
                 .tradeId(tradeId)
