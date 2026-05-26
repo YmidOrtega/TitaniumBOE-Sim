@@ -16,7 +16,7 @@ import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.OrderBook;
 import com.boe.simulator.server.order.OrderManager;
 
-public class MarketMakerStrategy implements TradingStrategy {
+public final class MarketMakerStrategy implements TradingStrategy {
     private static final Logger LOGGER = Logger.getLogger(MarketMakerStrategy.class.getName());
 
     private static final AtomicLong SEQ = new AtomicLong(0);
@@ -79,7 +79,7 @@ public class MarketMakerStrategy implements TradingStrategy {
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error executing MarketMaker for " + symbol, e);
+            LOGGER.log(Level.WARNING, "Error executing MarketMaker for %s".formatted(symbol), e);
         }
     }
 

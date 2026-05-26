@@ -75,7 +75,7 @@ public class AuthenticationFilter implements Handler {
 
             return PasswordHasher.verify(password, user.passwordHash());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error authenticating user: " + username, e);
+            LOGGER.log(Level.SEVERE, "Error authenticating user: %s".formatted(username), e);
             return false;
         }
     }

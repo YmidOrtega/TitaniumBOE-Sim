@@ -20,7 +20,7 @@ import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.matching.TradeRepository;
 import com.boe.simulator.server.order.OrderManager;
 
-public class TrendFollowerStrategy implements TradingStrategy {
+public final class TrendFollowerStrategy implements TradingStrategy {
     private static final Logger LOGGER = Logger.getLogger(TrendFollowerStrategy.class.getName());
 
     private static final AtomicLong SEQ = new AtomicLong(0);
@@ -90,7 +90,7 @@ public class TrendFollowerStrategy implements TradingStrategy {
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error executing TrendFollower for " + symbol, e);
+            LOGGER.log(Level.WARNING, "Error executing TrendFollower for %s".formatted(symbol), e);
         }
     }
 
@@ -133,7 +133,7 @@ public class TrendFollowerStrategy implements TradingStrategy {
             else return Trend.NEUTRAL;
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error analyzing trade trend for " + symbol, e);
+            LOGGER.log(Level.WARNING, "Error analyzing trade trend for %s".formatted(symbol), e);
             return Trend.NEUTRAL;
         }
     }
