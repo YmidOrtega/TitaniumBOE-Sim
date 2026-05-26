@@ -107,6 +107,12 @@ public class MatchingEngine {
             // FIFO: take the first order from the level
             Order passiveOrder = passiveOrders.get(0);
 
+            // Stale terminal order still in book (race between fill and book removal)
+            if (!passiveOrder.getState().isActive()) {
+                book.removeOrder(passiveOrder);
+                continue;
+            }
+
             String aggressiveUsername = aggressiveOrder.getUsername();
             String passiveUsername = passiveOrder.getUsername();
 
@@ -115,8 +121,10 @@ public class MatchingEngine {
                 if (aggressiveUsername.equals(passiveUsername)) {
                     LOGGER.log(Level.WARNING, "Self-trade prevented: {0}", aggressiveUsername);
                     book.removeOrder(passiveOrder);
-                    passiveOrder.cancel();
-                    orderRepository.saveAsync(passiveOrder);
+                    if (passiveOrder.getState().isCancellable()) {
+                        passiveOrder.cancel();
+                        orderRepository.saveAsync(passiveOrder);
+                    }
                     continue;
                 }
             }
