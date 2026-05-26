@@ -1,19 +1,11 @@
 package com.boe.simulator.server.auth;
 
-public class AuthenticationResult {
+public record AuthenticationResult(Status status, String message) {
 
     public enum Status {
         ACCEPTED,
         REJECTED,
         SESSION_IN_USE
-    }
-
-    private final Status status;
-    private final String message;
-
-    private AuthenticationResult(Status status, String message) {
-        this.status = status;
-        this.message = message;
     }
 
     public static AuthenticationResult accepted(String message) {
@@ -26,14 +18,6 @@ public class AuthenticationResult {
 
     public static AuthenticationResult sessionInUse(String message) {
         return new AuthenticationResult(Status.SESSION_IN_USE, message);
-    }
-
-    public Status getStatus() {
-        return status;
-    }
-
-    public String getMessage() {
-        return message;
     }
 
     public boolean isAccepted() {
@@ -53,15 +37,6 @@ public class AuthenticationResult {
             case ACCEPTED -> 'A';
             case REJECTED -> 'R';
             case SESSION_IN_USE -> 'S';
-            default -> 'R';
         };
-    }
-
-    @Override
-    public String toString() {
-        return "AuthenticationResult{" +
-                "status=" + status +
-                ", message='" + message + '\'' +
-                '}';
     }
 }
