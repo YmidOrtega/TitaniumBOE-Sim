@@ -32,7 +32,7 @@ public class Bot {
 
     public void start() {
         if (running) {
-            LOGGER.warning("Bot " + config.botId() + " is already running");
+            LOGGER.warning("Bot %s is already running".formatted(config.botId()));
             return;
         }
 
@@ -47,7 +47,7 @@ public class Bot {
                 TimeUnit.MILLISECONDS
         );
 
-        LOGGER.info("Bot started: " + config.botId() + " (" + strategy.getStrategyName() + ")");
+        LOGGER.info("Bot started: %s (%s)".formatted(config.botId(), strategy.getStrategyName()));
     }
 
     public void stop() {
@@ -60,7 +60,7 @@ public class Bot {
 
         strategy.cleanup();
 
-        LOGGER.info("Bot stopped: " + config.botId());
+        LOGGER.info("Bot stopped: %s".formatted(config.botId()));
     }
 
     public void shutdown() {

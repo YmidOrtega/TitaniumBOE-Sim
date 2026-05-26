@@ -3,7 +3,7 @@ package com.boe.simulator.bot.strategy;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.order.OrderManager;
 
-public interface TradingStrategy {
+public sealed interface TradingStrategy permits MarketMakerStrategy, RandomTraderStrategy, TrendFollowerStrategy {
 
     // Execute trading action for the given symbol
     void execute(String symbol);

@@ -15,7 +15,7 @@ import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.OrderBook;
 import com.boe.simulator.server.order.OrderManager;
 
-public class RandomTraderStrategy implements TradingStrategy {
+public final class RandomTraderStrategy implements TradingStrategy {
     private static final Logger LOGGER = Logger.getLogger(RandomTraderStrategy.class.getName());
 
     private static final AtomicLong SEQ = new AtomicLong(0);
@@ -62,7 +62,7 @@ public class RandomTraderStrategy implements TradingStrategy {
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error executing RandomTrader for " + symbol, e);
+            LOGGER.log(Level.WARNING, "Error executing RandomTrader for %s".formatted(symbol), e);
         }
     }
 
