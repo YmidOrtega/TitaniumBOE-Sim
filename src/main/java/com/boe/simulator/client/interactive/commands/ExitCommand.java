@@ -2,7 +2,7 @@ package com.boe.simulator.client.interactive.commands;
 
 import com.boe.simulator.client.interactive.SessionContext;
 
-public class ExitCommand implements Command {
+public final class ExitCommand implements Command {
 
     @Override
     public void execute(SessionContext context, String[] args) {

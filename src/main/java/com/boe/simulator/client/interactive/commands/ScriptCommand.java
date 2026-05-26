@@ -8,7 +8,7 @@ import java.io.FileReader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class ScriptCommand implements Command {
+public final class ScriptCommand implements Command {
     private static final Logger LOGGER = Logger.getLogger(ScriptCommand.class.getName());
 
     private final CommandExecutor executor;

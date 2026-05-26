@@ -31,28 +31,28 @@ class SessionInfoTest {
         when(mockSession.getMessagesSent()).thenReturn(5);
         when(mockSession.getLastHeartbeatReceived()).thenReturn(Instant.now());
 
-        sessionInfo = new SessionInfo(mockSession);
+        sessionInfo = SessionInfo.from(mockSession);
     }
 
     @Test
     void constructor_shouldInitializeFieldsFromSession() {
         // Assert
-        assertEquals(1, sessionInfo.getConnectionId());
-        assertEquals("testuser", sessionInfo.getUsername());
-        assertEquals("sub1", sessionInfo.getSessionSubID());
-        assertEquals("localhost", sessionInfo.getRemoteAddress());
-        assertEquals(SessionState.ACTIVE, sessionInfo.getState());
-        assertNotNull(sessionInfo.getCreatedAt());
-        assertEquals(10, sessionInfo.getMessagesReceived());
-        assertEquals(5, sessionInfo.getMessagesSent());
-        assertNotNull(sessionInfo.getLastHeartbeatReceived());
+        assertEquals(1, sessionInfo.connectionId());
+        assertEquals("testuser", sessionInfo.username());
+        assertEquals("sub1", sessionInfo.sessionSubID());
+        assertEquals("localhost", sessionInfo.remoteAddress());
+        assertEquals(SessionState.ACTIVE, sessionInfo.state());
+        assertNotNull(sessionInfo.createdAt());
+        assertEquals(10, sessionInfo.messagesReceived());
+        assertEquals(5, sessionInfo.messagesSent());
+        assertNotNull(sessionInfo.lastHeartbeatReceived());
     }
 
     @Test
     void getDurationSeconds_shouldReturnPositiveValue() throws InterruptedException {
         // Arrange
         when(mockSession.getCreatedAt()).thenReturn(Instant.now().minusSeconds(10));
-        sessionInfo = new SessionInfo(mockSession);
+        sessionInfo = SessionInfo.from(mockSession);
 
         // Act
         long duration = sessionInfo.getDurationSeconds();
