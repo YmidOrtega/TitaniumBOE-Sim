@@ -65,7 +65,7 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
         <div class="bg-[#0d1428] border border-[#162035] rounded-xl p-4">
           <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-2">Total P&L</div>
           <div class="text-2xl font-bold text-white font-mono" id="kpi-pnl">—</div>
-          <div class="text-[11px] text-gray-600 mt-1">Requires auth</div>
+          <div class="text-[11px] mt-1" id="kpi-pnl-sub" style="color:#6b7280">Login to view</div>
         </div>
         <div class="bg-[#0d1428] border border-[#162035] rounded-xl p-4">
           <div class="text-[10px] text-gray-600 uppercase tracking-widest font-medium mb-2">Active Orders</div>
@@ -558,24 +558,13 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
 
   // ── Trader name ──────────────────────────────────────────────────────────
   function detectTraderName() {
-    const stored = localStorage.getItem('traderName');
-    if (stored) {
-      document.getElementById('trader-name')!.textContent = stored;
-      return;
+    const user = (window as any).getAuthUser?.() ?? sessionStorage.getItem('auth_user');
+    if (user) {
+      document.getElementById('trader-name')!.textContent = user;
     }
-    // Try demo credentials — if they work, we're in demo mode and user is TRD1
-    fetch('/api/positions', {
-      headers: { 'Authorization': 'Basic ' + btoa('TRD1:Pass1234!') }
-    }).then(r => {
-      if (r.ok) {
-        document.getElementById('trader-name')!.textContent = 'TRD1';
-        localStorage.setItem('traderName', 'TRD1');
-        setDemoUI(true);
-      }
-    }).catch(() => {});
   }
 
-  // ── Demo Mode ────────────────────────────────────────────────────────────
+  // ── Demo Mode (informational only) ───────────────────────────────────────
   let isDemoMode = false;
 
   function setDemoUI(demo: boolean) {
@@ -596,38 +585,51 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
 
   async function detectDemoMode() {
     try {
-      // Try demo credentials — if 200, we're in demo mode
-      const r = await fetch('/api/positions', {
-        headers: { 'Authorization': 'Basic ' + btoa('TRD1:Pass1234!') }
-      });
-      setDemoUI(r.ok);
+      const r = await fetch('/api/health');
+      const d = await r.json();
+      setDemoUI(!!(d.data ?? d).demoMode ?? false);
     } catch (_) {
       setDemoUI(false);
     }
   }
 
-  (window as any).toggleDemoMode = async () => {
-    // In a real scenario this would hit an admin endpoint
-    // For now we toggle the visual state and notify
-    const next = !isDemoMode;
-    setDemoUI(next);
-    if (next) {
-      // Try to use demo credentials
-      const r = await fetch('/api/positions', {
-        headers: { 'Authorization': 'Basic ' + btoa('TRD1:Pass1234!') }
-      });
-      if (!r.ok) {
-        setDemoUI(false);
-        alert('Demo Mode requires DEMO_MODE=true on the server.');
-      } else {
-        document.getElementById('trader-name')!.textContent = 'TRD1';
-        localStorage.setItem('traderName', 'TRD1');
-      }
-    } else {
-      localStorage.removeItem('traderName');
-      document.getElementById('trader-name')!.textContent = 'Trader';
+  (window as any).toggleDemoMode = () => {
+    if (!(window as any).getAuthUser?.()) {
+      (window as any).openAuthModal?.();
     }
   };
+
+  // ── Positions ─────────────────────────────────────────────────────────────
+  async function fetchPositions() {
+    const authHeader = (window as any).getAuthHeader?.();
+    if (!authHeader) return;
+    try {
+      const r = await fetch('/api/positions', { headers: { 'Authorization': authHeader } });
+      if (!r.ok) return;
+      const d = await r.json();
+      const positions: any[] = d.data ?? d;
+      const tbody = document.getElementById('positions-tbody')!;
+      if (!positions || positions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-3 py-8 text-center text-gray-600">No positions yet</td></tr>';
+        return;
+      }
+      let totalPnl = 0;
+      tbody.innerHTML = positions.map((p: any) => {
+        const pnl = parseFloat(p.unrealizedPnl ?? p.pnl ?? 0);
+        totalPnl += pnl;
+        const pnlColor = pnl >= 0 ? '#22c55e' : '#f87171';
+        return `<tr class="hover:bg-white/[0.02] transition-colors">
+          <td class="px-3 py-1.5 font-semibold text-violet-300">${p.symbol ?? '—'}</td>
+          <td class="px-3 py-1.5 text-right font-mono text-gray-300">${p.quantity ?? 0}</td>
+          <td class="px-3 py-1.5 text-right font-mono text-gray-400">${parseFloat(p.avgPrice ?? 0).toFixed(2)}</td>
+          <td class="px-3 py-1.5 text-right font-mono font-semibold" style="color:${pnlColor}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</td>
+        </tr>`;
+      }).join('');
+      const pnlStr = (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(2);
+      document.getElementById('kpi-pnl')!.textContent = pnlStr;
+      document.getElementById('hdr-pnl')!.textContent = pnlStr;
+    } catch (_) {}
+  }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   detectTraderName();
@@ -635,6 +637,7 @@ const MARKET_SYMS = ['AAPL','MSFT','GOOGL','AMZN','META'];
   fetchHealth();
   fetchSim();
   fetchAllSymbols();
+  fetchPositions();
 
   setInterval(fetchHealth, 2000);
   setInterval(fetchSim, 3000);
