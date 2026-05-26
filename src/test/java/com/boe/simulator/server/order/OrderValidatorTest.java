@@ -66,109 +66,75 @@ class OrderValidatorTest {
         field.set(target, value);
     }
 
-    // Helper method to construct NewOrderMessage via byte array for testing
+    // Helper: builds a spec-compliant NewOrder wire message and parses it.
+    // Bitfield layout per spec v2.11.90 Table 28:
+    //   bf1 bits: 2=Price, 3=OrdType
+    //   bf2 bits: 0=Symbol, 6=Capacity
+    //   bf4 bits: 0=MaturityDate, 1=StrikePrice, 2=PutOrCall, 4=OpenClose
+    // Bitfields array always covers up to the highest non-zero bitfield index.
     private NewOrderMessage buildNewOrderMessage(String clOrdID, byte side, int orderQty, String symbol, byte ordType, BigDecimal price, byte capacity, byte openClose, String maturityDate, BigDecimal strikePrice, byte putOrCall) {
-        // This is a simplified builder for testing purposes.
-        // In a real scenario, you'd have a more robust way to build these messages.
-        // For now, we'll manually construct the byte array.
+        byte bf1 = 0, bf2 = 0, bf3 = 0, bf4 = 0;
 
-        // Determine bitfields based on provided optional fields
-        byte bf1 = 0; // Price, OrdType, Symbol, Capacity
-        byte bf2 = 0; // OpenClose
-        byte bf3 = 0; // MaturityDate, StrikePrice, PutOrCall
+        if (price != null)                            bf1 |= 0x04;
+        if (ordType != 0)                             bf1 |= 0x08;
+        if (symbol != null && !symbol.isEmpty())      bf2 |= 0x01;
+        if (capacity != 0)                            bf2 |= 0x40;
+        if (maturityDate != null && !maturityDate.isEmpty()) bf4 |= 0x01;
+        if (strikePrice != null)                      bf4 |= 0x02;
+        if (putOrCall != 0)                           bf4 |= 0x04;
+        if (openClose != 0)                           bf4 |= 0x10;
 
-        if (price != null) bf1 |= 0x04;
-        if (ordType != 0) bf1 |= 0x08;
-        if (symbol != null && !symbol.isEmpty()) bf1 |= 0x40;
-        if (capacity != 0) bf1 |= 0x80;
-
-        if (openClose != 0) bf2 |= 0x80;
-
-        if (maturityDate != null && !maturityDate.isEmpty()) bf3 |= 0x01;
-        if (strikePrice != null) bf3 |= 0x02;
-        if (putOrCall != 0) bf3 |= 0x04;
-
+        // numberOfBitfields = index of highest non-zero bitfield + 1 (all bytes must be present)
         int numberOfBitfields = 0;
-        if (bf1 != 0) numberOfBitfields++;
-        if (bf2 != 0) numberOfBitfields++;
-        if (bf3 != 0) numberOfBitfields++;
+        if (bf4 != 0)      numberOfBitfields = 4;
+        else if (bf3 != 0) numberOfBitfields = 3;
+        else if (bf2 != 0) numberOfBitfields = 2;
+        else if (bf1 != 0) numberOfBitfields = 1;
 
         byte[] bitfields = new byte[numberOfBitfields];
-        int bfIndex = 0;
-        if (bf1 != 0) bitfields[bfIndex++] = bf1;
-        if (bf2 != 0) bitfields[bfIndex++] = bf2;
-        if (bf3 != 0) bitfields[bfIndex++] = bf3;
+        if (numberOfBitfields > 0) bitfields[0] = bf1;
+        if (numberOfBitfields > 1) bitfields[1] = bf2;
+        if (numberOfBitfields > 2) bitfields[2] = bf3;
+        if (numberOfBitfields > 3) bitfields[3] = bf4;
 
-        // Calculate size
-        int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1 + 4 + 1; // SOM + Length + Type + MatchingUnit + SeqNum + ClOrdID + Side + Qty + NumBitfields
+        int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1 + 4 + 1;
         int optionalSize = 0;
-
-        if ((bf1 & 0x04) != 0) optionalSize += 8; // Price
-        if ((bf1 & 0x08) != 0) optionalSize += 1; // OrdType
-        if ((bf1 & 0x40) != 0) optionalSize += 8; // Symbol
-        if ((bf1 & 0x80) != 0) optionalSize += 1; // Capacity
-
-        if ((bf2 & 0x80) != 0) optionalSize += 1; // OpenClose
-
-        if ((bf3 & 0x01) != 0) optionalSize += 4; // MaturityDate
-        if ((bf3 & 0x02) != 0) optionalSize += 8; // StrikePrice
-        if ((bf3 & 0x04) != 0) optionalSize += 1; // PutOrCall
+        if ((bf1 & 0x04) != 0) optionalSize += 8;
+        if ((bf1 & 0x08) != 0) optionalSize += 1;
+        if ((bf2 & 0x01) != 0) optionalSize += 8;
+        if ((bf2 & 0x40) != 0) optionalSize += 1;
+        if ((bf4 & 0x01) != 0) optionalSize += 4;
+        if ((bf4 & 0x02) != 0) optionalSize += 8;
+        if ((bf4 & 0x04) != 0) optionalSize += 1;
+        if ((bf4 & 0x10) != 0) optionalSize += 1;
 
         int totalSize = baseSize + numberOfBitfields + optionalSize;
-
         ByteBuffer buffer = ByteBuffer.allocate(totalSize);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-        // StartOfMessage
         buffer.put((byte) 0xBA);
         buffer.put((byte) 0xBA);
-
-        // MessageLength (excludes StartOfMessage)
         buffer.putShort((short)(totalSize - 2));
-
-        // MessageType
-        buffer.put((byte) 0x38); // NEW_ORDER
-
-        // MatchingUnit (default to 0 for tests)
+        buffer.put((byte) 0x38);
         buffer.put((byte) 0);
-
-        // SequenceNumber (default to 0 for tests)
         buffer.putInt(0);
 
-        // ClOrdID (20 bytes, space-padded - NO truncate for validation testing)
+        // ClOrdID: NUL-padded (Text field per spec)
         byte[] clOrdIDBytes = new byte[20];
-        Arrays.fill(clOrdIDBytes, (byte) 0x20);
         if (clOrdID != null) {
             byte[] srcBytes = clOrdID.getBytes(StandardCharsets.US_ASCII);
-            // Don't truncate - let validation catch the error
-            int copyLen = srcBytes.length;
-            if (copyLen <= 20) {
-                System.arraycopy(srcBytes, 0, clOrdIDBytes, 0, copyLen);
-            } else {
-                // For testing purposes, just copy what fits and the validator will see the full string
-                System.arraycopy(srcBytes, 0, clOrdIDBytes, 0, 20);
-            }
+            System.arraycopy(srcBytes, 0, clOrdIDBytes, 0, Math.min(srcBytes.length, 20));
         }
         buffer.put(clOrdIDBytes);
-
-        // Side
         buffer.put(side);
-
-        // OrderQty
         buffer.putInt(orderQty);
+        buffer.put((byte) numberOfBitfields);
+        if (bitfields.length > 0) buffer.put(bitfields);
 
-        // NumberOfBitfields
-        buffer.put((byte)numberOfBitfields);
-
-        // Bitfields
-        if (bitfields.length > 0) {
-            buffer.put(bitfields);
-        }
-
-        // Optional fields
+        // Optional fields in spec order
         if ((bf1 & 0x04) != 0) buffer.put(BinaryPrice.fromPrice(price).toBytes());
         if ((bf1 & 0x08) != 0) buffer.put(ordType);
-        if ((bf1 & 0x40) != 0) {
+        if ((bf2 & 0x01) != 0) {
             byte[] symbolBytes = new byte[8];
             Arrays.fill(symbolBytes, (byte) 0x20);
             if (symbol != null) {
@@ -177,18 +143,15 @@ class OrderValidatorTest {
             }
             buffer.put(symbolBytes);
         }
-        if ((bf1 & 0x80) != 0) buffer.put(capacity);
-
-        if ((bf2 & 0x80) != 0) buffer.put(openClose);
-
-        if ((bf3 & 0x01) != 0) {
+        if ((bf2 & 0x40) != 0) buffer.put(capacity);
+        if ((bf4 & 0x01) != 0) {
             LocalDate epoch = LocalDate.of(1970, 1, 1);
             LocalDate matDate = LocalDate.parse(maturityDate, java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-            int days = (int) java.time.temporal.ChronoUnit.DAYS.between(epoch, matDate);
-            buffer.putInt(days);
+            buffer.putInt((int) java.time.temporal.ChronoUnit.DAYS.between(epoch, matDate));
         }
-        if ((bf3 & 0x02) != 0) buffer.put(BinaryPrice.fromPrice(strikePrice).toBytes());
-        if ((bf3 & 0x04) != 0) buffer.put(putOrCall);
+        if ((bf4 & 0x02) != 0) buffer.put(BinaryPrice.fromPrice(strikePrice).toBytes());
+        if ((bf4 & 0x04) != 0) buffer.put(putOrCall);
+        if ((bf4 & 0x10) != 0) buffer.put(openClose);
 
         return NewOrderMessage.parse(buffer.array());
     }
