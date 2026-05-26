@@ -166,33 +166,29 @@ public class OrderRepository {
             return new ArrayList<>();
         }
 
+        Map<byte[], byte[]> allData;
         try {
-            String prefix = "order:username:" + username + ":";
-            List<byte[]> keys = dbManager.getKeysWithPrefix(CF_ORDERS, prefix.getBytes());
-
-            List<Order> orders = new ArrayList<>();
-            for (byte[] key : keys) {
-                try {
-                    byte[] data = dbManager.get(CF_ORDERS, key);
-                    if (data != null) {
-                        Order order = serializer.deserialize(data, Order.class);
-                        if (order != null && username.equals(order.getUsername())) {
-                            orders.add(order);
-                        }
-                    }
-                } catch (RocksDBException e) {
-                    String keyStr = new String(key);
-                    LOGGER.log(Level.WARNING, "Failed to deserialize order: {0}, skipping...", keyStr);
-                }
-            }
-
-            LOGGER.log(Level.FINE, "Found {0} orders for user: {1}", new Object[]{orders.size(), username});
-            return orders;
-
-        } catch (RocksDBException | IllegalArgumentException e) {
+            allData = dbManager.getAll(CF_ORDERS);
+        } catch (RocksDBException e) {
             LOGGER.log(Level.SEVERE, "Failed to find orders by username: " + username, e);
             return new ArrayList<>();
         }
+
+        List<Order> orders = new ArrayList<>();
+        for (Map.Entry<byte[], byte[]> entry : allData.entrySet()) {
+            try {
+                PersistedOrder persisted = serializer.deserialize(entry.getValue(), PersistedOrder.class);
+                if (username.equals(persisted.username())) {
+                    orders.add(persisted.toOrder());
+                }
+            } catch (Exception e) {
+                String keyStr = new String(entry.getKey(), StandardCharsets.UTF_8);
+                LOGGER.log(Level.WARNING, "Failed to deserialize order: {0}, skipping...", keyStr);
+            }
+        }
+
+        LOGGER.log(Level.FINE, "Found {0} orders for user: {1}", new Object[]{orders.size(), username});
+        return orders;
     }
 
     public List<Order> findActiveOrders() {
