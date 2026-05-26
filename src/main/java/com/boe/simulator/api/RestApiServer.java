@@ -80,7 +80,8 @@ public class RestApiServer {
         PositionController positionController = new PositionController(positionService);
         TradeController tradeController = new TradeController(tradeService);
         SymbolController symbolController = new SymbolController(matchingEngine, symbolService);
-        BotController botController = new BotController(marketSimulator); // ✅ N
+        BotController botController = new BotController(marketSimulator);
+        AuthController authController = new AuthController(authService);
 
         // Create an authentication filter
         AuthenticationFilter authFilter = new AuthenticationFilter(authService);
@@ -130,6 +131,12 @@ public class RestApiServer {
 
         app.get("/api/symbols", symbolController::getSymbols);
         app.get("/api/symbols/{symbol}", symbolController::getSymbol);
+
+        // Auth endpoints
+        app.post("/api/auth/login",    authController::login);
+        app.post("/api/auth/register", authController::register);
+        app.before("/api/auth/me",     authFilter);
+        app.get("/api/auth/me",        authController::me);
 
         // Protected routes
         app.before("/api/orders*", authFilter);

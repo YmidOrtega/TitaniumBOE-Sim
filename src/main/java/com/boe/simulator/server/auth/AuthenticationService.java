@@ -147,6 +147,20 @@ public class AuthenticationService {
         return activeSessions.size();
     }
 
+    public boolean authenticateForRest(String username, String password) {
+        if (username == null || username.isBlank()) return false;
+        if (password == null || password.isBlank()) return false;
+        var userOpt = userRepository.findByUsername(username);
+        if (userOpt.isEmpty()) return false;
+        PersistedUser user = userOpt.get();
+        if (!user.active()) return false;
+        return PasswordHasher.verify(password, user.passwordHash());
+    }
+
+    public boolean userExists(String username) {
+        return userRepository.findByUsername(username).isPresent();
+    }
+
     public long getUserCount() {
         return userRepository.count();
     }
