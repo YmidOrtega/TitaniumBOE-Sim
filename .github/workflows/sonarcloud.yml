@@ -17,7 +17,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          # ⚠️ Obligatorio para SonarCloud: Permite leer el historial de Git (New Code)
           fetch-depth: 0
 
       - name: Set up JDK 21
@@ -43,8 +42,6 @@ jobs:
 
       - name: Build and Analyze with Maven
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Necesario para comentar en Pull Requests
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Tu token de seguridad
-        # Al usar "verify", Maven ejecuta tus tests, genera la cobertura de JaCoCo
-        # y luego el plugin de Sonar envía todo a SonarCloud automáticamente.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: mvn -B clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
