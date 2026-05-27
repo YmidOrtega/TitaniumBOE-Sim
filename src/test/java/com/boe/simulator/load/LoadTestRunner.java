@@ -1,12 +1,10 @@
 package com.boe.simulator.load;
 
 import com.boe.simulator.protocol.message.LoginRequestMessage;
-import com.boe.simulator.protocol.message.NewOrderMessage;
 import com.sun.management.UnixOperatingSystemMXBean;
 
 import java.io.*;
 import java.lang.management.ManagementFactory;
-import java.math.BigDecimal;
 import java.net.*;
 import java.net.http.*;
 import java.time.Duration;
@@ -17,12 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * TitaniumBOE-Sim — Load Test Runner
  *
- * Tests five dimensions independently:
+ * Tests three dimensions independently:
  *   1. TCP Connection Capacity  — raw sockets to port 9090, no login
  *   2. BOE Login Throughput     — full login/hold/close cycle (needs unique users)
  *   3. REST API Throughput      — concurrent HTTP requests to port 8081
- *   4. Order Ack Latency        — spec-correct New Order → Order Ack RTT (μs precision)
- *   5. Memory Stability         — 10,000 orders, heap growth bounded check
  *
  * HOW TO RUN:
  *   ulimit -n 65535
@@ -32,82 +28,73 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       com.boe.simulator.load.LoadTestRunner [options]
  *
  * OPTIONS:
- *   --tcp=N            raw TCP connections to open             (default: 1000)
- *   --logins=N         BOE login sessions (users created)      (default: 100)
- *   --rest=N           total REST requests                     (default: 5000)
- *   --concurrency=N    max parallel REST requests              (default: 200)
- *   --hold=N           seconds to hold TCP connections open    (default: 5)
- *   --ack-sessions=N   parallel sessions for latency test      (default: 10)
- *   --ack-orders=N     orders per session for latency test     (default: 100)
- *   --mem-orders=N     total orders for memory stability test  (default: 10000)
- *   --skip-tcp         skip Phase 1
- *   --skip-login       skip Phase 2
- *   --skip-rest        skip Phase 3
- *   --skip-ack         skip Phase 4
- *   --skip-memory      skip Phase 5
+ *   --tcp=N          raw TCP connections to open           (default: 1000)
+ *   --logins=N       BOE login sessions (users created)    (default: 100)
+ *   --rest=N         total REST requests                   (default: 5000)
+ *   --concurrency=N  max parallel REST requests            (default: 200)
+ *   --hold=N         seconds to hold TCP connections open  (default: 5)
+ *   --skip-tcp       skip the raw TCP test
+ *   --skip-login     skip the BOE login test
+ *   --skip-rest      skip the REST test
  */
 public class LoadTestRunner {
 
-    static final String HOST      = "localhost";
-    static final int    BOE_PORT  = 9090;
+    static final String HOST     = "localhost";
+    static final int    BOE_PORT = 9090;
     static final int    REST_PORT = 8081;
 
-    // BOE message type constants
-    static final byte MSG_SERVER_HB   = 0x01;
-    static final byte MSG_LOGIN_RESP  = 0x07;
-    static final byte MSG_ORDER_ACK   = 0x25;
-    static final byte MSG_ORDER_REJ   = 0x26;
-
-    // Login response layout offsets (within full wire frame)
+    // LoginResponse byte layout:
+    //   [0-1] 0xBA 0xBA  [2-3] length(LE)  [4] type=0x07  [5] unit
+    //   [6-9] seqNo(LE)  [10] status: 'A'=accepted 'R'=rejected 'S'=session-in-use
     static final int  LOGIN_RESP_STATUS_OFFSET = 10;
+    static final byte LOGIN_RESP_MSG_TYPE      = 0x07;
     static final byte STATUS_ACCEPTED          = 'A';
 
     // ── Entry point ───────────────────────────────────────────────────────────
 
     public static void main(String[] args) throws Exception {
-        int tcpTarget    = intArg(args, "--tcp",           1_000);
-        int loginTarget  = intArg(args, "--logins",          100);
-        int restTotal    = intArg(args, "--rest",          5_000);
-        int concurrency  = intArg(args, "--concurrency",     200);
-        int holdSecs     = intArg(args, "--hold",              5);
-        int ackSessions  = intArg(args, "--ack-sessions",     10);
-        int ackOrders    = intArg(args, "--ack-orders",       100);
-        int memOrders    = intArg(args, "--mem-orders",   10_000);
-
-        boolean skipTcp    = hasFlag(args, "--skip-tcp");
-        boolean skipLogin  = hasFlag(args, "--skip-login");
-        boolean skipRest   = hasFlag(args, "--skip-rest");
-        boolean skipAck    = hasFlag(args, "--skip-ack");
-        boolean skipMemory = hasFlag(args, "--skip-memory");
+        int tcpTarget   = intArg(args, "--tcp",         1_000);
+        int loginTarget = intArg(args, "--logins",        100);
+        int restTotal   = intArg(args, "--rest",        5_000);
+        int concurrency = intArg(args, "--concurrency",   200);
+        int holdSecs    = intArg(args, "--hold",            5);
+        boolean skipTcp   = hasFlag(args, "--skip-tcp");
+        boolean skipLogin = hasFlag(args, "--skip-login");
+        boolean skipRest  = hasFlag(args, "--skip-rest");
 
         printBanner();
         printSystemInfo(tcpTarget);
         System.out.println();
 
-        TcpCapacityResult     tcpResult    = null;
-        LoginThroughputResult loginResult  = null;
-        RestResult            restResult   = null;
-        OrderAckLatencyResult ackResult    = null;
-        MemoryStabilityResult memResult    = null;
+        TcpCapacityResult  tcpResult   = null;
+        LoginThroughputResult loginResult = null;
+        RestResult         restResult  = null;
 
-        if (!skipTcp)    { tcpResult   = runTcpCapacityTest(tcpTarget, holdSecs);           System.out.println(); }
-        if (!skipLogin)  { loginResult = runLoginThroughputTest(loginTarget, holdSecs);      System.out.println(); }
-        if (!skipRest)   { restResult  = runRestTest(restTotal, concurrency);                System.out.println(); }
-        if (!skipAck)    { ackResult   = runOrderAckLatencyTest(ackSessions, ackOrders);     System.out.println(); }
-        if (!skipMemory) { memResult   = runMemoryStabilityTest(memOrders);                  System.out.println(); }
+        if (!skipTcp) {
+            tcpResult = runTcpCapacityTest(tcpTarget, holdSecs);
+            System.out.println();
+        }
+        if (!skipLogin) {
+            loginResult = runLoginThroughputTest(loginTarget, holdSecs);
+            System.out.println();
+        }
+        if (!skipRest) {
+            restResult = runRestTest(restTotal, concurrency);
+            System.out.println();
+        }
 
         System.out.println("═══════════════════════════════════════════════════════════");
         System.out.println("  FINAL REPORT");
         System.out.println("═══════════════════════════════════════════════════════════");
-        if (tcpResult   != null) { printTcpCapacityReport(tcpResult);    System.out.println(); }
-        if (loginResult != null) { printLoginReport(loginResult);         System.out.println(); }
-        if (restResult  != null) { printRestReport(restResult);           System.out.println(); }
-        if (ackResult   != null) { printOrderAckReport(ackResult);        System.out.println(); }
-        if (memResult   != null) { printMemoryReport(memResult); }
+        if (tcpResult   != null) { printTcpCapacityReport(tcpResult);   System.out.println(); }
+        if (loginResult != null) { printLoginReport(loginResult);       System.out.println(); }
+        if (restResult  != null) { printRestReport(restResult); }
         System.out.println("═══════════════════════════════════════════════════════════");
     }
 
     // ── Phase 1: TCP Raw Connection Capacity ─────────────────────────────────
+    // Opens N raw TCP sockets without logging in.
+    // Verifies the server accepts and holds them open (no immediate reset).
 
     static TcpCapacityResult runTcpCapacityTest(int target, int holdSecs) throws InterruptedException {
         System.out.printf("┌─ Phase 1: TCP Connection Capacity  port=%d  target=%,d%n", BOE_PORT, target);
@@ -150,6 +137,7 @@ public class LoadTestRunner {
         System.out.printf("│%n│  Peak open: %,d  —  holding for %ds...%n", held.size(), holdSecs);
         Thread.sleep(holdSecs * 1_000L);
 
+        // Verify connections are still open (server didn't reset them)
         AtomicInteger stillOpen = new AtomicInteger();
         for (Socket s : held) {
             if (!s.isClosed() && s.isConnected()) stillOpen.incrementAndGet();
@@ -162,14 +150,18 @@ public class LoadTestRunner {
     }
 
     // ── Phase 2: BOE Login Throughput ─────────────────────────────────────────
+    // Registers N unique test users via REST, then opens N BOE sessions simultaneously.
+    // Measures login RTT, peak concurrent sessions, and login success rate.
 
     static LoginThroughputResult runLoginThroughputTest(int target, int holdSecs) throws Exception {
         System.out.printf("┌─ Phase 2: BOE Login Throughput  port=%d  sessions=%,d%n", BOE_PORT, target);
         System.out.println("│");
 
+        // ── Step 1: Register unique test users ────────────────────────────────
         System.out.printf("│  Registering %,d test users via REST...%n", target);
         List<String[]> creds = new ArrayList<>(target);
         for (int i = 0; i < target; i++) {
+            // 4-char username: A000-A999 → B000-B999 etc.
             int letter = i / 1000;
             int num    = i % 1000;
             String user = String.format("%c%03d", 'A' + letter, num);
@@ -198,6 +190,7 @@ public class LoadTestRunner {
                             .timeout(Duration.ofSeconds(5))
                             .build();
                     HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+                    // 201 = created, 409 = already exists (OK)
                     if (resp.statusCode() == 201 || resp.statusCode() == 409) registered.incrementAndGet();
                     else regFailed.incrementAndGet();
                 } catch (Exception e) {
@@ -212,11 +205,12 @@ public class LoadTestRunner {
         System.out.printf("│  Registered: %,d  failed: %,d%n", registered.get(), regFailed.get());
         System.out.println("│");
 
+        // ── Step 2: Concurrent BOE logins ─────────────────────────────────────
         System.out.printf("│  Opening %,d concurrent BOE sessions...%n", registered.get());
 
-        AtomicInteger loginOk     = new AtomicInteger();
-        AtomicInteger loginFailed = new AtomicInteger();
-        AtomicInteger connErrors  = new AtomicInteger();
+        AtomicInteger loginOk      = new AtomicInteger();
+        AtomicInteger loginFailed  = new AtomicInteger();
+        AtomicInteger connErrors   = new AtomicInteger();
         ConcurrentLinkedQueue<Long> loginMs = new ConcurrentLinkedQueue<>();
         List<Socket> openSessions = new CopyOnWriteArrayList<>();
 
@@ -242,11 +236,14 @@ public class LoadTestRunner {
                     loginMs.add((System.nanoTime() - t1) / 1_000_000);
 
                     if (resp != null && resp.length >= 11
-                            && resp[4] == MSG_LOGIN_RESP
+                            && resp[4] == LOGIN_RESP_MSG_TYPE
                             && resp[LOGIN_RESP_STATUS_OFFSET] == STATUS_ACCEPTED) {
                         loginOk.incrementAndGet();
                         openSessions.add(s);
                     } else {
+                        char status = (resp != null && resp.length > LOGIN_RESP_STATUS_OFFSET)
+                                ? (char) resp[LOGIN_RESP_STATUS_OFFSET] : '?';
+                        LOGGER.fine("Login rejected status=" + status + " user=" + creds.get(idx)[0]);
                         loginFailed.incrementAndGet();
                         closeQuietly(s);
                     }
@@ -277,6 +274,7 @@ public class LoadTestRunner {
     }
 
     // ── Phase 3: REST API Throughput ──────────────────────────────────────────
+    // Public endpoints only — no auth required, no 401 noise.
 
     static final String[] PUBLIC_ENDPOINTS = {
             "http://" + HOST + ":" + REST_PORT + "/api/health",
@@ -295,17 +293,18 @@ public class LoadTestRunner {
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
 
+        // Warm-up
         System.out.println("│  Warm-up (100 requests)...");
         for (int i = 0; i < 100; i++)
             client.send(HttpRequest.newBuilder().uri(URI.create(PUBLIC_ENDPOINTS[0])).GET().build(),
                     HttpResponse.BodyHandlers.discarding());
 
-        AtomicInteger success = new AtomicInteger();
-        AtomicInteger failed  = new AtomicInteger();
+        AtomicInteger success  = new AtomicInteger();
+        AtomicInteger failed   = new AtomicInteger();
         ConcurrentLinkedQueue<Long> latMs = new ConcurrentLinkedQueue<>();
-        Semaphore sem   = new Semaphore(concurrency);
+        Semaphore sem    = new Semaphore(concurrency);
         ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor();
-        CountDownLatch latch = new CountDownLatch(total);
+        CountDownLatch latch  = new CountDownLatch(total);
 
         long t0 = System.currentTimeMillis();
         for (int i = 0; i < total; i++) {
@@ -339,257 +338,6 @@ public class LoadTestRunner {
         return new RestResult(total, success.get(), failed.get(), System.currentTimeMillis() - t0, latMs);
     }
 
-    // ── Phase 4: Order Ack Latency ────────────────────────────────────────────
-    // Registers N unique users, opens N parallel BOE sessions, sends M orders
-    // per session sequentially (send → read ack → repeat), measures RTT in μs.
-
-    static OrderAckLatencyResult runOrderAckLatencyTest(int sessions, int ordersPerSession)
-            throws Exception {
-        System.out.printf("┌─ Phase 4: Order Ack Latency  sessions=%d  orders/session=%d%n",
-                sessions, ordersPerSession);
-        System.out.println("│  (spec-correct New Order wire format: Side='1', OrdType='2')");
-        System.out.println("│");
-
-        // Register test users (prefix "Q" to avoid Phase 2 conflicts)
-        HttpClient http = HttpClient.newBuilder()
-                .executor(Executors.newVirtualThreadPerTaskExecutor())
-                .connectTimeout(Duration.ofSeconds(5))
-                .build();
-
-        List<String[]> creds = new ArrayList<>(sessions);
-        for (int i = 0; i < sessions; i++) {
-            String user = String.format("Q%02d", i);
-            String pass = "AckTest1!";
-            creds.add(new String[]{user, pass});
-            registerUser(http, user, pass);
-        }
-        System.out.printf("│  Registered %d test users%n", sessions);
-
-        // Open sessions and send orders concurrently
-        AtomicInteger ackOk     = new AtomicInteger();
-        AtomicInteger ackFailed = new AtomicInteger();
-        AtomicInteger connErr   = new AtomicInteger();
-        ConcurrentLinkedQueue<Long> ackUs = new ConcurrentLinkedQueue<>();
-
-        long t0 = System.currentTimeMillis();
-        CountDownLatch latch = new CountDownLatch(sessions);
-        ExecutorService exec  = Executors.newVirtualThreadPerTaskExecutor();
-
-        for (int si = 0; si < sessions; si++) {
-            final int sidx = si;
-            final String[] cred = creds.get(si);
-            exec.submit(() -> {
-                try (Socket s = loginBoe(cred[0], cred[1], String.format("QS%02d", sidx))) {
-                    if (s == null) { connErr.incrementAndGet(); return; }
-                    s.setSoTimeout(5_000);
-                    OutputStream out = s.getOutputStream();
-                    InputStream  in  = s.getInputStream();
-
-                    for (int oi = 0; oi < ordersPerSession; oi++) {
-                        String clOrdID = String.format("Q%02d%07d", sidx, oi);
-                        byte[] orderBytes = buildNewOrder(clOrdID, oi + 1);
-
-                        long start = System.nanoTime();
-                        out.write(orderBytes);
-                        out.flush();
-                        byte[] ack = readUntilOrderResponse(in);
-                        long elapsed = (System.nanoTime() - start) / 1_000; // μs
-
-                        if (ack != null && ack[4] == MSG_ORDER_ACK) {
-                            ackOk.incrementAndGet();
-                            ackUs.add(elapsed);
-                        } else {
-                            ackFailed.incrementAndGet();
-                        }
-                    }
-                    int done = ackOk.get() + ackFailed.get();
-                    System.out.printf("│  Session %02d done — total acked: %,d%n", sidx, done);
-                } catch (Exception e) {
-                    connErr.incrementAndGet();
-                    LOGGER.warning("Session " + sidx + " error: " + e.getMessage());
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-
-        latch.await(300, TimeUnit.SECONDS);
-        exec.shutdownNow();
-
-        return new OrderAckLatencyResult(sessions, ordersPerSession,
-                ackOk.get(), ackFailed.get(), connErr.get(),
-                System.currentTimeMillis() - t0, ackUs);
-    }
-
-    // ── Phase 5: Memory Stability ─────────────────────────────────────────────
-    // Single session sends N orders sequentially; measures heap growth.
-    // Orders use a price that will not match (buy at $0.01) so they rest in the book.
-    // A bounded heap growth (< 100 bytes/order after GC) indicates no object leak.
-
-    static MemoryStabilityResult runMemoryStabilityTest(int totalOrders) throws Exception {
-        System.out.printf("┌─ Phase 5: Memory Stability  orders=%,d%n", totalOrders);
-        System.out.println("│");
-
-        HttpClient http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                .build();
-        registerUser(http, "MSTAB1", "MemTest1!");
-        System.out.println("│  User MSTAB1 registered");
-
-        int ackOk     = 0;
-        int ackFailed = 0;
-
-        try (Socket s = loginBoe("MSTAB1", "MemTest1!", "MST")) {
-            if (s == null) throw new IOException("Login failed for MSTAB1");
-            s.setSoTimeout(10_000);
-            OutputStream out = s.getOutputStream();
-            InputStream  in  = s.getInputStream();
-
-            // Warm-up: 100 orders to let JIT settle
-            System.out.println("│  Warm-up (100 orders)...");
-            for (int i = 0; i < 100; i++) {
-                String clOrdID = String.format("WU%07d", i);
-                out.write(buildNewOrder(clOrdID, i + 1));
-                out.flush();
-                byte[] ack = readUntilOrderResponse(in);
-                if (ack != null && ack[4] == MSG_ORDER_ACK) ackOk++;
-                else ackFailed++;
-            }
-
-            // Force GC and record baseline heap
-            System.gc(); System.gc();
-            Runtime rt = Runtime.getRuntime();
-            long heapBefore = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
-            System.out.printf("│  Heap before: %,d MB%n", heapBefore);
-
-            long t0 = System.currentTimeMillis();
-            System.out.printf("│  Sending %,d orders...%n", totalOrders);
-
-            for (int i = 0; i < totalOrders; i++) {
-                String clOrdID = String.format("MS%07d", i);
-                out.write(buildNewOrder(clOrdID, 100 + i + 1));
-                out.flush();
-                byte[] ack = readUntilOrderResponse(in);
-                if (ack != null && ack[4] == MSG_ORDER_ACK) ackOk++;
-                else ackFailed++;
-
-                if ((i + 1) % 2_000 == 0)
-                    System.out.printf("│  %,5d / %,d  ack: %,d%n", i + 1, totalOrders, ackOk);
-            }
-            long elapsedMs = System.currentTimeMillis() - t0;
-
-            System.gc(); System.gc();
-            long heapAfter = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
-
-            System.out.printf("│  Heap after : %,d MB (delta %+d MB)%n",
-                    heapAfter, heapAfter - heapBefore);
-
-            return new MemoryStabilityResult(totalOrders, ackOk, ackFailed,
-                    heapBefore, heapAfter, elapsedMs);
-        }
-    }
-
-    // ── Wire helpers ──────────────────────────────────────────────────────────
-
-    /**
-     * Builds a spec-correct New Order (0x38) — buy limit at $50.00.
-     * Side='1' (Buy), OrdType='2' (Limit), Capacity='C' (Customer).
-     */
-    static byte[] buildNewOrder(String clOrdID, int seqNum) {
-        NewOrderMessage msg = new NewOrderMessage();
-        msg.setClOrdID(clOrdID);
-        msg.setSide((byte) '1');
-        msg.setOrderQty(100);
-        msg.setSequenceNumber(seqNum);
-        msg.setMatchingUnit((byte) 0);
-        msg.setSymbol("SPX");
-        msg.setPrice(new BigDecimal("50.0000"));
-        msg.setOrdType((byte) '2');
-        msg.setCapacity((byte) 'C');
-        return msg.toBytes();
-    }
-
-    /**
-     * Reads one complete BOE wire message from the stream.
-     * Frame: SOM(2) + MsgLen(2=LE, excludes SOM) + body(MsgLen-2).
-     * Returns null on clean EOF; throws IOException on partial read.
-     */
-    static byte[] readBoeMessage(InputStream in) throws IOException {
-        byte[] header = new byte[4];
-        int pos = 0;
-        while (pos < 4) {
-            int n = in.read(header, pos, 4 - pos);
-            if (n < 0) return null;
-            pos += n;
-        }
-        int msgLen = (header[2] & 0xFF) | ((header[3] & 0xFF) << 8);
-        if (msgLen < 2) throw new IOException("Malformed BOE frame: msgLen=" + msgLen);
-        int bodyLen = msgLen - 2;
-        byte[] full = new byte[4 + bodyLen];
-        System.arraycopy(header, 0, full, 0, 4);
-        int r = 0;
-        while (r < bodyLen) {
-            int n = in.read(full, 4 + r, bodyLen - r);
-            if (n < 0) throw new EOFException("Truncated BOE message");
-            r += n;
-        }
-        return full;
-    }
-
-    /**
-     * Reads messages until an Order Ack (0x25) or Order Rejected (0x26) arrives.
-     * Silently skips Server Heartbeats (0x01) and any other non-order messages.
-     */
-    static byte[] readUntilOrderResponse(InputStream in) throws IOException {
-        while (true) {
-            byte[] msg = readBoeMessage(in);
-            if (msg == null) return null;
-            byte type = msg[4];
-            if (type == MSG_ORDER_ACK || type == MSG_ORDER_REJ) return msg;
-        }
-    }
-
-    /**
-     * Registers a user via the REST API. Accepts 201 (created) and 409 (already exists).
-     */
-    static void registerUser(HttpClient http, String user, String pass) throws Exception {
-        String body = String.format("{\"username\":\"%s\",\"password\":\"%s\"}", user, pass);
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create("http://" + HOST + ":" + REST_PORT + "/api/auth/register"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .timeout(Duration.ofSeconds(5))
-                .build();
-        int status = http.send(req, HttpResponse.BodyHandlers.discarding()).statusCode();
-        if (status != 201 && status != 409)
-            throw new IOException("Register failed for " + user + " — HTTP " + status);
-    }
-
-    /**
-     * Opens a BOE session: connects, sends Login Request, reads Login Response.
-     * Returns the open Socket on success (status='A'), null on login rejection.
-     */
-    static Socket loginBoe(String user, String pass, String subID) throws IOException {
-        Socket s = new Socket(HOST, BOE_PORT);
-        s.setSoTimeout(10_000);
-        try {
-            byte[] loginBytes = new LoginRequestMessage(user, pass, subID).toBytes();
-            s.getOutputStream().write(loginBytes);
-            s.getOutputStream().flush();
-            byte[] resp = readAtLeast(s.getInputStream(), 11);
-            if (resp != null && resp.length >= 11
-                    && resp[4] == MSG_LOGIN_RESP
-                    && resp[LOGIN_RESP_STATUS_OFFSET] == STATUS_ACCEPTED) {
-                return s;
-            }
-            closeQuietly(s);
-            return null;
-        } catch (IOException e) {
-            closeQuietly(s);
-            throw e;
-        }
-    }
-
     // ── Report printers ───────────────────────────────────────────────────────
 
     static void printTcpCapacityReport(TcpCapacityResult r) {
@@ -605,14 +353,10 @@ public class LoadTestRunner {
             long[] s = sorted(r.connectMs);
             System.out.printf("  │  Connect time p50/p99 : %dms / %dms%n", p(s, 50), p(s, 99));
         }
-        boolean pass = r.accepted >= 500;
-        System.out.printf("  │  Target ≥ 500 conns   : %s  (accepted=%,d)%n",
-                pass ? "PASS" : "FAIL", r.accepted);
         System.out.println("  └──────────────────────────────────────────────────");
     }
 
     static void printLoginReport(LoginThroughputResult r) {
-        double loginRate = r.loginOk * 1000.0 / Math.max(r.peakMs, 1);
         System.out.println("  ┌─ Phase 2: BOE Login Throughput");
         System.out.printf("  │  Users registered     : %,d%n", r.registered);
         System.out.printf("  │  Login OK             : %,d  (%.1f%%)%n", r.loginOk, pct(r.loginOk, r.registered));
@@ -620,25 +364,22 @@ public class LoadTestRunner {
         System.out.printf("  │  Connection errors    : %,d%n", r.connErrors);
         System.out.printf("  │  Peak concurrent sess : %,d%n", r.peakSessions);
         System.out.printf("  │  Time to peak         : %,dms%n", r.peakMs);
-        System.out.printf("  │  Login rate           : %.0f logins/s%n", loginRate);
+        System.out.printf("  │  Login rate           : %.0f logins/s%n",
+                r.loginOk * 1000.0 / Math.max(r.peakMs, 1));
         if (!r.loginMs.isEmpty()) {
             long[] s = sorted(r.loginMs);
             System.out.printf("  │  Login RTT p50/p95/p99: %dms / %dms / %dms%n", p(s,50), p(s,95), p(s,99));
         }
-        boolean pass = loginRate >= 200;
-        System.out.printf("  │  Target ≥ 200 logins/s: %s  (actual=%.0f/s)%n",
-                pass ? "PASS" : "FAIL", loginRate);
         System.out.println("  └──────────────────────────────────────────────────");
     }
 
     static void printRestReport(RestResult r) {
-        double rps = r.total * 1000.0 / Math.max(r.elapsedMs, 1);
         System.out.println("  ┌─ Phase 3: REST API Throughput");
         System.out.printf("  │  Total requests       : %,d%n", r.total);
         System.out.printf("  │  Success (2xx/3xx)    : %,d  (%.1f%%)%n", r.success, pct(r.success, r.total));
         System.out.printf("  │  Failed               : %,d%n", r.failed);
         System.out.printf("  │  Total time           : %,dms%n", r.elapsedMs);
-        System.out.printf("  │  Throughput           : %.0f req/s%n", rps);
+        System.out.printf("  │  Throughput           : %.0f req/s%n", r.total * 1000.0 / Math.max(r.elapsedMs, 1));
         if (!r.latencies.isEmpty()) {
             long[] s = sorted(r.latencies);
             LongSummaryStatistics st = Arrays.stream(s).summaryStatistics();
@@ -646,50 +387,6 @@ public class LoadTestRunner {
             System.out.printf("  │  Latency p95/p99      : %dms / %dms%n", p(s, 95), p(s, 99));
             System.out.printf("  │  Latency max          : %dms%n", st.getMax());
         }
-        boolean pass = rps >= 800;
-        System.out.printf("  │  Target ≥ 800 req/s   : %s  (actual=%.0f/s)%n",
-                pass ? "PASS" : "FAIL", rps);
-        System.out.println("  └──────────────────────────────────────────────────");
-    }
-
-    static void printOrderAckReport(OrderAckLatencyResult r) {
-        int total = r.ackOk + r.ackFailed;
-        System.out.println("  ┌─ Phase 4: Order Ack Latency");
-        System.out.printf("  │  Sessions             : %d%n", r.sessions);
-        System.out.printf("  │  Orders/session       : %d%n", r.ordersPerSession);
-        System.out.printf("  │  Total orders sent    : %,d%n", total);
-        System.out.printf("  │  Order Ack received   : %,d  (%.1f%%)%n", r.ackOk, pct(r.ackOk, total));
-        System.out.printf("  │  Rejected / errors    : %,d / %,d%n", r.ackFailed, r.connErrors);
-        System.out.printf("  │  Total time           : %,dms%n", r.elapsedMs);
-        if (!r.ackUs.isEmpty()) {
-            long[] s = sorted(r.ackUs);
-            LongSummaryStatistics st = Arrays.stream(s).summaryStatistics();
-            System.out.printf("  │  Latency min/p50      : %,dμs / %,dμs%n", st.getMin(), p(s, 50));
-            System.out.printf("  │  Latency p95/p99      : %,dμs / %,dμs%n", p(s, 95), p(s, 99));
-            System.out.printf("  │  Latency max          : %,dμs%n", st.getMax());
-            boolean pass = p(s, 99) < 5_000; // < 5ms = 5000μs
-            System.out.printf("  │  P99 < 5ms target     : %s  (p99=%,dμs)%n",
-                    pass ? "PASS" : "FAIL", p(s, 99));
-        }
-        System.out.println("  └──────────────────────────────────────────────────");
-    }
-
-    static void printMemoryReport(MemoryStabilityResult r) {
-        long deltaMB    = r.heapAfterMB - r.heapBeforeMB;
-        long bytesPerOrder = r.totalOrders > 0 && deltaMB > 0
-                ? (deltaMB * 1024 * 1024) / r.totalOrders : 0;
-        double ackRate  = r.ackOk * 1000.0 / Math.max(r.elapsedMs, 1);
-        System.out.println("  ┌─ Phase 5: Memory Stability");
-        System.out.printf("  │  Total orders         : %,d%n", r.totalOrders);
-        System.out.printf("  │  Ack OK / failed      : %,d / %,d%n", r.ackOk, r.ackFailed);
-        System.out.printf("  │  Order throughput     : %.0f orders/s%n", ackRate);
-        System.out.printf("  │  Heap before (post GC): %,d MB%n", r.heapBeforeMB);
-        System.out.printf("  │  Heap after  (post GC): %,d MB%n", r.heapAfterMB);
-        System.out.printf("  │  Heap delta           : %+d MB%n", deltaMB);
-        System.out.printf("  │  Bytes/order (approx) : ~%,d B%n", bytesPerOrder);
-        boolean pass = deltaMB < 200;
-        System.out.printf("  │  Heap growth < 200 MB : %s  (delta=%+dMB)%n",
-                pass ? "PASS" : "FAIL", deltaMB);
         System.out.println("  └──────────────────────────────────────────────────");
     }
 
@@ -709,11 +406,11 @@ public class LoadTestRunner {
         try {
             UnixOperatingSystemMXBean os = (UnixOperatingSystemMXBean)
                     ManagementFactory.getOperatingSystemMXBean();
-            long maxFd  = os.getMaxFileDescriptorCount();
+            long maxFd = os.getMaxFileDescriptorCount();
             long openFd = os.getOpenFileDescriptorCount();
             System.out.printf("  File descriptors : %,d open / %,d max%n", openFd, maxFd);
             if (maxFd < tcpTarget + 100)
-                System.out.printf("  WARNING: maxFd (%,d) < target+100 (%,d) — run: ulimit -n 65535%n",
+                System.out.printf("  ⚠  maxFd (%,d) < target+100 (%,d) — run: ulimit -n 65535%n",
                         maxFd, tcpTarget + 100);
         } catch (Exception ignored) {
             System.out.println("  File descriptors : (unavailable on this platform)");
@@ -773,15 +470,5 @@ public class LoadTestRunner {
     record RestResult(
             int total, int success, int failed, long elapsedMs,
             ConcurrentLinkedQueue<Long> latencies
-    ) {}
-
-    record OrderAckLatencyResult(
-            int sessions, int ordersPerSession, int ackOk, int ackFailed, int connErrors,
-            long elapsedMs, ConcurrentLinkedQueue<Long> ackUs
-    ) {}
-
-    record MemoryStabilityResult(
-            int totalOrders, int ackOk, int ackFailed,
-            long heapBeforeMB, long heapAfterMB, long elapsedMs
     ) {}
 }
