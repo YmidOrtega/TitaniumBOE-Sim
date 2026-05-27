@@ -18,6 +18,7 @@ public class BoeMessageFactory {
     // Message type constants - Order messages (inbound)
     public static final byte NEW_ORDER    = 0x38;
     public static final byte CANCEL_ORDER = 0x39;
+    public static final byte MODIFY_ORDER = 0x3A;
 
     // Message type constants - Order response messages (outbound, spec v2.11.90)
     public static final byte ORDER_ACKNOWLEDGMENT   = 0x25;
@@ -60,8 +61,9 @@ public class BoeMessageFactory {
                 case CLIENT_HEARTBEAT -> parseClientHeartbeat(data);
 
                 // Order messages (inbound from client - server receives these)
-                case NEW_ORDER -> NewOrderMessage.parse(data);
+                case NEW_ORDER    -> NewOrderMessage.parse(data);
                 case CANCEL_ORDER -> CancelOrderMessage.parse(data);
+                case MODIFY_ORDER -> ModifyOrderMessage.parse(data);
 
                 // Order response messages (outbound to client — server never receives these)
                 case ORDER_ACKNOWLEDGMENT -> rejectIfServer(context, "OrderAcknowledgment",
@@ -127,6 +129,7 @@ public class BoeMessageFactory {
             // Order messages
             case NEW_ORDER            -> "NewOrder";
             case CANCEL_ORDER         -> "CancelOrder";
+            case MODIFY_ORDER         -> "ModifyOrder";
             case ORDER_ACKNOWLEDGMENT -> "OrderAcknowledgment";
             case ORDER_REJECTED       -> "OrderRejected";
             case ORDER_MODIFIED       -> "OrderModified";
@@ -146,7 +149,8 @@ public class BoeMessageFactory {
                 messageType == LOGOUT_REQUEST ||
                 messageType == CLIENT_HEARTBEAT ||
                 messageType == NEW_ORDER ||
-                messageType == CANCEL_ORDER;
+                messageType == CANCEL_ORDER ||
+                messageType == MODIFY_ORDER;
     }
 
     public static boolean isResponse(byte messageType) {
@@ -168,6 +172,7 @@ public class BoeMessageFactory {
     public static boolean isOrderMessage(byte messageType) {
         return messageType == NEW_ORDER ||
                 messageType == CANCEL_ORDER ||
+                messageType == MODIFY_ORDER ||
                 messageType == ORDER_ACKNOWLEDGMENT ||
                 messageType == ORDER_REJECTED ||
                 messageType == ORDER_MODIFIED ||
