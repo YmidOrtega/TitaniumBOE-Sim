@@ -16,7 +16,7 @@ public class BoeMessage {
     }
 
     public byte[] getData() {
-        return data; // callers only read — no defensive copy needed
+        return Arrays.copyOf(data, data.length);
     }
 
     public int getLength() {
