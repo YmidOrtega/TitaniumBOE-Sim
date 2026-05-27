@@ -1,78 +1,152 @@
-# Documentación de la API - TitaniumBOE Simulator
+# Documentación REST API — TitaniumBOE-Sim
 
-## 📚 Acceso a la Documentación
+**Puerto:** `9091`  
+**Base URL:** `http://localhost:9091`  
+**Autenticación:** HTTP Basic Auth  
+**Formato:** JSON (UTF-8)
 
-TitaniumBOE Simulator incluye documentación interactiva de la API REST utilizando **Scalar**, una herramienta moderna de documentación OpenAPI.
+---
 
-### URLs de Documentación
+## Acceso a Documentación Interactiva
 
-Una vez que el servidor esté ejecutándose, la documentación estará disponible en:
+Una vez que el servidor esté corriendo:
 
-- **Scalar UI** (Recomendado): http://localhost:8081/api/docs
-- **Swagger UI** (Alternativa): http://localhost:8081/api/swagger
-- **Especificación OpenAPI** (JSON): http://localhost:8081/openapi
+| Interfaz | URL | Descripción |
+|----------|-----|-------------|
+| **Scalar UI** | http://localhost:9091/api/docs | Recomendada — UI moderna con ejemplos de código |
+| **Swagger UI** | http://localhost:9091/api/swagger | Alternativa clásica |
+| **OpenAPI JSON** | http://localhost:9091/openapi | Especificación cruda |
 
-## 🚀 Características de Scalar
+---
 
-Scalar proporciona una interfaz de documentación moderna con:
-
-- ✅ **Diseño limpio y moderno** - Interfaz intuitiva y fácil de navegar
-- ✅ **Pruebas interactivas** - Ejecuta requests directamente desde la documentación
-- ✅ **Ejemplos de código** - Snippets en múltiples lenguajes (curl, JavaScript, Python, etc.)
-- ✅ **Búsqueda avanzada** - Encuentra rápidamente endpoints y modelos
-- ✅ **Modo oscuro** - Para reducir fatiga visual
-- ✅ **Soporte completo de OpenAPI 3.0** - Compatible con todas las especificaciones
-
-## 📖 Estructura de la API
-
-### Endpoints Públicos
-- `GET /api/health` - Estado del servidor
-- `GET /api/symbols` - Lista de símbolos disponibles para trading
-
-### Endpoints Autenticados (Basic Auth)
-
-#### Órdenes
-- `POST /api/orders` - Crear una nueva orden
-- `GET /api/orders/active` - Obtener órdenes activas
-- `GET /api/orders/{clOrdID}` - Obtener detalles de una orden
-- `DELETE /api/orders/{clOrdID}` - Cancelar una orden
-
-#### Posiciones
-- `GET /api/positions` - Obtener todas las posiciones
-- `GET /api/positions/{symbol}` - Obtener posición por símbolo
-
-#### Trades
-- `GET /api/trades/recent` - Obtener trades recientes
-- `GET /api/trades/symbol/{symbol}` - Obtener trades por símbolo
-- `GET /api/trades/my` - Obtener mis trades
-
-#### Simulador (Admin)
-- `GET /api/simulator/status` - Estado del simulador
-- `GET /api/simulator/bots` - Lista de bots
-- `GET /api/simulator/bots/{botId}` - Detalles de un bot
-- `POST /api/simulator/bots/{botId}/start` - Iniciar un bot
-- `POST /api/simulator/bots/{botId}/stop` - Detener un bot
-- `POST /api/simulator/start` - Iniciar simulador
-- `POST /api/simulator/stop` - Detener simulador
-
-### WebSocket
-- `WS /ws/feed` - Feed en tiempo real de market data
-
-## 🔐 Autenticación
-
-La API utiliza **HTTP Basic Authentication**. Incluye las credenciales en el header:
+## Iniciar el Servidor
 
 ```bash
-curl -u username:password http://localhost:8081/api/orders/active
+# Build y arranque rápido (modo demo — usuarios y datos precargados)
+mvn clean package -DskipTests
+DEMO_MODE=true java -jar target/boe-simulator-*.jar
 ```
 
-## 📝 Ejemplo de Uso
+**Credenciales demo:**
+- `TRD1` / `Pass1234!`
+- `TRD2` / `Pass5678!`
 
-### Crear una orden LIMIT
+---
+
+## Autenticación
+
+Todos los endpoints marcados con **🔐** requieren credenciales via HTTP Basic Auth:
 
 ```bash
-curl -X POST http://localhost:8081/api/orders \
-  -u trader1:password \
+# Header manual
+curl -H "Authorization: Basic $(echo -n 'TRD1:Pass1234!' | base64)" \
+     http://localhost:9091/api/orders/active
+
+# Forma abreviada con curl
+curl -u TRD1:Pass1234! http://localhost:9091/api/orders/active
+```
+
+---
+
+## Endpoints
+
+### Sistema
+
+#### `GET /api/health`
+
+Estado del servidor. No requiere autenticación.
+
+```bash
+curl http://localhost:9091/api/health
+```
+
+```json
+{
+  "status": "UP",
+  "uptime": "00:03:42",
+  "activeConnections": 2,
+  "totalOrders": 847,
+  "totalTrades": 312
+}
+```
+
+---
+
+### Autenticación
+
+#### `POST /api/auth/register`
+
+Registra un nuevo usuario.
+
+```bash
+curl -X POST http://localhost:9091/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "TRD3", "password": "MiPass123!"}'
+```
+
+```json
+{ "success": true, "message": "Usuario registrado correctamente" }
+```
+
+| Código | Significado |
+|--------|-------------|
+| 201 | Usuario creado |
+| 409 | Username ya existe |
+| 400 | Datos inválidos |
+
+#### `POST /api/auth/login` 🔐
+
+Valida credenciales (retorna 200 si son correctas, 401 si no).
+
+```bash
+curl -u TRD1:Pass1234! -X POST http://localhost:9091/api/auth/login
+```
+
+---
+
+### Símbolos y Market Data
+
+#### `GET /api/symbols`
+
+Lista todos los símbolos con actividad en el simulador.
+
+```bash
+curl http://localhost:9091/api/symbols
+```
+
+```json
+["AAPL", "MSFT", "SPX", "SPXW", "TSLA"]
+```
+
+#### `GET /api/symbols/{symbol}`
+
+Market data de un símbolo: best bid/ask, último precio, volumen.
+
+```bash
+curl http://localhost:9091/api/symbols/AAPL
+```
+
+```json
+{
+  "symbol": "AAPL",
+  "bestBid": 149.75,
+  "bestAsk": 150.25,
+  "lastTradePrice": 150.00,
+  "volume": 2400
+}
+```
+
+---
+
+### Órdenes
+
+#### `POST /api/orders` 🔐
+
+Envía una nueva orden. El servidor la procesa a través del matching engine y retorna el estado inicial.
+
+```bash
+curl -X POST http://localhost:9091/api/orders \
+  -u TRD1:Pass1234! \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -80,106 +154,256 @@ curl -X POST http://localhost:8081/api/orders \
     "orderQty": 100,
     "price": 150.50,
     "orderType": "LIMIT",
-    "account": "ACC001",
     "capacity": "CUSTOMER"
   }'
 ```
 
-### Respuesta
+**Body — campos:**
+
+| Campo | Tipo | Requerido | Valores |
+|-------|------|-----------|---------|
+| `symbol` | string | Sí | Símbolo del activo |
+| `side` | string | Sí | `BUY`, `SELL` |
+| `orderQty` | int | Sí | 1 – 999,999 |
+| `price` | decimal | Para LIMIT | Precio límite |
+| `orderType` | string | Sí | `LIMIT`, `MARKET` |
+| `capacity` | string | Sí | `CUSTOMER`, `AGENCY`, `MARKET_MAKER`, `PRINCIPAL` |
+| `account` | string | No | Cuenta del cliente |
+
+**Respuesta:**
 
 ```json
 {
   "success": true,
   "data": {
-    "clOrdID": "ORD-1234567890",
+    "clOrdID": "ORD-1714500000001",
     "symbol": "AAPL",
     "side": "BUY",
     "orderQty": 100,
+    "leavesQty": 100,
     "price": 150.50,
     "orderType": "LIMIT",
-    "status": "NEW",
-    "timestamp": 1699876543210
-  },
-  "error": null,
-  "timestamp": 1699876543210
+    "status": "LIVE",
+    "createdAt": 1714500000001
+  }
 }
 ```
 
-## 🛠️ Desarrollo
+#### `GET /api/orders/active` 🔐
 
-### Agregar Anotaciones OpenAPI
+Órdenes vivas (LIVE, PARTIALLY_FILLED) del usuario autenticado.
 
-Para documentar nuevos endpoints, usa las anotaciones `@OpenApi`:
+```bash
+curl -u TRD1:Pass1234! http://localhost:9091/api/orders/active
+```
 
-```java
-@OpenApi(
-    summary = "Get all orders",
-    description = "Retrieve all active orders for the authenticated user",
-    operationId = "getOrders",
-    path = "/api/orders",
-    methods = HttpMethod.GET,
-    tags = {"Orders"},
-    security = {@OpenApiSecurity(name = "BasicAuth")},
-    responses = {
-        @OpenApiResponse(status = "200", content = {@OpenApiContent(from = OrderResponse[].class)})
-    }
-)
-public void getOrders(Context ctx) {
-    // Implementation
+#### `GET /api/orders/{clOrdID}` 🔐
+
+Detalle de una orden por su ID de cliente.
+
+```bash
+curl -u TRD1:Pass1234! http://localhost:9091/api/orders/ORD-1714500000001
+```
+
+#### `DELETE /api/orders/{clOrdID}` 🔐
+
+Cancela una orden viva. Retorna `404` si no existe o no pertenece al usuario autenticado.
+
+```bash
+curl -X DELETE -u TRD1:Pass1234! \
+     http://localhost:9091/api/orders/ORD-1714500000001
+```
+
+```json
+{ "success": true, "message": "Orden cancelada" }
+```
+
+---
+
+### Posiciones
+
+#### `GET /api/positions` 🔐
+
+Todas las posiciones del usuario (netas por símbolo tras fills).
+
+```bash
+curl -u TRD1:Pass1234! http://localhost:9091/api/positions
+```
+
+```json
+[
+  { "symbol": "AAPL", "quantity": 200, "avgPrice": 150.25, "unrealizedPnL": 50.00 },
+  { "symbol": "MSFT", "quantity": -100, "avgPrice": 310.00, "unrealizedPnL": -30.00 }
+]
+```
+
+#### `GET /api/positions/{symbol}` 🔐
+
+Posición neta en un símbolo específico.
+
+```bash
+curl -u TRD1:Pass1234! http://localhost:9091/api/positions/AAPL
+```
+
+---
+
+### Trades
+
+#### `GET /api/trades/my` 🔐
+
+Trades ejecutados por el usuario autenticado (como comprador o vendedor).
+
+```bash
+curl -u TRD1:Pass1234! http://localhost:9091/api/trades/my
+```
+
+```json
+[
+  {
+    "tradeId": 1000042,
+    "symbol": "AAPL",
+    "side": "BUY",
+    "quantity": 100,
+    "price": 150.25,
+    "clOrdID": "ORD-1714500000001",
+    "timestamp": 1714500001234
+  }
+]
+```
+
+#### `GET /api/trades/recent`
+
+Últimos trades del mercado (todos los usuarios). No requiere autenticación.
+
+```bash
+curl http://localhost:9091/api/trades/recent
+```
+
+#### `GET /api/trades/symbol/{symbol}`
+
+Trades de un símbolo específico (mercado completo).
+
+```bash
+curl http://localhost:9091/api/trades/symbol/AAPL
+```
+
+---
+
+### Simulador (Admin)
+
+#### `GET /api/simulator/status`
+
+Estado general del simulador: uptime, órdenes totales, matches.
+
+```bash
+curl http://localhost:9091/api/simulator/status
+```
+
+#### `GET /api/simulator/bots`
+
+Lista de bots configurados y su estado.
+
+```bash
+curl http://localhost:9091/api/simulator/bots
+```
+
+```json
+[
+  { "id": "market-maker", "status": "RUNNING", "ordersPlaced": 1240, "fills": 87 },
+  { "id": "trend-follower", "status": "RUNNING", "ordersPlaced": 430, "fills": 23 },
+  { "id": "random-trader", "status": "STOPPED", "ordersPlaced": 0, "fills": 0 }
+]
+```
+
+#### `POST /api/simulator/bots/{botId}/start` 🔐
+
+#### `POST /api/simulator/bots/{botId}/stop` 🔐
+
+```bash
+curl -X POST -u TRD1:Pass1234! http://localhost:9091/api/simulator/bots/random-trader/start
+curl -X POST -u TRD1:Pass1234! http://localhost:9091/api/simulator/bots/market-maker/stop
+```
+
+---
+
+## WebSocket Feed
+
+**Endpoint:** `ws://localhost:9091/ws/feed`
+
+Conecta para recibir eventos en tiempo real del mercado.
+
+```javascript
+const ws = new WebSocket('ws://localhost:9091/ws/feed');
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  switch (msg.type) {
+    case 'TRADE':
+      console.log(`Trade: ${msg.symbol} ${msg.qty} @ ${msg.price}`);
+      break;
+    case 'ORDER_BOOK':
+      console.log(`Book update: ${msg.symbol}`, msg.bids, msg.asks);
+      break;
+    case 'ORDER_STATUS':
+      console.log(`Order ${msg.clOrdID} → ${msg.status}`);
+      break;
+  }
+};
+```
+
+**Tipos de eventos:**
+
+| Tipo | Campos | Descripción |
+|------|--------|-------------|
+| `TRADE` | symbol, price, qty, timestamp | Trade ejecutado en el mercado |
+| `ORDER_BOOK` | symbol, bids[], asks[] | Actualización del libro de órdenes |
+| `ORDER_STATUS` | clOrdID, status | Cambio de estado de una orden |
+
+---
+
+## Códigos de Respuesta
+
+| Código | Significado |
+|--------|-------------|
+| 200 | OK |
+| 201 | Recurso creado |
+| 400 | Request inválido (campos faltantes o malformados) |
+| 401 | No autenticado (credenciales requeridas) |
+| 403 | No autorizado (la orden no pertenece al usuario) |
+| 404 | Recurso no encontrado |
+| 409 | Conflicto (username duplicado, ClOrdID duplicado) |
+| 500 | Error interno del servidor |
+
+---
+
+## Formato de Error
+
+```json
+{
+  "success": false,
+  "error": "Order not found: ORD-9999999",
+  "timestamp": 1714500005000
 }
 ```
 
-### Configuración Personalizada
+---
 
-La configuración de OpenAPI se encuentra en `RestApiServer.java`. Puedes personalizar:
+## Variables de Entorno
 
-- Título y descripción de la API
-- Información de contacto
-- Servidores disponibles
-- Esquemas de seguridad
-- Tags y categorías
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `DEMO_MODE` | `true` | Pre-carga usuarios demo y datos de mercado |
+| `BOE_PORT` | `8081` | Puerto del protocolo BOE binario (TCP) |
+| `API_PORT` | `9091` | Puerto REST API + dashboard |
+| `LOG_LEVEL` | `INFO` | Verbosidad de logs (`FINE`, `INFO`, `WARNING`) |
+| `ADMIN_USERNAME` | — | Usuario admin en modo no-demo |
+| `ADMIN_PASSWORD` | — | Contraseña admin |
 
-## 🔒 Seguridad
+---
 
-### Mejores Prácticas Implementadas
+## Referencia del Protocolo BOE Nativo
 
-1. **Autenticación obligatoria** - Endpoints sensibles requieren autenticación
-2. **Validación de entrada** - Todos los requests son validados
-3. **CORS configurado** - Prevención de ataques cross-origin
-4. **Rate limiting** - Protección contra abuso (si está configurado)
-5. **Logs de auditoría** - Todas las operaciones son registradas
-6. **Sanitización de errores** - No se exponen detalles internos en producción
+Para interactuar directamente por TCP (puerto `8081`) usando el protocolo BOE binario, ver:
 
-### Consideraciones de Seguridad
-
-- ✅ No exponer credenciales en la documentación
-- ✅ Usar HTTPS en producción
-- ✅ Implementar rate limiting apropiado
-- ✅ Mantener logs de acceso y auditoría
-- ✅ Validar todos los inputs del usuario
-- ✅ Usar tokens JWT para producción (en lugar de Basic Auth)
-
-## 📚 Recursos Adicionales
-
-- [Documentación de Scalar](https://github.com/scalar/scalar)
-- [OpenAPI Specification](https://swagger.io/specification/)
-- [Javalin OpenAPI Plugin](https://javalin.io/plugins/openapi)
-
-## 🤝 Contribuir
-
-Para mejorar la documentación:
-
-1. Actualiza las anotaciones `@OpenApi` en los controladores
-2. Verifica que los modelos DTO estén bien documentados
-3. Asegúrate de que los ejemplos sean claros y funcionales
-4. Prueba la documentación interactiva en `/api/docs`
-5. Actualiza este README si es necesario
-
-## 📞 Soporte
-
-Si encuentras problemas con la documentación o la API:
-
-1. Verifica que el servidor esté ejecutándose
-2. Revisa los logs del servidor para errores
-3. Consulta la documentación interactiva en `/api/docs`
-4. Reporta issues en el repositorio del proyecto
+- [`docs/BOE Protocol Specification - Quick Reference.md`](BOE%20Protocol%20Specification%20-%20Quick%20Reference.md) — referencia completa del wire format
+- [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — diseño del parser y serialización
