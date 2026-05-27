@@ -11,7 +11,9 @@ import java.util.logging.Logger;
 
 import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.protocol.message.CancelOrderMessage;
+import com.boe.simulator.protocol.message.ModifyOrderMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
+import java.math.BigDecimal;
 import com.boe.simulator.protocol.types.Capacity;
 import com.boe.simulator.protocol.types.OpenClose;
 import com.boe.simulator.protocol.types.OrdType;
@@ -21,6 +23,7 @@ import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
+import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.OrderBook;
@@ -224,6 +227,96 @@ public class OrderManager {
                     OrderRejectedMessage.REASON_UNKNOWN_ERROR,
                     "Internal error: " + e.getMessage()
             );
+        }
+    }
+
+    // ========== TCP/BOE Modify ==========
+    public ModifyResponse processModifyOrder(ModifyOrderMessage message, ClientSession session) {
+        OrderExecutionContext context = OrderExecutionContext.fromTcpSession(session);
+
+        LOGGER.log(Level.INFO, "[{0}] Processing ModifyOrder: origClOrdID={1}, newClOrdID={2}",
+                new Object[]{context.getSessionIdentifier(),
+                        message.getOrigClOrdID(), message.getClOrdID()});
+
+        // 1. OrderQty is required per spec
+        if (!message.hasOrderQty()) {
+            return ModifyResponse.rejected(message.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_UNKNOWN,
+                    "OrderQty is required in Modify Order");
+        }
+
+        // 2. Find the order
+        Order order = activeOrdersByClOrdID.get(message.getOrigClOrdID());
+        if (order == null) {
+            return ModifyResponse.rejected(message.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_NOT_FOUND,
+                    "Order not found: " + message.getOrigClOrdID());
+        }
+
+        // 3. Permission check
+        if (!order.getUsername().equals(context.getUsername())) {
+            return ModifyResponse.rejected(message.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_UNKNOWN,
+                    "Unauthorized: order belongs to a different user");
+        }
+
+        // 4. State check
+        if (!order.getState().isActive()) {
+            return ModifyResponse.rejected(message.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_TOO_LATE_TO_CANCEL,
+                    "Order not modifiable in state: " + order.getState());
+        }
+
+        // 5. Price required for limit orders (OrdType LIMIT or not specified)
+        boolean isMarket = message.getOrdType() == (byte) '1'
+                || (message.getOrdType() == 0 && order.getOrdType() == OrdType.MARKET);
+        if (!isMarket && !message.hasPrice()) {
+            return ModifyResponse.rejected(message.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_UNKNOWN,
+                    "Price is required for non-market Modify Order");
+        }
+
+        // 6. Resolve new values
+        BigDecimal newPrice  = message.hasPrice() ? message.getPrice() : order.getPrice();
+        OrdType    newOrdType = message.getOrdType() != 0
+                ? OrdType.fromByte(message.getOrdType()) : null;
+        int        newOrderQty = message.getOrderQty();
+
+        // 7. Update caches: remove old ClOrdID key
+        String oldClOrdID = order.getOrigClOrdID();
+        activeOrdersByClOrdID.remove(oldClOrdID);
+
+        try {
+            // 8. Apply modification in matching engine
+            List<com.boe.simulator.server.matching.Trade> trades =
+                    matchingEngine.modifyOrder(order, message.getClOrdID(),
+                            newPrice, newOrdType, newOrderQty);
+
+            // 9. Update caches with new ClOrdID
+            if (order.getState().isActive()) {
+                activeOrdersByClOrdID.put(order.getClOrdID(), order);
+                orderRepository.saveAsync(order);
+                LOGGER.log(Level.INFO, "[{0}] Order modified: {1} (OrderID: {2})",
+                        new Object[]{context.getSessionIdentifier(),
+                                order.getClOrdID(), order.getOrderID()});
+                return ModifyResponse.modified(order);
+            } else {
+                // Auto-cancelled because newLeavesQty <= 0
+                activeOrdersByOrderID.remove(order.getOrderID());
+                orderRepository.saveAsync(order);
+                totalOrdersCancelled.incrementAndGet();
+                LOGGER.log(Level.INFO, "[{0}] Order auto-cancelled by modify: {1}",
+                        new Object[]{context.getSessionIdentifier(), order.getClOrdID()});
+                return ModifyResponse.autoCancelled(order);
+            }
+
+        } catch (Exception e) {
+            // Restore old key on failure
+            activeOrdersByClOrdID.put(oldClOrdID, order);
+            LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error modifying order", e);
+            return ModifyResponse.rejected(message.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_UNKNOWN,
+                    "Internal error: " + e.getMessage());
         }
     }
 
@@ -474,6 +567,45 @@ public class OrderManager {
 
     public OrderRepository getOrderRepository() {
         return orderRepository;
+    }
+
+    public static class ModifyResponse {
+        public enum ResponseType { MODIFIED, AUTO_CANCELLED, REJECTED }
+
+        private final ResponseType type;
+        private final Order order;
+        private final String clOrdID;
+        private final byte rejectReason;
+        private final String rejectText;
+
+        private ModifyResponse(ResponseType type, Order order, String clOrdID,
+                               byte rejectReason, String rejectText) {
+            this.type         = type;
+            this.order        = order;
+            this.clOrdID      = clOrdID;
+            this.rejectReason = rejectReason;
+            this.rejectText   = rejectText;
+        }
+
+        public static ModifyResponse modified(Order order) {
+            return new ModifyResponse(ResponseType.MODIFIED, order, null, (byte) 0, null);
+        }
+
+        public static ModifyResponse autoCancelled(Order order) {
+            return new ModifyResponse(ResponseType.AUTO_CANCELLED, order, null, (byte) 0, null);
+        }
+
+        public static ModifyResponse rejected(String clOrdID, byte reason, String text) {
+            return new ModifyResponse(ResponseType.REJECTED, null, clOrdID, reason, text);
+        }
+
+        public boolean isModified()       { return type == ResponseType.MODIFIED; }
+        public boolean isAutoCancelled()  { return type == ResponseType.AUTO_CANCELLED; }
+        public boolean isRejected()       { return type == ResponseType.REJECTED; }
+        public Order   getOrder()         { return order; }
+        public String  getClOrdID()       { return clOrdID; }
+        public byte    getRejectReason()  { return rejectReason; }
+        public String  getRejectText()    { return rejectText; }
     }
 
     public static class OrderResponse {

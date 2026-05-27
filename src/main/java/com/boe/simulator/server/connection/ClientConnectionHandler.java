@@ -174,8 +174,9 @@ public class ClientConnectionHandler implements Runnable {
 
     private void handleApplicationMessage(ApplicationMessage message) {
         switch (message) {
-            case NewOrderMessage newOrderMessage -> handleNewOrder(newOrderMessage);
+            case NewOrderMessage newOrderMessage       -> handleNewOrder(newOrderMessage);
             case CancelOrderMessage cancelOrderMessage -> handleCancelOrder(cancelOrderMessage);
+            case ModifyOrderMessage modifyOrderMessage -> handleModifyOrder(modifyOrderMessage);
             default -> LOGGER.log(Level.WARNING, "[Session {0}] Unsupported inbound application message: {1}", new Object[]{
                     session.getConnectionId(),
                     message.getClass().getSimpleName()
@@ -294,6 +295,33 @@ public class ClientConnectionHandler implements Runnable {
                     response.getRejectReason(),
                     response.getRejectText()
             );
+        }
+    }
+
+    private void handleModifyOrder(ModifyOrderMessage modifyOrder) {
+        LOGGER.log(Level.INFO, "[Session {0}] Processing ModifyOrder: origClOrdID={1}, newClOrdID={2}",
+                new Object[]{session.getConnectionId(),
+                        modifyOrder.getOrigClOrdID(), modifyOrder.getClOrdID()});
+
+        if (!session.isAuthenticated()) {
+            LOGGER.log(Level.WARNING, "[Session {0}] ModifyOrder rejected - not authenticated",
+                    session.getConnectionId());
+            sendUserModifyRejected(modifyOrder.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_UNKNOWN, "Session not authenticated");
+            return;
+        }
+
+        session.updateReceivedSequenceNumber(modifyOrder.getSequenceNumber());
+
+        OrderManager.ModifyResponse response = orderManager.processModifyOrder(modifyOrder, session);
+
+        if (response.isModified()) {
+            sendOrderModified(response.getOrder());
+        } else if (response.isAutoCancelled()) {
+            sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_USER_REQUESTED);
+        } else {
+            sendUserModifyRejected(response.getClOrdID(),
+                    response.getRejectReason(), response.getRejectText());
         }
     }
 
@@ -431,6 +459,41 @@ public class ClientConnectionHandler implements Runnable {
 
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending OrderRejected", e);
+        }
+    }
+
+    private void sendOrderModified(com.boe.simulator.server.order.Order order) {
+        try {
+            OrderModifiedMessage modified = OrderModifiedMessage.fromOrder(
+                    order,
+                    session.getMatchingUnit(),
+                    session.getNextSentSequenceNumber()
+            );
+
+            sendMessage(modified.toBytes());
+
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderModified: ClOrdID={1}, OrderID={2}",
+                    new Object[]{session.getConnectionId(),
+                            order.getClOrdID(), order.getOrderID()});
+
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE,
+                    "[Session " + session.getConnectionId() + "] Error sending OrderModified", e);
+        }
+    }
+
+    private void sendUserModifyRejected(String clOrdID, byte reason, String text) {
+        try {
+            UserModifyRejectedMessage rejected = new UserModifyRejectedMessage(clOrdID, reason, text);
+
+            sendMessage(rejected.toBytes());
+
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent UserModifyRejected: ClOrdID={1}, Reason={2}",
+                    new Object[]{session.getConnectionId(), clOrdID, (char) reason});
+
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE,
+                    "[Session " + session.getConnectionId() + "] Error sending UserModifyRejected", e);
         }
     }
 
