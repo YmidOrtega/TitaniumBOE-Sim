@@ -442,10 +442,10 @@ public class CboeServer {
                     ╠════════════════════════════════════════════════════════════╣
                     ║  BOE Protocol: %s:%d                                ║
                     ║  REST API: http://localhost:8081                           ║
-                    ║  Max Connections: %d                                       ║
+                    ║  Max Connections: %d                                    ║
                     ║  Persistence: ENABLED                                      ║
                     ║  Matching Engine: ENABLED                                  ║
-                    ║  DEMO Mode: %-47s ║
+                    ║  DEMO Mode: %-47s║
                     ║                                                            ║
                     ║  API Documentation: http://localhost:8081/api/docs         ║
                     ║  Swagger UI: http://localhost:8081/api/swagger             ║
