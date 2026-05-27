@@ -1,5 +1,8 @@
 package com.boe.simulator.protocol.types;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public enum Capacity {
     AGENCY('A'),
     CUSTOMER('C'),
@@ -13,6 +16,14 @@ public enum Capacity {
 
     private final byte wireValue;
 
+    private static final Map<Byte, Capacity> BY_WIRE = new HashMap<>(values().length * 2);
+
+    static {
+        for (Capacity c : values()) {
+            BY_WIRE.put(c.wireValue, c);
+        }
+    }
+
     Capacity(char c) {
         this.wireValue = (byte) c;
     }
@@ -22,10 +33,10 @@ public enum Capacity {
     }
 
     public static Capacity fromByte(byte b) {
-        for (Capacity c : values()) {
-            if (c.wireValue == b) return c;
-        }
-        throw new IllegalArgumentException(
-                "Unknown Capacity: '" + (char) b + "' (0x" + Integer.toHexString(b & 0xFF) + ")");
+        Capacity c = BY_WIRE.get(b);
+        if (c == null)
+            throw new IllegalArgumentException(
+                    "Unknown Capacity: '" + (char) b + "' (0x" + Integer.toHexString(b & 0xFF) + ")");
+        return c;
     }
 }
