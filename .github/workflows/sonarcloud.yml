@@ -1,0 +1,50 @@
+name: SonarCloud Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-and-analyze:
+    name: Build and Analyze
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # ⚠️ Obligatorio para SonarCloud: Permite leer el historial de Git (New Code)
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      - name: Build and Analyze with Maven
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Necesario para comentar en Pull Requests
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Tu token de seguridad
+        # Al usar "verify", Maven ejecuta tus tests, genera la cobertura de JaCoCo
+        # y luego el plugin de Sonar envía todo a SonarCloud automáticamente.
+        run: mvn -B clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
