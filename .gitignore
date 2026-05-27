@@ -60,6 +60,7 @@ secrets/
 *.jks
 
 autocommit.md
+docs/PHASES.md
 
 ####################################
 # Frontend
