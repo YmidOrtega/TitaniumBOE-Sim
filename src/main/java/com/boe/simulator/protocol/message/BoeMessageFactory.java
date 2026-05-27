@@ -15,13 +15,20 @@ public class BoeMessageFactory {
     public static final byte SERVER_HEARTBEAT = 0x09;
     public static final byte REPLAY_COMPLETE = 0x13;
 
-    // Message type constants - Order messages
-    public static final byte NEW_ORDER = 0x38;
+    // Message type constants - Order messages (inbound)
+    public static final byte NEW_ORDER    = 0x38;
     public static final byte CANCEL_ORDER = 0x39;
-    public static final byte ORDER_EXECUTED = 0x21;  // ⭐ NUEVO
-    public static final byte ORDER_ACKNOWLEDGMENT = 0x25;
-    public static final byte ORDER_REJECTED = 0x26;
-    public static final byte ORDER_CANCELLED = 0x23;
+
+    // Message type constants - Order response messages (outbound, spec v2.11.90)
+    public static final byte ORDER_ACKNOWLEDGMENT   = 0x25;
+    public static final byte ORDER_REJECTED         = 0x26;
+    public static final byte ORDER_MODIFIED         = 0x27;
+    public static final byte ORDER_RESTATED         = 0x28;
+    public static final byte USER_MODIFY_REJECTED   = 0x29;
+    public static final byte ORDER_CANCELLED        = 0x2A;
+    public static final byte CANCEL_REJECTED        = 0x2B;
+    public static final byte ORDER_EXECUTION        = 0x2C;
+    public static final byte TRADE_CANCEL_CORRECT   = 0x2D;
 
     public enum Context {
         CLIENT,
@@ -56,38 +63,20 @@ public class BoeMessageFactory {
                 case NEW_ORDER -> NewOrderMessage.parse(data);
                 case CANCEL_ORDER -> CancelOrderMessage.parse(data);
 
-                // Order messages (outbound to client - client receives these)
-                case ORDER_EXECUTED -> {
-                    if (context == Context.SERVER) {
-                        LOGGER.warning("Server received outbound-only message: OrderExecuted");
-                        yield null;
-                    }
-                    yield OrderExecutedMessage.fromBytes(data);
-                }
-
-                case ORDER_ACKNOWLEDGMENT -> {
-                    if (context == Context.SERVER) {
-                        LOGGER.warning("Server received outbound-only message: OrderAcknowledgment");
-                        yield null;
-                    }
-                    yield OrderAcknowledgmentMessage.fromBytes(data);
-                }
-
-                case ORDER_REJECTED -> {
-                    if (context == Context.SERVER) {
-                        LOGGER.warning("Server received outbound-only message: OrderRejected");
-                        yield null;
-                    }
-                    yield OrderRejectedMessage.fromBytes(data);
-                }
-
-                case ORDER_CANCELLED -> {
-                    if (context == Context.SERVER) {
-                        LOGGER.warning("Server received outbound-only message: OrderCancelled");
-                        yield null;
-                    }
-                    yield OrderCancelledMessage.fromBytes(data);
-                }
+                // Order response messages (outbound to client — server never receives these)
+                case ORDER_ACKNOWLEDGMENT -> rejectIfServer(context, "OrderAcknowledgment",
+                        () -> OrderAcknowledgmentMessage.fromBytes(data));
+                case ORDER_REJECTED       -> rejectIfServer(context, "OrderRejected",
+                        () -> OrderRejectedMessage.fromBytes(data));
+                case ORDER_MODIFIED       -> rejectIfServer(context, "OrderModified", null);
+                case ORDER_RESTATED       -> rejectIfServer(context, "OrderRestated", null);
+                case USER_MODIFY_REJECTED -> rejectIfServer(context, "UserModifyRejected", null);
+                case ORDER_CANCELLED      -> rejectIfServer(context, "OrderCancelled",
+                        () -> OrderCancelledMessage.fromBytes(data));
+                case CANCEL_REJECTED      -> rejectIfServer(context, "CancelRejected", null);
+                case ORDER_EXECUTION      -> rejectIfServer(context, "OrderExecution",
+                        () -> OrderExecutedMessage.fromBytes(data));
+                case TRADE_CANCEL_CORRECT -> rejectIfServer(context, "TradeCancelOrCorrect", null);
 
                 default -> {
                     LOGGER.log(Level.WARNING, "Unknown message type: 0x{0}", String.format("%02X", messageType));
@@ -99,6 +88,17 @@ public class BoeMessageFactory {
                     new Object[]{String.format("%02X", messageType), getMessageTypeName(messageType), e.getMessage()});
             return null;
         }
+    }
+
+    @FunctionalInterface
+    private interface Parser { BoeProtocolMessage parse(); }
+
+    private static BoeProtocolMessage rejectIfServer(Context context, String name, Parser parser) {
+        if (context == Context.SERVER) {
+            LOGGER.warning("Server received outbound-only message: " + name);
+            return null;
+        }
+        return parser != null ? parser.parse() : null;
     }
 
     private static LoginRequestMessage parseLoginRequest(byte[] data) {
@@ -125,12 +125,17 @@ public class BoeMessageFactory {
             case REPLAY_COMPLETE  -> "ReplayComplete";
 
             // Order messages
-            case NEW_ORDER -> "NewOrder";
-            case CANCEL_ORDER -> "CancelOrder";
-            case ORDER_EXECUTED -> "OrderExecuted";
+            case NEW_ORDER            -> "NewOrder";
+            case CANCEL_ORDER         -> "CancelOrder";
             case ORDER_ACKNOWLEDGMENT -> "OrderAcknowledgment";
-            case ORDER_REJECTED -> "OrderRejected";
-            case ORDER_CANCELLED -> "OrderCancelled";
+            case ORDER_REJECTED       -> "OrderRejected";
+            case ORDER_MODIFIED       -> "OrderModified";
+            case ORDER_RESTATED       -> "OrderRestated";
+            case USER_MODIFY_REJECTED -> "UserModifyRejected";
+            case ORDER_CANCELLED      -> "OrderCancelled";
+            case CANCEL_REJECTED      -> "CancelRejected";
+            case ORDER_EXECUTION      -> "OrderExecution";
+            case TRADE_CANCEL_CORRECT -> "TradeCancelOrCorrect";
 
             default -> "Unknown(0x" + String.format("%02X", messageType) + ")";
         };
@@ -149,18 +154,28 @@ public class BoeMessageFactory {
                 messageType == LOGOUT_RESPONSE ||
                 messageType == SERVER_HEARTBEAT ||
                 messageType == REPLAY_COMPLETE ||
-                messageType == ORDER_EXECUTED ||
                 messageType == ORDER_ACKNOWLEDGMENT ||
                 messageType == ORDER_REJECTED ||
-                messageType == ORDER_CANCELLED;
+                messageType == ORDER_MODIFIED ||
+                messageType == ORDER_RESTATED ||
+                messageType == USER_MODIFY_REJECTED ||
+                messageType == ORDER_CANCELLED ||
+                messageType == CANCEL_REJECTED ||
+                messageType == ORDER_EXECUTION ||
+                messageType == TRADE_CANCEL_CORRECT;
     }
 
     public static boolean isOrderMessage(byte messageType) {
         return messageType == NEW_ORDER ||
                 messageType == CANCEL_ORDER ||
-                messageType == ORDER_EXECUTED ||
                 messageType == ORDER_ACKNOWLEDGMENT ||
                 messageType == ORDER_REJECTED ||
-                messageType == ORDER_CANCELLED;
+                messageType == ORDER_MODIFIED ||
+                messageType == ORDER_RESTATED ||
+                messageType == USER_MODIFY_REJECTED ||
+                messageType == ORDER_CANCELLED ||
+                messageType == CANCEL_REJECTED ||
+                messageType == ORDER_EXECUTION ||
+                messageType == TRADE_CANCEL_CORRECT;
     }
 }
