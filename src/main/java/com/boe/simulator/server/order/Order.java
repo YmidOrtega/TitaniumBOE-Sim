@@ -48,6 +48,12 @@ public class Order {
     private final Instant createdAt;
     private Instant lastModified;
 
+    // Mutable overrides applied by Modify Order
+    private volatile String modifiedClOrdID;
+    private volatile BigDecimal modifiedPrice;
+    private volatile OrdType modifiedOrdType;
+    private volatile int modifiedOrderQty;  // 0 = not modified
+
     // Routing
     private final RoutingInst routingInst;
 
@@ -121,6 +127,19 @@ public class Order {
         this.lastModified = Instant.now();
     }
 
+    public void modify(String newClOrdID, BigDecimal newPrice, OrdType newOrdType,
+                       int newOrderQty, int newLeavesQty) {
+        if (!state.isActive()) {
+            throw new IllegalStateException("Cannot modify order in state: " + state);
+        }
+        if (newClOrdID != null && !newClOrdID.isEmpty()) this.modifiedClOrdID = newClOrdID;
+        if (newPrice    != null) this.modifiedPrice    = newPrice;
+        if (newOrdType  != null) this.modifiedOrdType  = newOrdType;
+        if (newOrderQty  > 0)   this.modifiedOrderQty  = newOrderQty;
+        this.leavesQty    = newLeavesQty;
+        this.lastModified = Instant.now();
+    }
+
     public void expire() {
         if (leavesQty > 0) {
             this.state = OrderState.EXPIRED;
@@ -129,16 +148,18 @@ public class Order {
     }
 
     // Getters
-    public String getClOrdID() { return clOrdID; }
+    public String getClOrdID() { return modifiedClOrdID != null ? modifiedClOrdID : clOrdID; }
+    public String getOrigClOrdID() { return clOrdID; }
     public long getOrderID() { return orderID; }
     public String getSessionSubID() { return sessionSubID; }
     public String getUsername() { return username; }
     public Side getSide() { return side; }
     public int getOrderQty() { return orderQty; }
+    public int getEffectiveOrderQty() { return modifiedOrderQty > 0 ? modifiedOrderQty : orderQty; }
     public int getLeavesQty() { return leavesQty; }
     public int getCumQty() { return cumQty; }
-    public BigDecimal getPrice() { return price; }
-    public OrdType getOrdType() { return ordType; }
+    public BigDecimal getPrice() { return modifiedPrice != null ? modifiedPrice : price; }
+    public OrdType getOrdType() { return modifiedOrdType != null ? modifiedOrdType : ordType; }
     public String getSymbol() { return symbol; }
     public Instant getMaturityDate() { return maturityDate; }
     public BigDecimal getStrikePrice() { return strikePrice; }
