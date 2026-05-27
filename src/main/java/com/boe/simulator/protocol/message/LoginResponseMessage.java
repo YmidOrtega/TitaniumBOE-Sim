@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
-public final class LoginResponseMessage extends BoeProtocolMessage {
+public final class LoginResponseMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x24;
 
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;

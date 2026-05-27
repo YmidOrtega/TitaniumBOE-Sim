@@ -149,13 +149,8 @@ public class ClientConnectionHandler implements Runnable {
                             session.getConnectionId(), String.format("%02X", messageType)
                     });
                 }
-                case LoginRequestMessage loginRequestMessage -> handleLoginRequest(loginRequestMessage);
-                case LogoutRequestMessage logoutRequestMessage -> handleLogoutRequest(logoutRequestMessage);
-                case ClientHeartbeatMessage clientHeartbeatMessage -> handleClientHeartbeat(clientHeartbeatMessage);
-
-                case NewOrderMessage newOrderMessage -> handleNewOrder(newOrderMessage);
-                case CancelOrderMessage cancelOrderMessage -> handleCancelOrder(cancelOrderMessage);
-
+                case SessionMessage sessionMessage -> handleSessionMessage(sessionMessage);
+                case ApplicationMessage applicationMessage -> handleApplicationMessage(applicationMessage);
                 default -> LOGGER.log(Level.WARNING, "[Session {0}] Unhandled message type: {1}", new Object[]{
                         session.getConnectionId(),
                         specificMessage.getClass().getSimpleName()
@@ -163,6 +158,29 @@ public class ClientConnectionHandler implements Runnable {
             }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error processing message type 0x" + String.format("%02X", messageType), e);
+        }
+    }
+
+    private void handleSessionMessage(SessionMessage message) {
+        switch (message) {
+            case LoginRequestMessage loginRequestMessage -> handleLoginRequest(loginRequestMessage);
+            case LogoutRequestMessage logoutRequestMessage -> handleLogoutRequest(logoutRequestMessage);
+            case ClientHeartbeatMessage clientHeartbeatMessage -> handleClientHeartbeat(clientHeartbeatMessage);
+            default -> LOGGER.log(Level.WARNING, "[Session {0}] Unsupported inbound session message: {1}", new Object[]{
+                    session.getConnectionId(),
+                    message.getClass().getSimpleName()
+            });
+        }
+    }
+
+    private void handleApplicationMessage(ApplicationMessage message) {
+        switch (message) {
+            case NewOrderMessage newOrderMessage -> handleNewOrder(newOrderMessage);
+            case CancelOrderMessage cancelOrderMessage -> handleCancelOrder(cancelOrderMessage);
+            default -> LOGGER.log(Level.WARNING, "[Session {0}] Unsupported inbound application message: {1}", new Object[]{
+                    session.getConnectionId(),
+                    message.getClass().getSimpleName()
+            });
         }
     }
 

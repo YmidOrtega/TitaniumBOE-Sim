@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets;
  *   Byte 2: 0x01=MassCancelInst(16B,Text), 0x02=Symbol(8B,Alpha),
  *           0x04=SymbolSfx(reserved), 0x08=SendTime(8B,Binary)
  */
-public final class CancelOrderMessage extends BoeProtocolMessage {
+public final class CancelOrderMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x39;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

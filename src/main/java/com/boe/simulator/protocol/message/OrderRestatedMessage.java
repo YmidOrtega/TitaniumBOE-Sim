@@ -33,7 +33,7 @@ import java.nio.charset.StandardCharsets;
  *   S = Ship and Post (SWP)
  *   W = Wash
  */
-public final class OrderRestatedMessage extends BoeProtocolMessage {
+public final class OrderRestatedMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x28;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

@@ -35,7 +35,7 @@ import java.nio.charset.StandardCharsets;
  * Relevant optional fields (p.190):
  *   Byte 3: 0x02=ClearingFirm(4B), 0x04=ClearingAccount(4B), 0x40=OrderQty(4B)
  */
-public final class OrderExecutedMessage extends BoeProtocolMessage {
+public final class OrderExecutedMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x2C;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

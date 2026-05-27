@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
-public final class LogoutResponseMessage extends BoeProtocolMessage {
+public final class LogoutResponseMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x08;
     
     // Start of Message marker
