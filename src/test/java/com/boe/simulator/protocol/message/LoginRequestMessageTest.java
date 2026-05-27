@@ -101,4 +101,20 @@ class LoginRequestMessageTest {
         // Assert
         assertEquals(expected, actual);
     }
+
+    @Test
+    void parseFromBytes_shouldReadNegotiatedReturnBitfields() {
+        ReturnBitfields returnBitfields = ReturnBitfields.parse(2, java.nio.ByteBuffer.wrap(new byte[]{
+                0x06, 0x00, (byte) 0x81, 0x25, 0x01, 0x41,
+                0x07, 0x00, (byte) 0x81, 0x2C, 0x02, 0x41, 0x40
+        }).order(java.nio.ByteOrder.LITTLE_ENDIAN));
+
+        LoginRequestMessage original = new LoginRequestMessage("user", "pass", "S1", (byte) 1, returnBitfields);
+        byte[] bytes = original.toBytes();
+
+        LoginRequestMessage parsed = LoginRequestMessage.parseFromBytes(bytes);
+
+        assertArrayEquals(new byte[]{0x41}, parsed.getReturnBitfields().maskFor((byte) 0x25));
+        assertArrayEquals(new byte[]{0x41, 0x40}, parsed.getReturnBitfields().maskFor((byte) 0x2C));
+    }
 }

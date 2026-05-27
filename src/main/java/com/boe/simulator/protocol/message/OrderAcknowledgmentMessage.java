@@ -39,6 +39,10 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;
     private static final int FIXED_SIZE = 48; // before bitfields/optional
+    private static final byte[] DEFAULT_BITFIELDS = new byte[]{0x00, 0x41, 0x00, 0x00};
+    private static final byte[] SUPPORTED_BITFIELD_MASKS = new byte[]{
+            0x15, 0x41, 0x47, 0x0F
+    };
 
     // Bitfield byte indices (0-based)
     private static final int BF_PRICE        = 0; // byte 1, bit 0x04
@@ -85,6 +89,10 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
     public OrderAcknowledgmentMessage() {}
 
     public static OrderAcknowledgmentMessage fromOrder(Order order, byte matchingUnit, int sequenceNumber) {
+        return fromOrder(order, matchingUnit, sequenceNumber, null);
+    }
+
+    public static OrderAcknowledgmentMessage fromOrder(Order order, byte matchingUnit, int sequenceNumber, ReturnBitfields returnBitfields) {
         OrderAcknowledgmentMessage msg = new OrderAcknowledgmentMessage();
 
         msg.matchingUnit = matchingUnit;
@@ -107,34 +115,19 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
         msg.putOrCall = order.getPutOrCall() != null ? order.getPutOrCall().wireValue() : 0;
         msg.openClose = order.getOpenClose() != null ? order.getOpenClose().wireValue() : 0;
 
-        msg.setupBitfields();
+        msg.setupBitfields(returnBitfields != null ? returnBitfields.maskFor(MESSAGE_TYPE) : null);
         return msg;
     }
 
-    private void setupBitfields() {
-        numberOfBitfields = 4;
-        bitfields = new byte[4];
+    private void setupBitfields(byte[] negotiatedMask) {
+        byte[] selected = negotiatedMask != null ? negotiatedMask : DEFAULT_BITFIELDS;
+        numberOfBitfields = selected.length;
+        bitfields = new byte[numberOfBitfields];
 
-        // Byte 1
-        bitfields[BF_SIDE] |= 0x01;                             // Side always echoed
-        if (price != null) bitfields[BF_PRICE] |= 0x04;
-        bitfields[BF_ORDTYPE] |= 0x10;                          // OrdType always echoed
-
-        // Byte 2
-        if (symbol != null && !symbol.isBlank()) bitfields[BF_SYMBOL] |= 0x01;
-        if (capacity != 0) bitfields[BF_CAPACITY] |= 0x40;
-
-        // Byte 3
-        if (account != null && !account.isBlank()) bitfields[BF_ACCOUNT] |= 0x01;
-        if (clearingFirm != null && !clearingFirm.isBlank()) bitfields[BF_CLEARING_FIRM] |= 0x02;
-        if (clearingAccount != null && !clearingAccount.isBlank()) bitfields[BF_CLEARING_ACCT] |= 0x04;
-        bitfields[BF_ORDER_QTY] |= 0x40;                        // OrderQty always echoed
-
-        // Byte 4
-        if (maturityDate != null) bitfields[BF_MATURITY] |= 0x01;
-        if (strikePrice != null) bitfields[BF_STRIKE] |= 0x02;
-        if (putOrCall != 0) bitfields[BF_PUT_OR_CALL] |= 0x04;
-        if (openClose != 0) bitfields[BF_OPEN_CLOSE] |= 0x08;
+        for (int i = 0; i < selected.length; i++) {
+            byte supported = i < SUPPORTED_BITFIELD_MASKS.length ? SUPPORTED_BITFIELD_MASKS[i] : 0x00;
+            bitfields[i] = (byte) (selected[i] & supported);
+        }
     }
 
     @Override
@@ -165,39 +158,48 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
     }
 
     private void writeOptional(ByteBuffer buf) {
+        if (numberOfBitfields < 1) return;
+
         // Byte 1 fields (ascending bit order)
         if ((bitfields[0] & 0x01) != 0) buf.put(side);
-        if ((bitfields[0] & 0x04) != 0) BinaryPrice.fromPrice(price).putInto(buf);
+        if ((bitfields[0] & 0x04) != 0) putPrice(buf, price);
         if ((bitfields[0] & 0x10) != 0) buf.put(ordType);
 
+        if (numberOfBitfields < 2) return;
         // Byte 2 fields
         if ((bitfields[1] & 0x01) != 0) putAlpha(buf, symbol, 8);
         if ((bitfields[1] & 0x40) != 0) buf.put(capacity);
 
+        if (numberOfBitfields < 3) return;
         // Byte 3 fields
         if ((bitfields[2] & 0x01) != 0) putText(buf, account, 16);
         if ((bitfields[2] & 0x02) != 0) putAlpha(buf, clearingFirm, 4);
         if ((bitfields[2] & 0x04) != 0) putText(buf, clearingAccount, 4);
         if ((bitfields[2] & 0x40) != 0) buf.putInt(orderQty);
 
+        if (numberOfBitfields < 4) return;
         // Byte 4 fields
         if ((bitfields[3] & 0x01) != 0) buf.putInt(toYYYYMMDD(maturityDate));
-        if ((bitfields[3] & 0x02) != 0) BinaryPrice.fromPrice(strikePrice).putInto(buf);
+        if ((bitfields[3] & 0x02) != 0) putPrice(buf, strikePrice);
         if ((bitfields[3] & 0x04) != 0) buf.put(putOrCall);
         if ((bitfields[3] & 0x08) != 0) buf.put(openClose);
     }
 
     private int optionalSize() {
         int size = 0;
+        if (numberOfBitfields < 1) return 0;
         if ((bitfields[0] & 0x01) != 0) size += 1;  // Side
         if ((bitfields[0] & 0x04) != 0) size += 8;  // Price
         if ((bitfields[0] & 0x10) != 0) size += 1;  // OrdType
+        if (numberOfBitfields < 2) return size;
         if ((bitfields[1] & 0x01) != 0) size += 8;  // Symbol
         if ((bitfields[1] & 0x40) != 0) size += 1;  // Capacity
+        if (numberOfBitfields < 3) return size;
         if ((bitfields[2] & 0x01) != 0) size += 16; // Account
         if ((bitfields[2] & 0x02) != 0) size += 4;  // ClearingFirm
         if ((bitfields[2] & 0x04) != 0) size += 4;  // ClearingAccount
         if ((bitfields[2] & 0x40) != 0) size += 4;  // OrderQty
+        if (numberOfBitfields < 4) return size;
         if ((bitfields[3] & 0x01) != 0) size += 4;  // MaturityDate
         if ((bitfields[3] & 0x02) != 0) size += 8;  // StrikePrice
         if ((bitfields[3] & 0x04) != 0) size += 1;  // PutOrCall
@@ -277,6 +279,14 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
         buf.put(bytes);
     }
 
+    private static void putPrice(ByteBuffer buf, BigDecimal price) {
+        if (price == null) {
+            buf.putLong(0L);
+            return;
+        }
+        BinaryPrice.fromPrice(price).putInto(buf);
+    }
+
     private static String stripNul(byte[] b) {
         int end = b.length;
         while (end > 0 && b[end - 1] == 0) end--;
@@ -309,6 +319,7 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
     public BigDecimal getPrice() { return price; }
     public String getSymbol() { return symbol; }
     public int getOrderQty() { return orderQty; }
+    public byte[] getBitfields() { return bitfields != null ? bitfields.clone() : new byte[0]; }
 
     @Override
     public String toString() {

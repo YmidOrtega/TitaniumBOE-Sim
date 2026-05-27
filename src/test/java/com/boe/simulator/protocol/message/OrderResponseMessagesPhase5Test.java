@@ -7,6 +7,8 @@ import com.boe.simulator.server.order.Order;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,6 +40,18 @@ class OrderResponseMessagesPhase5Test {
                 50, new BigDecimal("1.50"), Instant.now(), (byte) 1, "");
     }
 
+    private static ReturnBitfields fullAckBitfields() {
+        return ReturnBitfields.parse(1, ByteBuffer.wrap(new byte[]{
+                0x09, 0x00, (byte) 0x81, 0x25, 0x04, 0x15, 0x41, 0x40, 0x08
+        }).order(ByteOrder.LITTLE_ENDIAN));
+    }
+
+    private static ReturnBitfields fullExecutionBitfields() {
+        return ReturnBitfields.parse(1, ByteBuffer.wrap(new byte[]{
+                0x08, 0x00, (byte) 0x81, 0x2C, 0x03, 0x00, 0x41, 0x40
+        }).order(ByteOrder.LITTLE_ENDIAN));
+    }
+
     // -----------------------------------------------------------------------
     // OrderAcknowledgmentMessage — 0x25
     // -----------------------------------------------------------------------
@@ -49,7 +63,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void orderAck_somAndMessageType() {
-        byte[] b = OrderAcknowledgmentMessage.fromOrder(minimalOrder(), (byte) 1, 1).toBytes();
+        byte[] b = OrderAcknowledgmentMessage.fromOrder(minimalOrder(), (byte) 1, 1, fullAckBitfields()).toBytes();
         assertEquals((byte) 0xBA, b[0]);
         assertEquals((byte) 0xBA, b[1]);
         assertEquals((byte) 0x25, b[4]);
@@ -57,21 +71,21 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void orderAck_reservedInternalAtOffset46() {
-        byte[] b = OrderAcknowledgmentMessage.fromOrder(minimalOrder(), (byte) 1, 1).toBytes();
+        byte[] b = OrderAcknowledgmentMessage.fromOrder(minimalOrder(), (byte) 1, 1, fullAckBitfields()).toBytes();
         assertEquals(0x00, b[46], "ReservedInternal must be 0 at offset 46");
     }
 
     @Test
     void orderAck_wireSize_minimalOrder() {
-        // fixed(48) + bitfields(4) + Side(1)+Price(8)+OrdType(1)+Symbol(8)+OrderQty(4)+OpenClose(1) = 75
-        byte[] b = OrderAcknowledgmentMessage.fromOrder(minimalOrder(), (byte) 1, 1).toBytes();
-        assertEquals(75, b.length);
+        // fixed(48) + bitfields(4) + Side(1)+Price(8)+OrdType(1)+Symbol(8)+Capacity(1)+OrderQty(4)+OpenClose(1) = 76
+        byte[] b = OrderAcknowledgmentMessage.fromOrder(minimalOrder(), (byte) 1, 1, fullAckBitfields()).toBytes();
+        assertEquals(76, b.length);
     }
 
     @Test
     void orderAck_fromBytesRoundtrip() {
         Order order = minimalOrder();
-        byte[] bytes = OrderAcknowledgmentMessage.fromOrder(order, (byte) 1, 1).toBytes();
+        byte[] bytes = OrderAcknowledgmentMessage.fromOrder(order, (byte) 1, 1, fullAckBitfields()).toBytes();
         OrderAcknowledgmentMessage parsed = OrderAcknowledgmentMessage.fromBytes(bytes);
         assertEquals("ORD001", parsed.getClOrdID());
         assertEquals(42L, parsed.getOrderID());
@@ -339,7 +353,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void orderExecution_somAndMessageType() {
-        byte[] b = OrderExecutedMessage.fromTrade(minimalTrade(), minimalOrder(), true).toBytes();
+        byte[] b = OrderExecutedMessage.fromTrade(minimalTrade(), minimalOrder(), true, fullExecutionBitfields()).toBytes();
         assertEquals((byte) 0xBA, b[0]);
         assertEquals((byte) 0xBA, b[1]);
         assertEquals((byte) 0x2C, b[4]);
@@ -347,22 +361,22 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void orderExecution_reservedInternalAtOffset68() {
-        byte[] b = OrderExecutedMessage.fromTrade(minimalTrade(), minimalOrder(), true).toBytes();
+        byte[] b = OrderExecutedMessage.fromTrade(minimalTrade(), minimalOrder(), true, fullExecutionBitfields()).toBytes();
         assertEquals(0x00, b[68], "ReservedInternal must be 0 at offset 68");
     }
 
     @Test
     void orderExecution_wireSize_noClearing() {
-        // fixed(70) + bitfields(3) + OrderQty(4) = 77  (no clearingFirm/Account on minimal order)
-        byte[] b = OrderExecutedMessage.fromTrade(minimalTrade(), minimalOrder(), true).toBytes();
-        assertEquals(77, b.length);
+        // fixed(70) + bitfields(3) + Symbol(8) + Capacity(1) + OrderQty(4) = 86
+        byte[] b = OrderExecutedMessage.fromTrade(minimalTrade(), minimalOrder(), true, fullExecutionBitfields()).toBytes();
+        assertEquals(86, b.length);
     }
 
     @Test
     void orderExecution_fromBytesRoundtrip() {
         Trade trade = minimalTrade();
         Order order = minimalOrder();
-        OrderExecutedMessage orig = OrderExecutedMessage.fromTrade(trade, order, false);
+        OrderExecutedMessage orig = OrderExecutedMessage.fromTrade(trade, order, false, fullExecutionBitfields());
         orig.setMatchingUnit((byte) 1);
         orig.setSequenceNumber(5);
         byte[] bytes = orig.toBytes();

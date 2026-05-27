@@ -1,6 +1,7 @@
 package com.boe.simulator.server.session;
 
 import com.boe.simulator.protocol.message.SessionState;
+import com.boe.simulator.protocol.message.ReturnBitfields;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -16,6 +17,7 @@ public class ClientSession {
     private String username;
     private String sessionSubID;
     private byte matchingUnit;
+    private volatile ReturnBitfields returnBitfields;
 
     // State management
     private volatile SessionState state;
@@ -38,6 +40,7 @@ public class ClientSession {
         this.createdAt = Instant.now();
         this.state = SessionState.CONNECTED;
         this.matchingUnit = 0;
+        this.returnBitfields = ReturnBitfields.empty();
         this.sentSequenceNumber = new AtomicInteger(1);
         this.receivedSequenceNumber = new AtomicInteger(0);
         this.messagesReceived = new AtomicInteger(0);
@@ -119,6 +122,10 @@ public class ClientSession {
     public void setSessionSubID(String sessionSubID) { this.sessionSubID = sessionSubID; }
     public byte getMatchingUnit() { return matchingUnit; }
     public void setMatchingUnit(byte matchingUnit) { this.matchingUnit = matchingUnit; }
+    public ReturnBitfields getReturnBitfields() { return returnBitfields; }
+    public void setReturnBitfields(ReturnBitfields returnBitfields) {
+        this.returnBitfields = returnBitfields != null ? returnBitfields : ReturnBitfields.empty();
+    }
     public SessionState getState() { return state; }
     public void setState(SessionState state) { this.state = state; }
     public Instant getLastHeartbeatSent() { return lastHeartbeatSent; }

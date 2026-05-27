@@ -19,6 +19,7 @@ public final class LoginRequestMessage extends SessionMessage {
     private final String sessionSubID;
     private final String username;
     private final String password;
+    private final ReturnBitfields returnBitfields;
     private byte matchingUnit;
     private int sequenceNumber;
 
@@ -26,14 +27,18 @@ public final class LoginRequestMessage extends SessionMessage {
     private final byte numberOfParamGroups;
 
     public LoginRequestMessage(String username, String password) {
-        this(username, password, "", (byte) 0);
+        this(username, password, "", (byte) 0, ReturnBitfields.empty());
     }
 
     public LoginRequestMessage(String username, String password, String sessionSubID) {
-        this(username, password, sessionSubID, (byte) 0);
+        this(username, password, sessionSubID, (byte) 0, ReturnBitfields.empty());
     }
 
     public LoginRequestMessage(String username, String password, String sessionSubID, byte matchingUnit) {
+        this(username, password, sessionSubID, matchingUnit, ReturnBitfields.empty());
+    }
+
+    public LoginRequestMessage(String username, String password, String sessionSubID, byte matchingUnit, ReturnBitfields returnBitfields) {
         if (username == null || username.isEmpty() || username.length() > USERNAME_SIZE) throw new IllegalArgumentException("Username must be between 1 and " + USERNAME_SIZE + " characters");
         if (password == null || password.isEmpty() || password.length() > PASSWORD_SIZE) throw new IllegalArgumentException("Password must be between 1 and " + PASSWORD_SIZE + " characters");
         if (sessionSubID != null && sessionSubID.length() > SESSION_SUB_ID_SIZE) throw new IllegalArgumentException("Session Sub ID must be at most " + SESSION_SUB_ID_SIZE + " characters");
@@ -41,9 +46,10 @@ public final class LoginRequestMessage extends SessionMessage {
         this.username = username;
         this.password = password;
         this.sessionSubID = sessionSubID != null ? sessionSubID : "";
+        this.returnBitfields = returnBitfields != null ? returnBitfields : ReturnBitfields.empty();
         this.matchingUnit = matchingUnit;
         this.sequenceNumber = 0;
-        this.numberOfParamGroups = 0;
+        this.numberOfParamGroups = (byte) this.returnBitfields.entryCount();
     }
 
     @Override
@@ -54,7 +60,8 @@ public final class LoginRequestMessage extends SessionMessage {
         // Calculate message length:
         // Total payload (after the MessageLength field) = 1 + 1 + 4 + 4 + 4 + 10 + 1 = 25 bytes
         // MessageLength = Payload + 2 (for the MessageLength field itself)
-        int payloadLength = 1 + 1 + 4 + SESSION_SUB_ID_SIZE + USERNAME_SIZE + PASSWORD_SIZE + 1;
+        int payloadLength = 1 + 1 + 4 + SESSION_SUB_ID_SIZE + USERNAME_SIZE + PASSWORD_SIZE + 1
+                + returnBitfields.serializedSize();
         
         // MessageLength = Payload + 2 (the MessageLength field itself)
         int messageLength = payloadLength + 2;
@@ -92,6 +99,7 @@ public final class LoginRequestMessage extends SessionMessage {
 
         // Number of Parameter Groups (1 byte)
         buffer.put(numberOfParamGroups);
+        returnBitfields.writeTo(buffer);
 
         return buffer.array();
     }
@@ -147,15 +155,15 @@ public final class LoginRequestMessage extends SessionMessage {
         String password = new String(passwordBytes, StandardCharsets.US_ASCII).trim();
 
         // Create a message
-        LoginRequestMessage msg = new LoginRequestMessage(username, password, sessionSubID, matchingUnit);
-        msg.setSequenceNumber(sequenceNumber);
-
-        // NumberOfParamGroups (1 byte) - if there are more bytes
+        int numberOfParamGroups = 0;
+        ReturnBitfields returnBitfields = ReturnBitfields.empty();
         if (buffer.remaining() > 0) {
-            @SuppressWarnings("unused")
-            int numberOfParamGroups = buffer.get() & 0xFF;
+            numberOfParamGroups = buffer.get() & 0xFF;
+            returnBitfields = ReturnBitfields.parse(numberOfParamGroups, buffer);
         }
 
+        LoginRequestMessage msg = new LoginRequestMessage(username, password, sessionSubID, matchingUnit, returnBitfields);
+        msg.setSequenceNumber(sequenceNumber);
         return msg;
     }
 
@@ -185,6 +193,10 @@ public final class LoginRequestMessage extends SessionMessage {
 
     public int getSequenceNumber() {
         return sequenceNumber;
+    }
+
+    public ReturnBitfields getReturnBitfields() {
+        return returnBitfields;
     }
 
     @Override
