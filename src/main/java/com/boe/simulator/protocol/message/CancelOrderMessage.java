@@ -100,20 +100,20 @@ public final class CancelOrderMessage extends BoeProtocolMessage {
         if (numberOfBitfields < 1) return;
         byte bf1 = bitfields[0];
 
-        if ((bf1 & 0x01) != 0) { byte[] b = new byte[4]; buf.get(b); clearingFirm = stripSpace(b); }
+        if ((bf1 & 0x01) != 0) { byte[] b = new byte[4]; buf.get(b); clearingFirm = stripNul(b); }
         if ((bf1 & 0x02) != 0) massCancelLockout = buf.get();
         if ((bf1 & 0x04) != 0) massCancel = buf.get();
         if ((bf1 & 0x08) != 0) { byte[] b = new byte[6]; buf.get(b); riskRoot = stripNul(b); }
         if ((bf1 & 0x10) != 0) { byte[] b = new byte[20]; buf.get(b); massCancelId = stripNul(b); }
-        if ((bf1 & 0x20) != 0) { byte[] b = new byte[4]; buf.get(b); routingFirmID = stripSpace(b); }
+        if ((bf1 & 0x20) != 0) { byte[] b = new byte[4]; buf.get(b); routingFirmID = stripNul(b); }
         if ((bf1 & 0x40) != 0) manualOrderIndicator = buf.get();
-        if ((bf1 & 0x80) != 0) { byte[] b = new byte[4]; buf.get(b); operatorId = stripSpace(b); }
+        if ((bf1 & 0x80) != 0) { byte[] b = new byte[4]; buf.get(b); operatorId = stripNul(b); }
 
         if (numberOfBitfields < 2) return;
         byte bf2 = bitfields[1];
 
         if ((bf2 & 0x01) != 0) { byte[] b = new byte[16]; buf.get(b); massCancelInst = stripNul(b); }
-        if ((bf2 & 0x02) != 0) { byte[] b = new byte[8]; buf.get(b); symbol = stripSpace(b); }
+        if ((bf2 & 0x02) != 0) { byte[] b = new byte[8]; buf.get(b); symbol = stripNul(b); }
         // 0x04 = SymbolSfx (reserved — skip if present; size unknown, assume 0 in practice)
         if ((bf2 & 0x08) != 0) sendTime = buf.getLong();
     }
@@ -145,20 +145,20 @@ public final class CancelOrderMessage extends BoeProtocolMessage {
         if (numberOfBitfields < 1) return;
         byte bf1 = bitfields[0];
 
-        if ((bf1 & 0x01) != 0) putAlpha(buf, clearingFirm, 4);
+        if ((bf1 & 0x01) != 0) putText(buf, clearingFirm, 4);
         if ((bf1 & 0x02) != 0) buf.put(massCancelLockout);
         if ((bf1 & 0x04) != 0) buf.put(massCancel);
         if ((bf1 & 0x08) != 0) putText(buf, riskRoot, 6);
         if ((bf1 & 0x10) != 0) putText(buf, massCancelId, 20);
-        if ((bf1 & 0x20) != 0) putAlpha(buf, routingFirmID, 4);
+        if ((bf1 & 0x20) != 0) putText(buf, routingFirmID, 4);
         if ((bf1 & 0x40) != 0) buf.put(manualOrderIndicator);
-        if ((bf1 & 0x80) != 0) putAlpha(buf, operatorId, 4);
+        if ((bf1 & 0x80) != 0) putText(buf, operatorId, 4);
 
         if (numberOfBitfields < 2) return;
         byte bf2 = bitfields[1];
 
         if ((bf2 & 0x01) != 0) putText(buf, massCancelInst, 16);
-        if ((bf2 & 0x02) != 0) putAlpha(buf, symbol, 8);
+        if ((bf2 & 0x02) != 0) putText(buf, symbol, 8);
         if ((bf2 & 0x08) != 0) buf.putLong(sendTime);
     }
 
@@ -183,20 +183,9 @@ public final class CancelOrderMessage extends BoeProtocolMessage {
         return size;
     }
 
-    // Text fields: NUL-padded (0x00)
+    // All string fields (Alpha, Alphanumeric, Text) use NUL (0x00) padding per spec p.10
     private static void putText(ByteBuffer buf, String s, int len) {
         byte[] bytes = new byte[len];
-        if (s != null && !s.isEmpty()) {
-            byte[] src = s.getBytes(StandardCharsets.US_ASCII);
-            System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));
-        }
-        buf.put(bytes);
-    }
-
-    // Alphanumeric fields: space-padded (0x20)
-    private static void putAlpha(ByteBuffer buf, String s, int len) {
-        byte[] bytes = new byte[len];
-        java.util.Arrays.fill(bytes, (byte) 0x20);
         if (s != null && !s.isEmpty()) {
             byte[] src = s.getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));
@@ -208,10 +197,6 @@ public final class CancelOrderMessage extends BoeProtocolMessage {
         int end = b.length;
         while (end > 0 && b[end - 1] == 0) end--;
         return new String(b, 0, end, StandardCharsets.US_ASCII);
-    }
-
-    private static String stripSpace(byte[] b) {
-        return new String(b, StandardCharsets.US_ASCII).stripTrailing();
     }
 
     public boolean isMassCancel() {
