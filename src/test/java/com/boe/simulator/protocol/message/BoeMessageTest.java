@@ -47,12 +47,14 @@ class BoeMessageTest {
     }
 
     @Test
-    void getData_shouldReturnDirectReference() {
-        // getData() returns the internal array directly (no defensive copy) for zero-copy performance.
+    void getData_shouldReturnDefensiveCopy() {
         byte[] originalData = {0x04, 0x00, 0x01, 0x02};
         BoeMessage message = new BoeMessage(originalData);
 
-        assertSame(originalData, message.getData());
+        byte[] first = message.getData();
+        byte[] second = message.getData();
+        assertArrayEquals(first, second);
+        assertNotSame(first, second); // each call returns a fresh copy
     }
 
     @Test
