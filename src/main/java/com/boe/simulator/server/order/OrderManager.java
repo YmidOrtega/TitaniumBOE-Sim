@@ -400,7 +400,12 @@ public class OrderManager {
 
         if (handler != null && handler.getSession().isAuthenticated()) {
             try {
-                OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(trade, order, isAggressive);
+                OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(
+                        trade,
+                        order,
+                        isAggressive,
+                        handler.getSession().getReturnBitfields()
+                );
                 execMsg.setMatchingUnit(handler.getSession().getMatchingUnit());
                 execMsg.setSequenceNumber(handler.getSession().getNextSentSequenceNumber());
 

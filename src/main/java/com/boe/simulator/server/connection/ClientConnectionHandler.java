@@ -142,7 +142,6 @@ public class ClientConnectionHandler implements Runnable {
             // Create specific message object
             BoeProtocolMessage specificMessage = BoeMessageFactory.createMessage(message);
 
-            // Dispatch to appropriate handler
             switch (specificMessage) {
                 case null -> {
                     LOGGER.log(Level.WARNING, "[Session {0}] Unknown message type: 0x{1}", new Object[]{
@@ -195,6 +194,7 @@ public class ClientConnectionHandler implements Runnable {
         session.setUsername(request.getUsername());
         session.setSessionSubID(request.getSessionSubID());
         session.setMatchingUnit(request.getMatchingUnit());
+        session.setReturnBitfields(request.getReturnBitfields());
         session.updateReceivedSequenceNumber(request.getSequenceNumber());
 
         AuthenticationResult authResult = authService.authenticate(
@@ -394,7 +394,8 @@ public class ClientConnectionHandler implements Runnable {
             OrderAcknowledgmentMessage ack = OrderAcknowledgmentMessage.fromOrder(
                     order,
                     session.getMatchingUnit(),
-                    session.getNextSentSequenceNumber()
+                    session.getNextSentSequenceNumber(),
+                    session.getReturnBitfields()
             );
 
             byte[] ackBytes = ack.toBytes();
