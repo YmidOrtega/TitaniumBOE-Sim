@@ -156,14 +156,7 @@ public class OrderValidator {
         return repository.existsByClOrdID(clOrdID);
     }
 
-    public static class ValidationResult {
-        private final boolean valid;
-        private final String errorMessage;
-
-        private ValidationResult(boolean valid, String errorMessage) {
-            this.valid = valid;
-            this.errorMessage = errorMessage;
-        }
+    public record ValidationResult(boolean isValid, String errorMessage) {
 
         public static ValidationResult valid() {
             return new ValidationResult(true, null);
@@ -173,17 +166,9 @@ public class OrderValidator {
             return new ValidationResult(false, errorMessage);
         }
 
-        public boolean isValid() {
-            return valid;
-        }
-
-        public String getErrorMessage() {
-            return errorMessage;
-        }
-
         @Override
         public String toString() {
-            return valid ? "Valid" : "Invalid: " + errorMessage;
+            return isValid ? "Valid" : "Invalid: " + errorMessage;
         }
     }
 }

@@ -128,12 +128,12 @@ public class OrderManager {
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
         if (!validation.isValid()) {
             LOGGER.log(Level.WARNING, "[{0}] Order rejected - validation failed: {1}",
-                    new Object[]{context.getSessionIdentifier(), validation.getErrorMessage()});
+                    new Object[]{context.getSessionIdentifier(), validation.errorMessage()});
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
                     OrderRejectedMessage.REASON_MISSING_REQUIRED_FIELD,
-                    validation.getErrorMessage()
+                    validation.errorMessage()
             );
         }
         

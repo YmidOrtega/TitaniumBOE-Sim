@@ -163,7 +163,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertTrue(result.isValid(), "Should be valid for a correctly formed message");
-        assertNull(result.getErrorMessage());
+        assertNull(result.errorMessage());
     }
 
     @Test
@@ -171,7 +171,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage(null, (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("ClOrdID cannot be empty"));
+        assertTrue(result.errorMessage().contains("ClOrdID cannot be empty"));
     }
 
     @Test
@@ -179,7 +179,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("ClOrdID cannot be empty"));
+        assertTrue(result.errorMessage().contains("ClOrdID cannot be empty"));
     }
 
     @Test
@@ -187,7 +187,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("LONGLONGLONGLONGLONGCLORDID", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("ClOrdID exceeds maximum length"));
+        assertTrue(result.errorMessage().contains("ClOrdID exceeds maximum length"));
     }
 
     @Test
@@ -195,7 +195,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("CLORD;ID", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("ClOrdID contains invalid characters"));
+        assertTrue(result.errorMessage().contains("ClOrdID contains invalid characters"));
     }
 
     @Test
@@ -203,7 +203,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 0, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Invalid Side"));
+        assertTrue(result.errorMessage().contains("Invalid Side"));
     }
 
     @Test
@@ -211,7 +211,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 0, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("OrderQty must be at least 1"));
+        assertTrue(result.errorMessage().contains("OrderQty must be at least 1"));
     }
 
     @Test
@@ -219,7 +219,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 1000000, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("OrderQty exceeds system limit"));
+        assertTrue(result.errorMessage().contains("OrderQty exceeds system limit"));
     }
 
     @Test
@@ -227,7 +227,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 10, null, (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Symbol is required"));
+        assertTrue(result.errorMessage().contains("Symbol is required"));
     }
 
     @Test
@@ -235,7 +235,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 10, "", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Symbol is required"));
+        assertTrue(result.errorMessage().contains("Symbol is required"));
     }
 
     @Test
@@ -243,7 +243,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("VALIDCLORDID1", (byte) 1, 10, "LONGSYMBOL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Symbol exceeds maximum length"));
+        assertTrue(result.errorMessage().contains("Symbol exceeds maximum length"));
     }
 
     @Test
@@ -251,7 +251,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 10, "APPL!", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Symbol must contain only uppercase letters and numbers"));
+        assertTrue(result.errorMessage().contains("Symbol must contain only uppercase letters and numbers"));
     }
 
     @Test
@@ -259,7 +259,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) 2, null, (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Price is required for limit orders"));
+        assertTrue(result.errorMessage().contains("Price is required for limit orders"));
     }
 
     @Test
@@ -274,7 +274,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) 2, new BigDecimal("-10.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Price cannot be negative"));
+        assertTrue(result.errorMessage().contains("Price cannot be negative"));
     }
 
     @Test
@@ -282,7 +282,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) 2, new BigDecimal("1000000.00"), (byte) 'A', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Price exceeds maximum value"));
+        assertTrue(result.errorMessage().contains("Price exceeds maximum value"));
     }
 
     @Test
@@ -290,7 +290,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'X', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Invalid Capacity"));
+        assertTrue(result.errorMessage().contains("Invalid Capacity"));
     }
 
     @Test
@@ -298,7 +298,7 @@ class OrderValidatorTest {
         NewOrderMessage message = buildNewOrderMessage("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 'Z', null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Invalid OpenClose"));
+        assertTrue(result.errorMessage().contains("Invalid OpenClose"));
     }
 
     @Test
@@ -306,7 +306,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, "20251231", null, (byte) '0');
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("StrikePrice is required for option orders"));
+        assertTrue(result.errorMessage().contains("StrikePrice is required for option orders"));
     }
 
     @Test
@@ -321,7 +321,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, "20251231", new BigDecimal("-5.00"), (byte) '0');
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Invalid StrikePrice: Price cannot be negative"));
+        assertTrue(result.errorMessage().contains("Invalid StrikePrice: Price cannot be negative"));
     }
 
     @Test
@@ -329,7 +329,7 @@ class OrderValidatorTest {
         NewOrderMessage message = createMessageWithReflection("VALIDCLORDID1", (byte) 1, 10, "AAPL", (byte) '2', new BigDecimal("150.00"), (byte) 'A', (byte) 0, "20251231", new BigDecimal("160.00"), (byte) '2');
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.getErrorMessage().contains("Invalid PutOrCall"));
+        assertTrue(result.errorMessage().contains("Invalid PutOrCall"));
     }
 
     // --- isDuplicateClOrdID tests ---
