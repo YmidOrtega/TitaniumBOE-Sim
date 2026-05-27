@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public final class LoginRequestMessage extends BoeProtocolMessage {
+public final class LoginRequestMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x37;
 
     // Start of Message marker

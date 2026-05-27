@@ -31,7 +31,7 @@ import java.nio.charset.StandardCharsets;
  *   Byte 2: 0x01=Symbol, 0x40=Capacity
  *   Byte 5: 0x02=LeavesQty
  */
-public final class OrderModifiedMessage extends BoeProtocolMessage {
+public final class OrderModifiedMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x27;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

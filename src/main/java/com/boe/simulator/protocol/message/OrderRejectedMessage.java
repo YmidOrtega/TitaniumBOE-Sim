@@ -24,7 +24,7 @@ import java.util.Arrays;
  *   [101] ReturnBitfield¹…ᴺ   NB
  *         Optional fields…
  */
-public final class OrderRejectedMessage extends BoeProtocolMessage {
+public final class OrderRejectedMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x26;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

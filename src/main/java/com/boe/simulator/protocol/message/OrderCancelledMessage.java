@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets;
  *   Byte 1: 0x01=Side, 0x04=Price, 0x10=OrdType
  *   Byte 5: 0x01=OrigClOrdID (20B Text)
  */
-public final class OrderCancelledMessage extends BoeProtocolMessage {
+public final class OrderCancelledMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x2A;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

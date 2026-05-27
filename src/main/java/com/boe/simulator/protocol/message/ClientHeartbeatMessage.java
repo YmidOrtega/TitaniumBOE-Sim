@@ -3,7 +3,7 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public final class ClientHeartbeatMessage extends BoeProtocolMessage {
+public final class ClientHeartbeatMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x03;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;

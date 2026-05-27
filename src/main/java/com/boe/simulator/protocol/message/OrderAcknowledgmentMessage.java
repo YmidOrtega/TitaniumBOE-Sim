@@ -34,7 +34,7 @@ import java.time.ZoneId;
  *   Byte 3: 0x01=Account, 0x02=ClearingFirm, 0x04=ClearingAccount, 0x40=OrderQty
  *   Byte 4: 0x01=MaturityDate, 0x02=StrikePrice, 0x04=PutOrCall, 0x08=OpenClose
  */
-public final class OrderAcknowledgmentMessage extends BoeProtocolMessage {
+public final class OrderAcknowledgmentMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x25;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

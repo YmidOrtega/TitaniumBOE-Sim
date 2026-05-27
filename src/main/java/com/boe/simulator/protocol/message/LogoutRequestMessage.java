@@ -3,7 +3,7 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public final class LogoutRequestMessage extends BoeProtocolMessage {
+public final class LogoutRequestMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x02;
     
     // Start of Message marker

@@ -35,7 +35,7 @@ import java.time.Instant;
  *   [94]  ReturnBitfield¹…ᴺ   NB
  *         Optional fields…
  */
-public final class TradeCancelOrCorrectMessage extends BoeProtocolMessage {
+public final class TradeCancelOrCorrectMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x2D;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

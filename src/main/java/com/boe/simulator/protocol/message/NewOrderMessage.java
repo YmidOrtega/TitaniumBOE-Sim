@@ -37,7 +37,7 @@ import com.boe.simulator.protocol.types.BinaryPrice;
  * Required optional fields (must always be enabled via bitfield):
  *   Symbol, Price (for limit orders), Capacity.
  */
-public final class NewOrderMessage extends BoeProtocolMessage {
+public final class NewOrderMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x38;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;

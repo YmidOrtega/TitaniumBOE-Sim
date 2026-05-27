@@ -23,7 +23,7 @@ import java.nio.charset.StandardCharsets;
  *   [101] ReturnBitfield¹…ᴺ   NB
  *         Optional fields…
  */
-public final class UserModifyRejectedMessage extends BoeProtocolMessage {
+public final class UserModifyRejectedMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x29;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;

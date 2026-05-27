@@ -9,7 +9,7 @@ import java.nio.ByteOrder;
  * Source: spec v2.11.90 Table 25 (p. 59).
  * Wire size: 10 bytes (header only, no payload fields).
  */
-public final class ReplayCompleteMessage extends BoeProtocolMessage {
+public final class ReplayCompleteMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x13;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
