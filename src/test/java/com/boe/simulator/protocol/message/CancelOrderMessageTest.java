@@ -50,13 +50,8 @@ class CancelOrderMessageTest {
     }
 
     private static void putAlpha(ByteBuffer buf, String s, int len) {
-        byte[] b = new byte[len];
-        Arrays.fill(b, (byte) 0x20);
-        if (s != null && !s.isEmpty()) {
-            byte[] src = s.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
-            System.arraycopy(src, 0, b, 0, Math.min(src.length, len));
-        }
-        buf.put(b);
+        // Alpha/Alphanumeric fields are NUL-padded per spec p.10
+        putText(buf, s, len);
     }
 
     // ── Fixed header ─────────────────────────────────────────────────────────
@@ -157,7 +152,7 @@ class CancelOrderMessageTest {
 
     @Test
     void testBf1ClearingFirm() {
-        // BF1 = 0x01 → ClearingFirm 4B Alpha (space-padded)
+        // BF1 = 0x01 → ClearingFirm 4B Alpha (NUL-padded per spec p.10)
         ByteBuffer opt = ByteBuffer.allocate(4);
         putAlpha(opt, "FIRM", 4);
         byte[] raw = buildRaw("ORD1", 1, new byte[]{0x01}, opt.array());
@@ -203,8 +198,8 @@ class CancelOrderMessageTest {
     // ── Bitfield 1 — RoutingFirmID (0x20) ────────────────────────────────────
 
     @Test
-    void testBf1RoutingFirmId_SpacePadded() {
-        // BF1 = 0x20 → RoutingFirmID 4B Alpha (space-padded)
+    void testBf1RoutingFirmId_NulPadded() {
+        // BF1 = 0x20 → RoutingFirmID 4B Alpha (NUL-padded per spec p.10)
         ByteBuffer opt = ByteBuffer.allocate(4);
         putAlpha(opt, "RT01", 4);
         byte[] raw = buildRaw("ORD1", 1, new byte[]{0x20}, opt.array());
@@ -235,18 +230,18 @@ class CancelOrderMessageTest {
     // ── Bitfield 2 — Symbol (0x02) ────────────────────────────────────────────
 
     @Test
-    void testBf2Symbol_SpacePadded() {
-        // BF2 = 0x02 → Symbol 8B Alpha (space-padded)
+    void testBf2Symbol_NulPadded() {
+        // BF2 = 0x02 → Symbol 8B Alphanumeric (NUL-padded per spec p.10)
         ByteBuffer opt = ByteBuffer.allocate(8);
         putAlpha(opt, "SPX", 8);
         byte[] raw = buildRaw("ORD1", 2, new byte[]{0x00, 0x02}, opt.array());
 
         CancelOrderMessage msg = CancelOrderMessage.parse(raw);
         assertEquals("SPX", msg.getSymbol());
-        // verify space-padding in wire
+        // verify NUL-padding in wire
         byte[] wire = msg.toBytes();
         // Symbol starts at: 31 (fixed) + 2 (bf array) = 33
-        assertEquals(0x20, wire[33 + 3], "byte 3 of Symbol must be space");
+        assertEquals(0x00, wire[33 + 3], "byte 3 of Symbol must be NUL");
         assertArrayEquals(raw, wire);
     }
 
