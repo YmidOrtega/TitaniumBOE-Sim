@@ -140,7 +140,7 @@ jobs:
       run: |
         echo "Waiting for server to start..."
         for i in {1..30}; do
-          if curl -s http://localhost:9091/api/health > /dev/null 2>&1; then
+          if curl -s http://localhost:8081/api/health > /dev/null 2>&1; then
             echo "✓ Server is ready!"
             exit 0
           fi
@@ -154,18 +154,18 @@ jobs:
 
     - name: Health Check
       run: |
-        RESPONSE=$(curl -s http://localhost:9091/api/health)
+        RESPONSE=$(curl -s http://localhost:8081/api/health)
         echo "Health response: $RESPONSE"
         echo "$RESPONSE" | jq -e '.status == "healthy"' || exit 1
 
     - name: API Integration Tests
       run: |
         echo "Testing public endpoints..."
-        curl -f http://localhost:9091/api/symbols || exit 1
-        
+        curl -f http://localhost:8081/api/symbols || exit 1
+
         echo "Testing authenticated endpoints..."
-        curl -f -u $DEMO_USER:$DEMO_PASS http://localhost:9091/api/positions || exit 1
-        curl -f -u $DEMO_USER:$DEMO_PASS http://localhost:9091/api/trades/my || exit 1
+        curl -f -u $DEMO_USER:$DEMO_PASS http://localhost:8081/api/positions || exit 1
+        curl -f -u $DEMO_USER:$DEMO_PASS http://localhost:8081/api/trades/my || exit 1
 
     - name: Upload Server Logs
       if: always()
