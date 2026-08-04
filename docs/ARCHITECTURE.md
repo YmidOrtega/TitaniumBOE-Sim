@@ -174,20 +174,37 @@ public class ReturnBitfields {
 
 ```java
 public record BinaryPrice(long rawValue) {
-    private static final long SCALE = 10_000L;  // 4 decimales implícitos
-
-    public BigDecimal toPrice() {
-        return BigDecimal.valueOf(rawValue, 4);  // scale=4
-    }
 
     public static BinaryPrice fromPrice(BigDecimal price) {
-        long raw = price.scaleByPowerOfTen(4).longValueExact();
+        long raw = price.setScale(4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(10000))
+                        .longValueExact();
         return new BinaryPrice(raw);
+    }
+
+    public BigDecimal toPrice() {
+        return BigDecimal.valueOf(rawValue).divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP);
+    }
+
+    public void putInto(ByteBuffer buf) {   // sin asignación, para el hot path
+        buf.putLong(rawValue);
     }
 }
 ```
 
 `12.3400` → rawValue `123400` → wire `08 E2 01 00 00 00 00 00`
+
+**Cuatro decisiones en estas pocas líneas:**
+
+- **Nunca `double` para dinero.** Un error de redondeo de un ULP puede hacer que dos órdenes
+  crucen cuando no deben.
+- **`long` como representación interna, no `BigDecimal`.** El protocolo transmite un entero con
+  4 decimales implícitos: el `long` *es* el formato de cable. `BigDecimal` solo aparece en la
+  frontera de la API.
+- **`longValueExact()` y no `longValue()`.** Si el precio desborda un `long`, lanza
+  `ArithmeticException` en lugar de truncar en silencio.
+- **`putInto(ByteBuffer)`** escribe directamente sobre un buffer existente, sin asignar un
+  array intermedio como hace `toBytes()`.
 
 ---
 
@@ -288,19 +305,56 @@ processOrder(Order incoming)
     └── Si leavesQty > 0 y order.isLive() → addOrder(book)
 ```
 
-### 6.3 Sincronización
+### 6.3 Sincronización — dos capas con propósitos distintos
+
+**Capa 1 — `MatchingEngine`: un lock por símbolo.** Serializa las *escrituras*.
 
 ```java
-// Lock por símbolo — no hay contención entre AAPL y SPX
 private final Map<String, Object> symbolLocks = new ConcurrentHashMap<>();
 
 public List<Trade> processOrder(Order order) {
     Object lock = symbolLocks.computeIfAbsent(order.getSymbol(), k -> new Object());
     synchronized (lock) {
-        // ... matching completo bajo el lock del símbolo
+        // ... ciclo de matching completo bajo el lock del símbolo
     }
 }
 ```
+
+Hace atómico el ciclo entero —cruzar contra varios niveles, generar trades, actualizar
+cantidades— sin serializar símbolos entre sí: `AAPL` y `SPX` no comparten estado, así que su
+matching corre en paralelo con contención cero.
+
+**Capa 2 — `OrderBook`: `StampedLock` con lectura optimista.** Protege a los *lectores*.
+
+```java
+private final StampedLock lock = new StampedLock();
+
+public BigDecimal getBestBid() {
+    long stamp = lock.tryOptimisticRead();
+    BigDecimal result = bestBidUnlocked();
+    if (!lock.validate(stamp)) {              // ¿hubo escritura mientras leía?
+        stamp = lock.readLock();
+        try { result = bestBidUnlocked(); } finally { lock.unlockRead(stamp); }
+    }
+    return result;
+}
+```
+
+No es redundante con la capa 1: al libro lo leen consumidores que **no pasan por el motor** —
+la API REST devolviendo profundidad de mercado, el `WebSocketService` emitiendo
+actualizaciones, los bots consultando el mejor bid. Esos leen mientras el motor escribe.
+
+La lectura optimista importa porque las lecturas superan con mucho a las escrituras:
+`tryOptimisticRead` no toma lock, lee y valida después. Si nadie escribió en medio —el caso
+habitual— no ha habido contención en absoluto; solo si hubo escritura concurrente se reintenta
+con un read lock real.
+
+`OrderBook` es una clase pública y se protege a sí misma en vez de confiar en que todos sus
+llamantes pasen antes por el lock del motor.
+
+**Limitación conocida:** la notificación a listeners (`notifyOrderAdded`, difusión por
+WebSocket) ocurre hoy *dentro* de la sección crítica del símbolo. Un consumidor lento alarga
+el lock y frena el matching de ese símbolo. Debería encolarse y emitirse fuera del lock.
 
 ### 6.4 Modify Order — Lógica Spec (p.77)
 
@@ -433,6 +487,45 @@ OrderManager / TradeService
 
 **Ventaja:** el matching engine y el dispatcher nunca esperan I/O de disco. La confirmación va al cliente (OrderAck) antes de que la persistencia se complete.
 
+El hilo consumidor es un hilo virtual (`order-persist`) y no escribe de una en una:
+
+```java
+public void saveAsync(Order order) {
+    if (!writeQueue.offer(order)) {
+        save(order);                      // cola llena → escritura síncrona
+    }
+}
+
+private void runAsyncWriter() {
+    List<Order> batch = new ArrayList<>(256);
+    while (asyncRunning) {
+        Order first = writeQueue.poll(1, TimeUnit.MILLISECONDS);
+        if (first == null) continue;
+        batch.add(first);
+        writeQueue.drainTo(batch, 255);   // hasta 256 por flush
+        flushBatch(batch);
+        batch.clear();
+    }
+    flushRemaining();
+}
+```
+
+**Batching adaptativo:** `drainTo` agrupa lo que haya en cola en un `WriteBatch` de RocksDB,
+mucho más eficiente que N escrituras sueltas. El lote se forma solo bajo carga: si llega una
+orden aislada, `flushBatch` detecta `size() == 1` y hace un `put` normal.
+
+**Backpressure en vez de pérdida:** si la cola se llena, `saveAsync` no descarta la orden ni
+deja crecer la cola sin límite — el productor paga el coste de escribir él mismo. Bajo
+saturación el sistema se ralentiza; no pierde datos.
+
+**Parada limpia:** `stopAsyncPersistence()` interrumpe el hilo, espera hasta 5 s y drena lo que
+quede pendiente con `flushRemaining()`.
+
+**Trade-off:** se confirma al cliente antes de que la orden esté en disco, así que un crash
+abrupto puede perder lo que quedara en cola. Aceptable en un simulador; en producción harían
+falta WAL con `fsync` síncrono para las órdenes, dejando write-behind solo para lo que tolera
+pérdida (estadísticas, auditoría).
+
 ### 8.2 Column Families
 
 | Column Family | Clave | Valor |
@@ -532,10 +625,22 @@ Cada bot opera via la REST API interna, generando actividad continua en el match
 **Decisión:** `BoeProtocolMessage` como sealed class con dos ramas: `SessionMessage` y `ApplicationMessage`.  
 **Por qué:** el compilador verifica exhaustividad del switch. Agregar un nuevo tipo de mensaje requiere actualizar el switch — la omisión es un error de compilación, no un bug silencioso en runtime.
 
-### 11.3 Synchronization por Símbolo en MatchingEngine
+### 11.3 Dos Capas de Sincronización
 
-**Decisión:** `ConcurrentHashMap<String, Object>` de locks, uno por símbolo.  
-**Por qué:** `AAPL` y `SPX` no comparten estado; no tiene sentido serializar su matching. Esto permite matching paralelo entre símbolos con zero contención entre ellos.
+**Decisión:** `synchronized` sobre un lock por símbolo en `MatchingEngine` para las escrituras,
+y `StampedLock` con lectura optimista dentro de `OrderBook` para las lecturas.
+
+**Por qué el lock por símbolo:** `AAPL` y `SPX` no comparten estado; serializar su matching no
+aporta nada y cuesta throughput. Dentro de un mismo símbolo, en cambio, el matching *tiene* que
+ser secuencial: si dos órdenes cruzan en paralelo, el orden de llegada deja de determinar quién
+ejecuta primero y la prioridad precio-tiempo pierde su significado. Los exchanges reales
+tampoco paralelizan dentro de un símbolo — paralelizan entre símbolos.
+
+**Por qué además el `StampedLock`:** el libro lo leen consumidores que no pasan por el motor
+(REST, WebSocket, bots) y esas lecturas concurren con las escrituras del matching. La lectura
+optimista permite que el caso dominante —leer sin escritura simultánea— no tome ningún lock.
+
+Detalle completo y limitación conocida en §6.3.
 
 ### 11.4 TreeMap para OrderBook
 
@@ -558,19 +663,55 @@ Cada bot opera via la REST API interna, generando actividad continua en el match
 
 ### 12.1 Cobertura
 
-319 tests distribuidos en 30 clases:
+347 tests distribuidos en 33 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (protocol) | ~150 | Parseo byte a byte contra la spec |
-| Matching engine | ~20 | Price-time priority, self-trade, Modify delta logic |
-| Session layer | ~40 | Login, logout, heartbeat, secuencias |
-| Order management | ~30 | Validación, ciclo de vida, estados |
-| Persistencia | ~15 | RocksDB CRUD, serialización |
-| REST / auth | ~20 | Endpoints, autenticación, errores |
-| Load test | manual | `LoadTestRunner` (5 fases, no en el suite de CI) |
+| Wire format (`protocol/message/`) | 173 | Parseo y serialización byte a byte contra la spec |
+| Session layer (`server/session/`) | 35 | Login, logout, estadísticas de sesión |
+| Order management (`server/order/`) | 31 | Validación, ciclo de vida, estados |
+| **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
+| Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
+| Tipos del protocolo (`protocol/types/`) | 15 | `BinaryPrice`, enums de dominio |
+| Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
+| Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
+| Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
+| Rate limiting (`server/ratelimit/`) | 6 | Ventana fija por conexión |
+| Validación de mensajes (`server/validation/`) | 5 | Campos obligatorios y rangos |
+| Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
+| Métricas (`server/metrics/`) | 5 | Contadores de salud |
+| Load test | manual | `LoadTestRunner` (5 fases, fuera del suite de CI) |
 
-### 12.2 Load Test Runner (Fase 10)
+### 12.2 Cobertura del Motor de Matching
+
+Repartida en cuatro clases, cubre las invariantes que hacen correcto a un motor de órdenes:
+
+**`MatchingEnginePriorityTest`** — prioridad precio-tiempo:
+FIFO dentro de un nivel de precio, mejor precio primero entre niveles, precio de ejecución
+igual al de la orden pasiva (mejora de precio para el agresor), barrido de varios niveles,
+fills parciales que dejan remanente en el libro, órdenes MARKET, y aislamiento entre símbolos.
+
+**`MatchingEngineSelfTradeTest`** — prevención de wash trades:
+la orden pasiva propia se cancela y la agresiva continúa contra la siguiente contrapartida
+ajena; con `allowSelfTrade=true` el cruce sí se ejecuta.
+
+**`MatchingEngineModifyTest`** — Modify Order (§6.4):
+el reprecio mueve la orden entre niveles sin dejar fantasmas y **la orden sigue siendo
+cancelable después**, que es la regresión concreta que aparecería si se actualizara el precio
+antes de removerla del `TreeMap`. Cubre también la lógica de delta sobre `leavesQty` en ambos
+sentidos, la auto-cancelación cuando el delta la deja en cero, y el reprecio agresivo que cruza.
+
+**`MatchingEngineConcurrencyTest`** — las dos capas de bloqueo (§6.3):
+símbolos distintos procesados en paralelo mantienen sus libros aislados; agresores concurrentes
+sobre el mismo símbolo casan exactamente `min(oferta, demanda)` sin que ninguna orden ejecute
+más de su cantidad —la invariante que rompería un lock mal puesto—; y lectores concurrentes
+(`getBestBid`, `getSnapshot`, `size`) sobre el libro durante 500 escrituras no observan estado
+inconsistente ni lanzan excepciones.
+
+Pendiente: tests de integración extremo a extremo que ejerciten el camino completo
+`ClientConnectionHandler → OrderManager → MatchingEngine` sobre un socket real.
+
+### 12.3 Load Test Runner
 
 ```bash
 mvn test-compile
