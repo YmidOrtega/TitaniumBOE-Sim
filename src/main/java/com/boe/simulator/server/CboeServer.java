@@ -39,7 +39,22 @@ import com.boe.simulator.server.session.ClientSessionManager;
 public class CboeServer {
     private static final Logger LOGGER = Logger.getLogger(CboeServer.class.getName());
 
+    public static final int DEFAULT_API_PORT = 9091;
+    public static final int DEFAULT_BOE_PORT = 8081;
+
+    public static int resolveApiPort() {
+        return Integer.parseInt(
+                System.getenv().getOrDefault("PORT",
+                System.getenv().getOrDefault("API_PORT", String.valueOf(DEFAULT_API_PORT))));
+    }
+
+    public static int resolveBoePort() {
+        return Integer.parseInt(
+                System.getenv().getOrDefault("BOE_PORT", String.valueOf(DEFAULT_BOE_PORT)));
+    }
+
     private final ServerConfiguration config;
+    private final int apiPort;
     private final ExecutorService clientExecutor;
     private final AtomicBoolean running;
     private final AtomicInteger activeConnections;
@@ -95,10 +110,7 @@ public class CboeServer {
 
         OrderRepository orderRepo = orderManager.getOrderRepository();
 
-        // Railway injects PORT; fallback to API_PORT, then 8081
-        int apiPort = Integer.parseInt(
-                System.getenv().getOrDefault("PORT",
-                System.getenv().getOrDefault("API_PORT", "8081")));
+        this.apiPort = resolveApiPort();
 
         this.restApiServer = new RestApiServer(
                 apiPort,
@@ -132,7 +144,7 @@ public class CboeServer {
         restApiServer.start();
 
         LOGGER.log(Level.INFO, "✓ CBOE Server started successfully on {0}:{1}", new Object[]{config.getHost(), config.getPort()});
-        LOGGER.info("✓ REST API available on http://localhost:8081");
+        LOGGER.log(Level.INFO, "✓ REST API available on http://localhost:{0}", apiPort);
 
 
         // Create server socket
@@ -412,8 +424,7 @@ public class CboeServer {
     }
 
     public static void main(String[] args) {
-        // BOE_PORT avoids conflicting with PORT (Railway injects PORT for HTTP)
-        int boePort = Integer.parseInt(System.getenv().getOrDefault("BOE_PORT", "9090"));
+        int boePort = resolveBoePort();
         ServerConfiguration config = ServerConfiguration.builder()
                 .host("0.0.0.0")
                 .port(boePort)
@@ -440,21 +451,27 @@ public class CboeServer {
                     ╔════════════════════════════════════════════════════════════╗
                     ║         CBOE Server + REST API - RUNNING                   ║
                     ╠════════════════════════════════════════════════════════════╣
-                    ║  BOE Protocol: %s:%d                                ║
-                    ║  REST API: http://localhost:8081                           ║
-                    ║  Max Connections: %d                                    ║
+                    ║  BOE Protocol: %-44s║
+                    ║  REST API: %-48s║
+                    ║  Max Connections: %-41d║
                     ║  Persistence: ENABLED                                      ║
                     ║  Matching Engine: ENABLED                                  ║
                     ║  DEMO Mode: %-47s║
                     ║                                                            ║
-                    ║  API Documentation: http://localhost:8081/api/docs         ║
-                    ║  Swagger UI: http://localhost:8081/api/swagger             ║
-                    ║  OpenAPI Spec: http://localhost:8081/openapi               ║
+                    ║  API Documentation: %-39s║
+                    ║  Swagger UI: %-46s║
+                    ║  OpenAPI Spec: %-44s║
                     ║                                                            ║
                     ║  Press Ctrl+C to stop the server                           ║
                     ╚════════════════════════════════════════════════════════════╝
-                    %n""", config.getHost(), config.getPort(), config.getMaxConnections(), 
-                    isDemoMode ? "TRUE" : "FALSE");
+                    %n""",
+                    config.getHost() + ":" + config.getPort(),
+                    "http://localhost:" + server.apiPort,
+                    config.getMaxConnections(),
+                    isDemoMode ? "TRUE" : "FALSE",
+                    "http://localhost:" + server.apiPort + "/api/docs",
+                    "http://localhost:" + server.apiPort + "/api/swagger",
+                    "http://localhost:" + server.apiPort + "/openapi");
 
             ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
             scheduler.scheduleAtFixedRate(() -> {

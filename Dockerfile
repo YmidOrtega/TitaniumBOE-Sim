@@ -46,16 +46,17 @@ RUN groupadd -r appgroup && \
 # Switch to non-root user
 USER appuser
 
-# Expose ports (REST API/dashboard + BOE binary protocol)
-EXPOSE 8081 9090
+# Expose ports (BOE binary protocol + REST API/dashboard)
+EXPOSE 8081 9091
 
-# Health check against the API port (override with API_PORT or PORT env var)
+# Health check against the API port (PORT wins when the platform injects it)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:${API_PORT:-8081}/api/health || exit 1
+  CMD curl -f http://localhost:${PORT:-${API_PORT:-9091}}/api/health || exit 1
 
 # Environment variables with defaults
 ENV DEMO_MODE=true \
-    API_PORT=8081 \
+    BOE_PORT=8081 \
+    API_PORT=9091 \
     LOG_LEVEL=INFO
 
 # Run the application

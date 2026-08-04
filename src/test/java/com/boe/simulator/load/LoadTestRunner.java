@@ -2,6 +2,7 @@ package com.boe.simulator.load;
 
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
+import com.boe.simulator.server.CboeServer;
 import com.sun.management.UnixOperatingSystemMXBean;
 
 import java.io.*;
@@ -18,9 +19,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * TitaniumBOE-Sim — Load Test Runner
  *
  * Tests five dimensions independently:
- *   1. TCP Connection Capacity  — raw sockets to port 9090, no login
+ *   1. TCP Connection Capacity  — raw sockets to the BOE port, no login
  *   2. BOE Login Throughput     — full login/hold/close cycle (needs unique users)
- *   3. REST API Throughput      — concurrent HTTP requests to port 8081
+ *   3. REST API Throughput      — concurrent HTTP requests to the REST port
  *   4. Order Ack Latency        — spec-correct New Order → Order Ack RTT (μs precision)
  *   5. Memory Stability         — 10,000 orders, heap growth bounded check
  *
@@ -49,8 +50,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class LoadTestRunner {
 
     static final String HOST      = "localhost";
-    static final int    BOE_PORT  = 9090;
-    static final int    REST_PORT = 8081;
+    static final int    BOE_PORT  = CboeServer.DEFAULT_BOE_PORT;
+    static final int    REST_PORT = CboeServer.DEFAULT_API_PORT;
 
     // BOE message type constants
     static final byte MSG_SERVER_HB   = 0x01;
