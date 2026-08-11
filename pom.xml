@@ -13,7 +13,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.release>21</maven.compiler.release>
-        <junit.jupiter.version>5.11.4</junit.jupiter.version>
+        <junit.jupiter.version>5.14.4</junit.jupiter.version>
         <mockito.version>5.20.0</mockito.version>
         <jackson.version>2.21.3</jackson.version>
         
