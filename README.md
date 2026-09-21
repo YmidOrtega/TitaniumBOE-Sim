@@ -235,9 +235,20 @@ mvn clean test jacoco:report
 
 # Run specific test
 mvn test -Dtest=MatchingEngineTest
+```
 
-# Latency benchmark
-mvn exec:java@benchmark
+### Load test
+
+`LoadTestRunner` is run manually against a server that is already up, and checks explicit
+acceptance thresholds (500 concurrent TCP connections, 200 logins/s, 800 REST req/s,
+order-ack P99 under 5 ms, heap growth under 200 MB per 10k orders):
+
+```bash
+mvn test-compile
+java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath \
+    -DincludeScope=test -Dmdep.outputFile=/dev/stdout)" \
+    com.boe.simulator.load.LoadTestRunner \
+    --tcp=500 --logins=100 --rest=5000 --ack-sessions=10 --ack-orders=100
 ```
 
 ---
