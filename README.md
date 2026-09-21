@@ -28,7 +28,7 @@
 
 ## ✨ Key Features
 
-- 🔌 **Complete BOE Protocol** — All 11 message types with binary serialization
+- 🔌 **Complete BOE Protocol** — 19 message types (7 session + 12 application) with exact binary wire format
 - 🎯 **Matching Engine** — Real-time order matching with price-time priority
 - 🤖 **Trading Bots** — Market Maker, Trend Follower, Random Trader
 - 🌐 **REST API & WebSocket** — Full market data and trading APIs
@@ -270,7 +270,7 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
 
 ## 📊 Features Checklist
 
-- [x] Complete BOE protocol (11 messages)
+- [x] Complete BOE protocol (19 message types)
 - [x] Real-time matching engine (StampedLock, optimistic reads)
 - [x] Async write-behind persistence queue
 - [x] Trading bot simulation (MM, Trend, Random)
