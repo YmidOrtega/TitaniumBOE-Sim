@@ -75,11 +75,16 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Runtime | Java 21, Virtual Threads | Un VThread por conexión TCP sin overhead de OS threads; >500 conexiones concurrentes |
 | Build | Maven 3.9, frontend-maven-plugin | Compila Astro y empaqueta el frontend en el JAR — un solo artefacto deployable |
 | Servidor BOE | NIO ServerSocketChannel | No bloqueante en el accept; cada cliente corre en su propio VThread |
-| REST / WebSocket | Javalin 6.7 | Ligero, sin reflection en el hot path, compatible con VThreads |
+| REST / WebSocket | Javalin 6.7 (Jetty 11) | Ligero, sin reflection en el hot path, compatible con VThreads. Fijado en 6.x: Javalin 7 traería Jetty 12 pero rehace la API de enrutado — ver nota de seguridad abajo |
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
 | Testing | JUnit 5 + Awaitility | 319 tests; pruebas de wire format contra la spec |
+
+> **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
+> mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
+> exige Jetty 12 y, por tanto, migrar a Javalin 7, lo que reescribe toda la capa HTTP. Detalle y
+> justificación en `SECURITY.md`. El resto de dependencias está al día.
 
 ---
 

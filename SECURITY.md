@@ -80,6 +80,31 @@ We take security seriously and appreciate your effort in responsibly disclosing 
 6. **Permissive CORS by default** - Configured for development ease
 7. **Limited audit logging** - Security events not comprehensively tracked
 8. **Demo credentials when enabled** - Predictable usernames and passwords
+9. **Unpatched Jetty advisory** - See below
+
+---
+
+## Known Unpatched Advisory
+
+### CVE-2026-6790 — Eclipse Jetty HTTP Authority/Host mismatch (moderate)
+
+`GHSA-7p3p-8qv8-m2vh`. Affects **every** Jetty 11 release (`>= 11.0.0, <= 11.0.26`). There is
+no patched 11.x version and there will not be one: Jetty 11 has reached end of life.
+
+**Why it is still here.** Jetty arrives transitively through Javalin 6.7, which is built against
+the Jetty 11 / Jakarta Servlet 5 API. Fixing the advisory means Jetty 12, and Jetty 12 means
+Javalin 7 — a major upgrade that rewrites the routing API (`app.get`/`post`/`before`/
+`exception`), the HTTP configuration and static file handling. A trial upgrade produced 115
+compilation errors across the HTTP layer.
+
+**Assessment.** The trade-off was judged not worth it for this project: rewriting the whole HTTP
+layer to clear one moderate advisory risks breaking a working system, and the simulator is an
+educational tool that is not meant to serve hostile traffic.
+
+**If you expose this publicly**, treat it as a real finding and either migrate to Javalin 7 or
+put a reverse proxy in front that normalises the `Host` header.
+
+Every other Dependabot alert has been resolved — see the `build(deps)` commits.
 
 ---
 
