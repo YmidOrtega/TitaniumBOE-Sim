@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
+const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NVDA','NFLX','AMD','DIS'];
 ---
 <Layout title="Order Book" page="orders">
 
@@ -121,7 +121,7 @@ const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
 </Layout>
 
 <script>
-  const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
+  const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NVDA','NFLX','AMD','DIS'];
   let currentSymbol: string | null = null;
   let symbolTrades: Record<string, any[]> = {};
 

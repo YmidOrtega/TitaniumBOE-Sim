@@ -447,8 +447,12 @@ public class OrderManager {
                 .toList();
     }
 
+    // Tradable universe. Must stay in sync with the catalogue exposed by
+    // com.boe.simulator.api.service.SymbolService — a symbol listed there but missing here
+    // shows up in GET /api/symbols and is then rejected on order entry.
     private static final Set<String> VALID_SYMBOLS = Set.of(
-            "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "NFLX"
+            "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META",
+            "TSLA", "NVDA", "NFLX", "AMD", "DIS"
     );
 
     private boolean isValidSymbol(String symbol) {
