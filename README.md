@@ -1,6 +1,6 @@
 # 💹 TitaniumBOE-Sim
 
-> **A comprehensive simulator for the Cboe Titanium U.S. Options Binary Order Entry (BOE) protocol with matching engine, trading bots, REST API, web dashboard, and interactive CLI**
+> **A comprehensive simulator for the Cboe Titanium U.S. Options Binary Order Entry (BOE) protocol with matching engine, trading bots, REST API, WebSocket streaming, and a web dashboard**
 
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/)
 [![Maven](https://img.shields.io/badge/Maven-3.9+-blue?logo=apache-maven)](https://maven.apache.org/)
@@ -14,7 +14,7 @@
 
 ## 📖 Overview
 
-**TitaniumBOE-Sim** is an enterprise-grade simulator of the **Cboe Titanium BOE protocol**, built in Java 21. It provides a complete trading ecosystem with a real-time matching engine, intelligent trading bots, RESTful API, WebSocket streaming, an Astro + Tailwind web dashboard, and an interactive CLI — all packaged as a single self-contained JAR.
+**TitaniumBOE-Sim** is an enterprise-grade simulator of the **Cboe Titanium BOE protocol**, built in Java 21. It provides a complete trading ecosystem with a real-time matching engine, intelligent trading bots, RESTful API, WebSocket streaming and an Astro + Tailwind web dashboard — all packaged as a single self-contained JAR.
 
 ### Perfect For
 - 📚 Learning binary financial protocols and market microstructure
@@ -33,7 +33,6 @@
 - 🤖 **Trading Bots** — Market Maker, Trend Follower, Random Trader
 - 🌐 **REST API & WebSocket** — Full market data and trading APIs
 - 📊 **Web Dashboard** — Real-time Astro + Tailwind UI, served directly from the JAR
-- 💻 **Interactive CLI** — Beautiful terminal interface for trading
 - 🗄️ **RocksDB Persistence** — All data persisted and recoverable
 - 🔐 **Production-grade Security** — BCrypt hashing, rate limiting, validation
 - ⚡ **Low-latency Engine** — StampedLock, async write-behind queue, hot-path optimizations
@@ -75,12 +74,6 @@ Once running:
 - Username: `TRD1` / Password: `Pass1234!`
 - Username: `TRD2` / Password: `Pass5678!`
 
-### Interactive CLI (optional, separate terminal)
-
-```bash
-mvn exec:java -Dexec.mainClass="com.boe.simulator.client.interactive.InteractiveCLI"
-```
-
 ---
 
 ## 🖥️ Web Dashboard
@@ -91,30 +84,6 @@ The Astro + Tailwind dashboard is embedded in the JAR and served automatically �
 - Order book depth per symbol
 - System statistics (active orders, total matches, uptime)
 - REST API playground via Scalar
-
----
-
-## 🎨 Interactive CLI Example
-
-```bash
-● guest> connect localhost 8081
-Username: TRD1
-Password: ********
-✓ Connected and authenticated successfully
-
-● TRD1> order buy AAPL 100 150.50
-✓ Order submitted
-[18:30:45] ⚡ Filled AAPL: 100 @ 150.50
-
-● TRD1> positions
-╔══════════════════════════════════════════╗
-║ Symbol  ║ Quantity ║  Avg Px  ║  P/L     ║
-║ AAPL    ║      100 ║   150.50 ║     0.00 ║
-╚══════════════════════════════════════════╝
-
-● TRD1> book AAPL
-Best Bid: 150.00 | Best Ask: 150.50 | Spread: 0.50
-```
 
 ---
 
@@ -157,10 +126,10 @@ Browser / REST client
   └──────────┘  └──────────┘  └──────────┘
         ▲
         │  BOE binary protocol (Port 8081)
-  ┌─────┴─────┐
-  │Interactive│
-  │    CLI    │
-  └───────────┘
+  ┌─────┴──────┐
+  │ BOE client │
+  │   (TCP)    │
+  └────────────┘
 ```
 
 ---
@@ -236,7 +205,6 @@ TitaniumBOE-Sim/
 │   ├── api/                    # REST API, WebSocket, static file serving
 │   │   └── config/             # Scalar/Swagger/OpenAPI handlers
 │   ├── bot/                    # Trading bots (MM, Trend, Random)
-│   ├── client/                 # BOE Client SDK + Interactive CLI
 │   ├── server/                 # BOE Server core
 │   │   ├── matching/           # Matching engine (StampedLock)
 │   │   ├── auth/               # Authentication (BCrypt)
@@ -293,7 +261,6 @@ mvn exec:java@benchmark
 - [x] Trading bot simulation (MM, Trend, Random)
 - [x] REST API & WebSocket
 - [x] Astro + Tailwind web dashboard (embedded in JAR)
-- [x] Interactive CLI client
 - [x] Position tracking & P&L
 - [x] Persistent storage (RocksDB)
 - [x] Security & validation (BCrypt, rate limiting)
