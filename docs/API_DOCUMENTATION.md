@@ -315,13 +315,13 @@ curl http://localhost:9091/api/simulator/bots
 ]
 ```
 
-#### `POST /api/simulator/bots/{botId}/start` 🔐
+#### `POST /api/simulator/bots/{botId}/start`
 
-#### `POST /api/simulator/bots/{botId}/stop` 🔐
+#### `POST /api/simulator/bots/{botId}/stop`
 
 ```bash
-curl -X POST -u TRD1:Pass1234! http://localhost:9091/api/simulator/bots/random-trader/start
-curl -X POST -u TRD1:Pass1234! http://localhost:9091/api/simulator/bots/market-maker/stop
+curl -X POST http://localhost:9091/api/simulator/bots/TRADER-001/start
+curl -X POST http://localhost:9091/api/simulator/bots/MM-001/stop
 ```
 
 ---

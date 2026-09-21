@@ -445,15 +445,21 @@ public class Order {
 
 **Estados de OrderState:**
 
-| Estado | isActive() | isCancellable() | isLive() |
-|--------|-----------|-----------------|---------|
-| `PENDING_NEW` | true | false | false |
-| `LIVE` | true | true | true |
-| `PARTIALLY_FILLED` | true | true | true |
-| `FILLED` | false | false | false |
-| `CANCELLED` | false | false | false |
-| `REJECTED` | false | false | false |
-| `EXPIRED` | false | false | false |
+| Estado | isActive() | isCancellable() | isLive() | isTerminal() |
+|--------|-----------|-----------------|----------|--------------|
+| `PENDING_NEW` | false | false | false | false |
+| `LIVE` | true | true | true | false |
+| `PARTIALLY_FILLED` | true | true | true | false |
+| `FILLED` | false | false | false | true |
+| `CANCELLED` | false | false | false | true |
+| `REJECTED` | false | false | false | true |
+| `EXPIRED` | false | false | false | true |
+| `PENDING_CANCEL` | false | true | false | false |
+| `PENDING_REPLACE` | false | true | false | false |
+
+> `isActive()` devuelve `true` solo para `LIVE` y `PARTIALLY_FILLED`. Importa porque
+> `processModifyOrder` rechaza la modificación si `!order.getState().isActive()`.
+> `PENDING_CANCEL` y `PENDING_REPLACE` están declarados en el enum pero no se usan en el flujo actual.
 
 ---
 
@@ -594,9 +600,15 @@ existente. No hace falta migración.
 | Trades | GET | `/api/trades/symbol/{symbol}` | Basic | Trades por símbolo |
 | Simulador | GET | `/api/simulator/status` | No | Estado del simulador |
 | Simulador | GET | `/api/simulator/bots` | No | Lista de bots |
-| Simulador | POST | `/api/simulator/bots/{id}/start` | Basic | Iniciar bot |
-| Simulador | POST | `/api/simulator/bots/{id}/stop` | Basic | Detener bot |
+| Simulador | POST | `/api/simulator/bots/{id}/start` | No | Iniciar bot |
+| Simulador | POST | `/api/simulator/bots/{id}/stop` | No | Detener bot |
+| Simulador | POST | `/api/simulator/start` | No | Iniciar todos los bots |
+| Simulador | POST | `/api/simulator/stop` | No | Detener todos los bots |
 | Docs | GET | `/api/docs` | No | Scalar UI (OpenAPI) |
+
+> Los filtros `before` registrados son `/api/orders*`, `/api/positions*`, `/api/trades*` y
+> `/api/auth/me`. Las rutas `/api/simulator/*` quedan **sin autenticar** a propósito: el botón
+> «START BOTS» del dashboard las invoca sin credenciales.
 
 ### 9.2 WebSocket Feed
 
@@ -639,7 +651,7 @@ Tres estrategias ejecutan en hilos virtuales paralelos:
 | `TrendFollowerStrategy` | Sigue tendencia | Detecta momentum de precio; compra en uptrend, vende en downtrend |
 | `RandomTraderStrategy` | Ruido aleatorio | Órdenes aleatorias para simular mercado activo |
 
-Cada bot opera via la REST API interna, generando actividad continua en el matching engine. En `DEMO_MODE=true` los tres arrancan automáticamente.
+Cada bot llama directamente a `OrderManager.processNewOrder(msg, username)` dentro del proceso —construye un `NewOrderMessage` y usa la sobrecarga pensada para REST, sin pasar por HTTP—, de modo que recorre la misma validación, matching y persistencia que cualquier otra orden. Los tres arrancan automáticamente cuando `marketSimulatorEnabled` está activo (valor por defecto).
 
 ---
 
