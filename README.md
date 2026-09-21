@@ -150,12 +150,16 @@ Environment variables (via `.env` or `docker compose`):
 
 | Variable | Default | Description |
 |---|---|---|
-| `DEMO_MODE` | `true` | Pre-load demo users and market data |
+| `DEMO_MODE` | `true` | Shown in the startup banner; demo users are seeded whenever the user store is empty |
 | `BOE_PORT` | `8081` | BOE binary protocol port |
-| `API_PORT` | `9091` | REST API + dashboard port |
-| `LOG_LEVEL` | `INFO` | Logging verbosity |
-| `ADMIN_USERNAME` | — | Admin user (non-demo mode) |
-| `ADMIN_PASSWORD` | — | Admin password |
+| `API_PORT` | `9091` | REST API + dashboard port (`PORT` wins if the platform injects it) |
+| `ALLOWED_ORIGINS` | localhost dev servers | Comma-separated CORS origins |
+| `DEMO_USER_1` / `DEMO_PASS_1` | `TRD1` / `Pass1234!` | First demo account (username max 4 chars) |
+| `DEMO_USER_2` / `DEMO_PASS_2` | `TRD2` / `Pass5678!` | Second demo account |
+| `DEMO_ADMIN` / `DEMO_ADMIN_PASS` | `ADMN` / `Admin999!` | Demo admin account |
+
+The RocksDB directory is a JVM system property, not an environment variable:
+`java -Dcboe.db.path=/var/lib/boe/db -jar boe-simulator.jar` (default `./data/cboe_server`).
 
 ---
 

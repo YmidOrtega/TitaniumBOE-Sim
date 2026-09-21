@@ -56,8 +56,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Environment variables with defaults
 ENV DEMO_MODE=true \
     BOE_PORT=8081 \
-    API_PORT=9091 \
-    LOG_LEVEL=INFO
+    API_PORT=9091
 
 # Run the application
 ENTRYPOINT ["java", \
