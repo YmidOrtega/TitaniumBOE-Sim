@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
+const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NVDA','NFLX','AMD','DIS'];
 ---
 <Layout title="Trades" page="trades">
 
@@ -74,7 +74,7 @@ const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
 </Layout>
 
 <script>
-  const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NFLX'];
+  const SYMBOLS = ['AAPL','MSFT','GOOGL','GOOG','AMZN','META','TSLA','NVDA','NFLX','AMD','DIS'];
   let allTrades: any[] = [];
   let activeFilter: string | null = null;
   let prevPrice: Record<string, number> = {};

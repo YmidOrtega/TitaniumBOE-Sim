@@ -15,11 +15,14 @@ public class SymbolService {
         initializeSymbols();
     }
 
+    // Must stay in sync with OrderManager.VALID_SYMBOLS — anything listed here that is not
+    // tradable there would be advertised by GET /api/symbols and rejected on order entry.
     private void initializeSymbols() {
         // Tech stocks
         addSymbol("AAPL", "Apple Inc.", "NASDAQ", new BigDecimal("150.00"));
         addSymbol("MSFT", "Microsoft Corporation", "NASDAQ", new BigDecimal("380.00"));
-        addSymbol("GOOGL", "Alphabet Inc.", "NASDAQ", new BigDecimal("140.00"));
+        addSymbol("GOOGL", "Alphabet Inc. (Class A)", "NASDAQ", new BigDecimal("140.00"));
+        addSymbol("GOOG", "Alphabet Inc. (Class C)", "NASDAQ", new BigDecimal("139.00"));
         addSymbol("AMZN", "Amazon.com Inc.", "NASDAQ", new BigDecimal("175.00"));
         addSymbol("META", "Meta Platforms Inc.", "NASDAQ", new BigDecimal("485.00"));
         addSymbol("TSLA", "Tesla Inc.", "NASDAQ", new BigDecimal("250.00"));
