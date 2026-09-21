@@ -582,17 +582,20 @@ Total = 2 + 27 = 29 bytes
 
 ## 15. Simulator Delta (Spec vs. Current Implementation)
 
-Discrepancies between this spec and the current TitaniumBOE-Sim implementation to be addressed in Phase 2+:
+Remaining differences between this spec and the current TitaniumBOE-Sim implementation:
 
-| Area | Spec (v2.11.90) | Simulator (current) | Phase |
-|------|----------------|---------------------|-------|
-| Side wire values | `'1'` = Buy, `'2'` = Sell (ASCII) | `fromByte(1/2)` legacy path covers this | Review |
-| Capacity `'C'` | Customer (`0x43`) is a valid value | Not in `Capacity` enum | Phase 2 |
-| OrdType wire values | `'1'`=Market, `'2'`=Limit (ASCII) | `fromByte(1/2)` legacy path covers this | Review |
-| MessageType codes (session) | `0x37`/`0x24`/`0x09`/`0x13` etc. | Enum has `0x0001`/`0x01F5`/`0x01F8` (website values) | Phase 2 |
-| MessageType codes (app) | `0x38`=NewOrder, `0x45`=Cancel | Enum has `0x07D1`/`0x07DA` (website values) | Phase 2 |
-| String padding | NUL (0x00) | Space (0x20) in `OrderAcknowledgmentMessage` | Phase 2 |
-| `OrderAcknowledgmentMessage` | MessageType = `0x25` (1 byte) | Uses `0x25` but encodes as 1-byte ✅ | OK |
+| Area | Spec (v2.11.90) | Simulator (current) | Status |
+|------|----------------|---------------------|--------|
+| Cancel / Modify message codes | `0x45` = Cancel, `0x4A` = Modify | `0x39` = Cancel, `0x3A` = Modify (contiguous with `0x38` New Order) | Open — internally consistent, but a real BOE client would not interoperate on these two messages |
+| String padding | NUL (`0x00`) | Space (`0x20`) in `LoginRequestMessage` and `OrderAcknowledgmentMessage` | Open |
+| Heartbeat timing | send after 1 s idle, timeout at 5 s | defaults of 10 s / 30 s in `ServerConfiguration` (configurable via builder) | Open — deliberately relaxed so a GC pause or a debugger breakpoint does not drop the session |
+| Heartbeat sequencing | Server Heartbeat does **not** increment the outbound sequence | `HeartbeatMonitor` calls `getNextSentSequenceNumber()` | Open |
+| Session message codes | `0x37`/`0x24`/`0x09`/`0x13` | matches the spec | ✅ Fixed |
+| New Order code | `0x38` | `0x38` | ✅ Fixed |
+| `Side` wire values | `'1'` = Buy, `'2'` = Sell (ASCII) | `'1'`/`'2'`; `fromByte` also accepts legacy `1`/`2` and `'B'`/`'S'` for records already in RocksDB | ✅ Fixed |
+| `OrdType` wire values | `'1'` = Market, `'2'` = Limit (ASCII) | `'1'`/`'2'` | ✅ Fixed |
+| `Capacity` `'C'` | Customer (`0x43`) is a valid value | present in the `Capacity` enum | ✅ Fixed |
+| `OrderAcknowledgmentMessage` | MessageType = `0x25` (1 byte) | `0x25`, encoded as 1 byte | ✅ Fixed |
 
 ---
 
