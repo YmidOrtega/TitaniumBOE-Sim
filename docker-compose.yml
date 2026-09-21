@@ -15,10 +15,8 @@ services:
       - DEMO_MODE=${DEMO_MODE:-true}
       - BOE_PORT=8081
       - API_PORT=9091
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Security: Load from environment variables
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # CORS origins allowed by the REST API
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:4321,http://localhost:5173,http://localhost:8080}
     volumes:
       # Persist RocksDB data
       - boe-data:/app/data
