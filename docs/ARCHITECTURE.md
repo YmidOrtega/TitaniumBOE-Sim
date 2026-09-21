@@ -24,7 +24,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                         Clientes Externos                                 │
-│  Browser ─────────── REST / WebSocket ─────────── CLI / BOE Client SDK  │
+│  Browser ─────────── REST / WebSocket ─────────── Cliente BOE (TCP)     │
 └────────────┬─────────────────────────────────────────────────────┬───────┘
              │ HTTP/WS (puerto 9091)                               │ TCP (puerto 8081)
              ▼                                                     ▼
