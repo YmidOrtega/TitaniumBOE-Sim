@@ -40,6 +40,7 @@ public class RocksDBManager {
     public static final String CF_MESSAGES = "messages";
     public static final String CF_AUDIT = "audit";
     public static final String CF_ORDERS = "orders";
+    public static final String CF_TRADES = "trades";
 
     private RocksDBManager(String dbPath) {
         this.dbPath = dbPath;
@@ -94,7 +95,8 @@ public class RocksDBManager {
                 ));
 
                 // Add custom CFs
-                Set<String> cfNames = Set.of(CF_USERS, CF_SESSIONS, CF_CONFIG, CF_MESSAGES, CF_AUDIT, CF_ORDERS);
+                Set<String> cfNames = Set.of(CF_USERS, CF_SESSIONS, CF_CONFIG, CF_MESSAGES,
+                        CF_AUDIT, CF_ORDERS, CF_TRADES);
                 for (String cfName : cfNames) {
                     columnFamilyDescriptors.add(new ColumnFamilyDescriptor(
                             cfName.getBytes(),

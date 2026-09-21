@@ -20,7 +20,7 @@ public class TradeRepositoryService implements TradeRepository {
     private final RocksDBManager dbManager;
     private final SerializationUtil serializer;
 
-    private static final String CF_TRADES = RocksDBManager.CF_MESSAGES;
+    private static final String CF_TRADES = RocksDBManager.CF_TRADES;
 
     private final LinkedBlockingQueue<Trade> writeQueue = new LinkedBlockingQueue<>(500_000);
     private volatile boolean asyncRunning;

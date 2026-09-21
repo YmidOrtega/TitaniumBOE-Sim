@@ -478,10 +478,11 @@ OrderManager / TradeService
 │  RocksDBManager      │
 │  - orders CF         │
 │  - trades CF         │
+│  - messages CF       │
 │  - sessions CF       │
 │  - users CF          │
 │  - audit CF          │
-│  - statistics CF     │
+│  - config CF         │
 └──────────────────────┘
 ```
 
@@ -528,14 +529,44 @@ pérdida (estadísticas, auditoría).
 
 ### 8.2 Column Families
 
-| Column Family | Clave | Valor |
-|---------------|-------|-------|
-| `orders` | `clOrdID` (String) | `Order` serializado (Jackson CBOR) |
-| `trades` | `tradeId` (Long → bytes) | `Trade` serializado |
-| `sessions` | `username+subID` | `PersistedSession` |
-| `users` | `username` | `PersistedUser` (password BCrypt hash) |
-| `audit` | timestamp + UUID | `AuditEvent` |
-| `statistics` | `stats` | `PersistedStatistics` |
+Ocho column families (la `default` más siete propias), declaradas en `RocksDBManager`. Los valores se serializan con
+**Jackson a JSON UTF-8** (`SerializationUtil`), no a un formato binario: el contenido de la
+base de datos es legible directamente, lo que resulta útil al depurar.
+
+| Column Family | Prefijo de clave | Valor |
+|---------------|------------------|-------|
+| `orders` | `order:<clOrdID>` | `PersistedOrder` |
+| `trades` | `trade:<tradeId>` | `PersistedTrade` |
+| `messages` | `msg:<messageId>` | `PersistedMessage` |
+| `sessions` | `session:<…>` | `PersistedSession` |
+| `users` | `user:<username>` | `PersistedUser` (hash BCrypt) |
+| `audit` | `audit:<eventId>` | `AuditEvent` |
+| `config` | `config:<…>` y `stats:<fecha>` | `PersistedServerConfig` y `PersistedStatistics` |
+| `default` | — | sin uso |
+
+> Las estadísticas comparten la column family `config`. Es intencionado: así **sobreviven al
+> reset diario**, que limpia `messages`, `trades`, `audit` y `sessions` pero conserva `users`
+> y `config`.
+
+#### Índices secundarios
+
+RocksDB solo busca por clave exacta o por prefijo, así que los índices se escriben a mano como
+entradas adicionales cuyo valor es el ID de la entrada principal:
+
+```
+trades:    trade-symbol:<symbol>:<ts>    trade-user:<username>:<ts>    trade-date:<fecha>:<ts>
+messages:  user:<username>:<ts>   type:<0xNN>:<ts>   date:<fecha>:<ts>   conn:<id>:<ts>
+```
+
+Cada trade genera cinco escrituras: la principal más cuatro de índice (símbolo, comprador,
+vendedor y fecha). El timestamp al final de la clave garantiza unicidad y, al coincidir el
+orden lexicográfico con el cronológico, devuelve los resultados ya ordenados por tiempo.
+
+#### Compatibilidad al añadir una column family
+
+`RocksDB.open` se invoca con `setCreateMissingColumnFamilies(true)`, de modo que añadir una
+column family nueva a la lista de descriptores la crea automáticamente sobre una base de datos
+existente. No hace falta migración.
 
 ---
 

@@ -362,6 +362,7 @@ public class CboeServer {
             orderManager.reset();
 
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_MESSAGES);
+            dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_TRADES);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_AUDIT);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_SESSIONS);
 
