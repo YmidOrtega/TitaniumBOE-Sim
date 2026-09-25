@@ -39,7 +39,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   --concurrency=N    max parallel REST requests              (default: 200)
  *   --hold=N           seconds to hold TCP connections open    (default: 5)
  *   --ack-sessions=N   parallel sessions for latency test      (default: 10)
- *   --ack-orders=N     orders per session for latency test     (default: 100)
+ *   --ack-orders=N     orders per session for latency test     (default: 90;
+ *                      the server allows 100 messages/min per connection, login included)
  *   --mem-orders=N     total orders for memory stability test  (default: 10000)
  *   --skip-tcp         skip Phase 1
  *   --skip-login       skip Phase 2
@@ -54,8 +55,10 @@ public class LoadTestRunner {
     static final int    REST_PORT = CboeServer.DEFAULT_API_PORT;
 
     // BOE message type constants
-    static final byte MSG_SERVER_HB   = 0x01;
-    static final byte MSG_LOGIN_RESP  = 0x07;
+    // Must match the protocol classes (ServerHeartbeatMessage, LoginResponseMessage):
+    // the runner went stale when the session codes were aligned with the spec
+    static final byte MSG_SERVER_HB   = 0x09;
+    static final byte MSG_LOGIN_RESP  = 0x24;
     static final byte MSG_ORDER_ACK   = 0x25;
     static final byte MSG_ORDER_REJ   = 0x26;
 
@@ -72,7 +75,7 @@ public class LoadTestRunner {
         int concurrency  = intArg(args, "--concurrency",     200);
         int holdSecs     = intArg(args, "--hold",              5);
         int ackSessions  = intArg(args, "--ack-sessions",     10);
-        int ackOrders    = intArg(args, "--ack-orders",       100);
+        int ackOrders    = intArg(args, "--ack-orders",        90);
         int memOrders    = intArg(args, "--mem-orders",   10_000);
 
         boolean skipTcp    = hasFlag(args, "--skip-tcp");
@@ -434,14 +437,14 @@ public class LoadTestRunner {
         HttpClient http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
-        registerUser(http, "MSTAB1", "MemTest1!");
-        System.out.println("│  User MSTAB1 registered");
+        registerUser(http, "MST1", "MemTest1!"); // usernames are at most 4 chars
+        System.out.println("│  User MST1 registered");
 
         int ackOk     = 0;
         int ackFailed = 0;
 
-        try (Socket s = loginBoe("MSTAB1", "MemTest1!", "MST")) {
-            if (s == null) throw new IOException("Login failed for MSTAB1");
+        try (Socket s = loginBoe("MST1", "MemTest1!", "MST")) {
+            if (s == null) throw new IOException("Login failed for MST1");
             s.setSoTimeout(10_000);
             OutputStream out = s.getOutputStream();
             InputStream  in  = s.getInputStream();
@@ -503,7 +506,7 @@ public class LoadTestRunner {
         msg.setOrderQty(100);
         msg.setSequenceNumber(seqNum);
         msg.setMatchingUnit((byte) 0);
-        msg.setSymbol("SPX");
+        msg.setSymbol("AAPL"); // must be in OrderManager.VALID_SYMBOLS, or every order is rejected
         msg.setPrice(new BigDecimal("50.0000"));
         msg.setOrdType((byte) '2');
         msg.setCapacity((byte) 'C');
