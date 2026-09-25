@@ -248,7 +248,7 @@ mvn test-compile
 java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath \
     -DincludeScope=test -Dmdep.outputFile=/dev/stdout)" \
     com.boe.simulator.load.LoadTestRunner \
-    --tcp=500 --logins=100 --rest=5000 --ack-sessions=10 --ack-orders=100
+    --tcp=500 --logins=100 --rest=5000 --ack-sessions=10 --ack-orders=90
 ```
 
 ---
