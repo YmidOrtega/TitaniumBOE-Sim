@@ -600,7 +600,6 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 
 | Area | Spec (v2.11.90) | Simulator (current) | Status |
 |------|----------------|---------------------|--------|
-| Heartbeat timing | send after 1 s idle, timeout at 5 s | defaults of 10 s / 30 s in `ServerConfiguration` (configurable via builder) | Open — deliberately relaxed so a GC pause or a debugger breakpoint does not drop the session |
 | Source IP filtering | unknown source IP ranges are blocked | any IP is accepted | Won't fix — out of scope for a simulator; network access control belongs to the deployment |
 | Session message codes | `0x37`/`0x24`/`0x09`/`0x13` | matches the spec | ✅ Fixed |
 | New Order code | `0x38` | `0x38` | ✅ Fixed |
@@ -621,6 +620,8 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 | Replay | Unit Sequences group (`0x80`) in Login Request; replay missed sequenced messages, then Replay Complete; orders received during replay rejected (`y`) | implemented, including executions that happened while the member was disconnected | ✅ Fixed |
 | Login Response format | unit/sequence pair for every unit, binary NoUnspecifiedUnitReplay, echoed parameter groups | implemented; Logout also carries the unit pairs | ✅ Fixed |
 | Concurrent sessions per user | one connection per username **+ SessionSubID** | one connection per **username** (stricter: executions are routed by username) | Open — deliberate |
+| Heartbeat timing | Server Heartbeat after 1 s with nothing sent; Logout after 5 s with nothing received | 1 s / 5 s by default (`heartbeatIntervalSeconds` / `heartbeatTimeoutSeconds`). Previously 10 s / 30 s and sent at a fixed rate even with traffic flowing | ✅ Fixed |
+| Heartbeat timeout | any inbound data counts; timeout ends with a Logout | any inbound message resets the timer, which starts at login; on expiry a Logout (`!`, "Heartbeat timeout") is sent before closing. Previously only Client Heartbeats counted, the timer never started if the client sent none, and the connection was dropped without a Logout | ✅ Fixed |
 | Max open orders | 200,000 per BOE port; reject reason `o` | **2,000 per BOE session (scaled ÷100** so the limit is reachable on a PC); reject reason `o`. REST and bot orders are not counted | ✅ Fixed (scaled) |
 | Outbound sequencing | strictly increasing on the wire | sequence assigned and written under one lock (`sendSequenced`); before, executions and heartbeats from other threads could reorder it | ✅ Fixed |
 

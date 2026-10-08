@@ -298,7 +298,17 @@ LoginRequest (+ grupo 0x80 opcional con el último número recibido por unidad)
 - Número por delante del servidor → login rechazado con `Q`; unidad inexistente con número ≠ 0 → `I`.
 - New Order / Modify recibidos antes de Replay Complete → rechazados con motivo `y`.
 
-**Heartbeats.** Intervalo y timeout configurables (por defecto 10 s / 30 s; la spec dice 1 s / 5 s).
+**Heartbeats** (por defecto 1 s / 5 s, como la spec; configurables). `HeartbeatMonitor` revisa cada
+200 ms dos marcas de tiempo de `ClientSession`:
+
+- **Salida:** si no se ha enviado *nada* durante el intervalo, envía un Server Heartbeat. Con
+  tráfico fluyendo no se envía ninguno.
+- **Entrada:** cualquier mensaje recibido cuenta como señal de vida, no solo los Client Heartbeat. El
+  reloj arranca en el login. Si pasan 5 s sin recibir nada → `Logout` (`!`, *Heartbeat timeout*) y
+  cierre.
+
+Tras el login se quita el `soTimeout` del socket: antes, un timeout de lectura de 30 s cerraba la
+conexión en silencio, sin Logout, compitiendo con el monitor.
 
 ### 5.4 Control de Flujo y Límites por Puerto
 
@@ -773,7 +783,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-385 tests distribuidos en 40 clases (cifras de `mvn test`, no estimadas):
+389 tests distribuidos en 41 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
@@ -787,7 +797,7 @@ Detalle completo y limitación conocida en §6.3.
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
-| Conexión (`server/connection/`) | 13 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión y replay con sockets reales |
+| Conexión (`server/connection/`) | 17 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay y heartbeats con sockets reales |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
 | Métricas (`server/metrics/`) | 5 | Contadores de salud |
