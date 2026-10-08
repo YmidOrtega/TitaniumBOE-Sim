@@ -1,6 +1,7 @@
 package com.boe.simulator.protocol.message;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
+import com.boe.simulator.protocol.types.BoeTime;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -93,7 +94,7 @@ public final class TradeCancelOrCorrectMessage extends ApplicationMessage {
             int lastShares, BigDecimal lastPx, BigDecimal correctedPrice,
             Instant origTime, byte matchingUnit, int sequenceNumber) {
         TradeCancelOrCorrectMessage msg = new TradeCancelOrCorrectMessage();
-        msg.transactTime = System.nanoTime();
+        msg.transactTime = BoeTime.nowEpochNanos();
         msg.clOrdID = clOrdID;
         msg.orderID = orderID;
         msg.execRefID = execRefID;
@@ -104,7 +105,7 @@ public final class TradeCancelOrCorrectMessage extends ApplicationMessage {
         msg.lastShares = lastShares;
         msg.lastPx = lastPx;
         msg.correctedPrice = correctedPrice != null ? correctedPrice : BigDecimal.ZERO;
-        msg.origTime = origTime != null ? origTime.toEpochMilli() * 1_000_000L : 0L;
+        msg.origTime = BoeTime.toEpochNanos(origTime);
         msg.matchingUnit = matchingUnit;
         msg.sequenceNumber = sequenceNumber;
         msg.numberOfBitfields = 0;

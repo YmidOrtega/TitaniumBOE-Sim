@@ -1,6 +1,7 @@
 package com.boe.simulator.protocol.message;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
+import com.boe.simulator.protocol.types.BoeTime;
 import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.order.Order;
 
@@ -81,7 +82,7 @@ public final class OrderExecutedMessage extends ApplicationMessage {
     public static OrderExecutedMessage fromTrade(Trade trade, Order order, boolean isAggressive, ReturnBitfields returnBitfields) {
         OrderExecutedMessage msg = new OrderExecutedMessage();
 
-        msg.transactTime = trade.getExecutionTime().toEpochMilli() * 1_000_000L;
+        msg.transactTime = BoeTime.toEpochNanos(trade.getExecutionTime());
         msg.clOrdID = order.getClOrdID();
         msg.execID = trade.getTradeId();
         msg.lastShares = trade.getQuantity();

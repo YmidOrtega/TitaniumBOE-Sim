@@ -1,6 +1,7 @@
 package com.boe.simulator.protocol.message;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
+import com.boe.simulator.protocol.types.BoeTime;
 import com.boe.simulator.server.order.Order;
 
 import java.math.BigDecimal;
@@ -60,7 +61,7 @@ public final class OrderModifiedMessage extends ApplicationMessage {
         OrderModifiedMessage msg = new OrderModifiedMessage();
         msg.matchingUnit = matchingUnit;
         msg.sequenceNumber = sequenceNumber;
-        msg.transactTime = System.nanoTime();
+        msg.transactTime = BoeTime.nowEpochNanos();
         msg.clOrdID = order.getClOrdID();
         msg.orderID = order.getOrderID();
 

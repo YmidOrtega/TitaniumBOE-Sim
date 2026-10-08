@@ -1,5 +1,6 @@
 package com.boe.simulator.protocol.message;
 
+import com.boe.simulator.protocol.types.BoeTime;
 import com.boe.simulator.server.order.Order;
 
 import java.nio.ByteBuffer;
@@ -54,7 +55,7 @@ public final class OrderCancelledMessage extends ApplicationMessage {
 
     public static OrderCancelledMessage fromOrder(Order order, byte cancelReason) {
         OrderCancelledMessage msg = new OrderCancelledMessage();
-        msg.transactTime = System.nanoTime();
+        msg.transactTime = BoeTime.nowEpochNanos();
         msg.clOrdID = order.getClOrdID();
         msg.cancelReason = cancelReason;
         msg.numberOfBitfields = 0;

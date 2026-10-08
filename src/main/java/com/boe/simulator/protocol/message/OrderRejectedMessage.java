@@ -1,5 +1,6 @@
 package com.boe.simulator.protocol.message;
 
+import com.boe.simulator.protocol.types.BoeTime;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -62,7 +63,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
         this.clOrdID = clOrdID;
         this.orderRejectReason = reason;
         this.text = text;
-        this.transactTime = System.nanoTime();
+        this.transactTime = BoeTime.nowEpochNanos();
         this.matchingUnit = 0;
         this.sequenceNumber = 0;
         this.numberOfBitfields = 0;
