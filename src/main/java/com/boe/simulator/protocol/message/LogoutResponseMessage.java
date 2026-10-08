@@ -3,6 +3,9 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class LogoutResponseMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x08;
@@ -17,7 +20,7 @@ public final class LogoutResponseMessage extends SessionMessage {
     private byte logoutReason;
     private String logoutReasonText;
     private int lastReceivedSequenceNumber;
-    private int numberOfUnits;
+    private Map<Integer, Integer> unitSequences;
     private byte matchingUnit;
     private int sequenceNumber;
     
@@ -32,11 +35,11 @@ public final class LogoutResponseMessage extends SessionMessage {
         parseMessage(messageData);
     }
 
-    public LogoutResponseMessage(byte logoutReason, String logoutReasonText, int lastReceivedSequenceNumber, int numberOfUnits) {
+    public LogoutResponseMessage(byte logoutReason, String logoutReasonText, int lastReceivedSequenceNumber, Map<Integer, Integer> unitSequences) {
         this.logoutReason = logoutReason;
         this.logoutReasonText = logoutReasonText != null ? logoutReasonText : "";
         this.lastReceivedSequenceNumber = lastReceivedSequenceNumber;
-        this.numberOfUnits = numberOfUnits;
+        this.unitSequences = Collections.unmodifiableMap(new LinkedHashMap<>(unitSequences));
         this.matchingUnit = 0;
         this.sequenceNumber = 0;
     }
@@ -76,8 +79,15 @@ public final class LogoutResponseMessage extends SessionMessage {
         // Read LastReceivedSequenceNumber (4 bytes)
         this.lastReceivedSequenceNumber = buffer.getInt();
         
-        // Read NumberOfUnits (1 byte)
-        this.numberOfUnits = buffer.get() & 0xFF;
+        // Read NumberOfUnits (1 byte) + unit/sequence pairs (5 bytes each)
+        int numberOfUnits = buffer.get() & 0xFF;
+        if (buffer.remaining() < numberOfUnits * 5) throw new IllegalArgumentException("Message too short for " + numberOfUnits + " unit/sequence pairs");
+        Map<Integer, Integer> units = new LinkedHashMap<>();
+        for (int i = 0; i < numberOfUnits; i++) {
+            int unit = buffer.get() & 0xFF;
+            units.put(unit, buffer.getInt());
+        }
+        this.unitSequences = Collections.unmodifiableMap(units);
     }
 
     @Override
@@ -85,14 +95,9 @@ public final class LogoutResponseMessage extends SessionMessage {
 
     @Override
     public byte[] toBytes() {
-        // Calculate message length according to BOE spec:
-        // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + LogoutReason(1) + LogoutText(60) + LastReceivedSeq(4) + NumUnits(1) = 72 bytesint messageLength = 1 + 1 + 4 + 1 + LOGOUT_REASON_SIZE + 4 + 1;
-        int payloadLength = 1 + 1 + 4 + 1 + LOGOUT_REASON_SIZE + 4 + 1;
-
-        // MessageLength = 2 (length field) + Payload(72) = 74
+        // Payload = MessageType(1) + MatchingUnit(1) + SequenceNumber(4) + LogoutReason(1) + LogoutText(60) + LastReceivedSeq(4) + NumUnits(1) + 5 per unit
+        int payloadLength = 1 + 1 + 4 + 1 + LOGOUT_REASON_SIZE + 4 + 1 + unitSequences.size() * 5;
         int messageLength = payloadLength + 2;
-        
-        // Total message = StartOfMessage(2) + MessageLength(2) + Payload(72) = 76 bytes
         int totalLength = 2 + messageLength;
         
         ByteBuffer buffer = ByteBuffer.allocate(totalLength);
@@ -123,8 +128,12 @@ public final class LogoutResponseMessage extends SessionMessage {
         // Last Received Sequence Number (4 bytes)
         buffer.putInt(lastReceivedSequenceNumber);
         
-        // Number Of Units (1 byte)
-        buffer.put((byte) numberOfUnits);
+        // Number Of Units (1 byte) + unit/sequence pairs
+        buffer.put((byte) unitSequences.size());
+        for (Map.Entry<Integer, Integer> entry : unitSequences.entrySet()) {
+            buffer.put(entry.getKey().byteValue());
+            buffer.putInt(entry.getValue());
+        }
         
         return buffer.array();
     }
@@ -153,7 +162,11 @@ public final class LogoutResponseMessage extends SessionMessage {
     }
 
     public int getNumberOfUnits() {
-        return numberOfUnits;
+        return unitSequences.size();
+    }
+
+    public Map<Integer, Integer> getUnitSequences() {
+        return unitSequences;
     }
 
     public byte getMatchingUnit() {
@@ -179,7 +192,7 @@ public final class LogoutResponseMessage extends SessionMessage {
                 "reason=" + (char) logoutReason +
                 ", text='" + logoutReasonText + '\'' +
                 ", lastReceivedSeq=" + lastReceivedSequenceNumber +
-                ", numberOfUnits=" + numberOfUnits +
+                ", units=" + unitSequences +
                 ", matchingUnit=" + matchingUnit +
                 ", sequenceNumber=" + sequenceNumber +
                 '}';

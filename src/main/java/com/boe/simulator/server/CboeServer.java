@@ -366,6 +366,7 @@ public class CboeServer {
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_TRADES);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_AUDIT);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_SESSIONS);
+            sessionManager.getSessionStates().clear();
 
             LOGGER.info("Daily reset complete: orders, trades, audit and sessions cleared. Users and config preserved.");
         } catch (Exception e) {

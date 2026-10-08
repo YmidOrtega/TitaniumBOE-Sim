@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.IntFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,6 +24,7 @@ import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
+import com.boe.simulator.protocol.message.ReturnBitfields;
 import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
@@ -31,6 +33,7 @@ import com.boe.simulator.server.matching.OrderBook;
 import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.matching.TradeRepositoryService;
 import com.boe.simulator.server.persistence.RocksDBManager;
+import com.boe.simulator.server.session.BoeSessionState;
 import com.boe.simulator.server.session.ClientSession;
 import com.boe.simulator.server.session.ClientSessionManager;
 
@@ -208,7 +211,7 @@ public class OrderManager {
                     .clearingFirm(message.getClearingFirm() != null ? message.getClearingFirm() : "")
                     .routingInst(message.getRoutingInst() != 0 ? RoutingInst.fromByte(message.getRoutingInst()) : RoutingInst.BOOK_ONLY)
                     .receivedSequence(message.getSequenceNumber())
-                    .matchingUnit(message.getMatchingUnit())
+                    .matchingUnit(BoeSessionState.MATCHING_UNIT)
                     .build();
 
             // 4. Acknowledge order
@@ -520,30 +523,33 @@ public class OrderManager {
     }
 
     private void sendExecutionMessage(Order order, Trade trade, boolean isAggressive) {
+        if (order.getSessionSubID() == null || !order.getSessionSubID().startsWith(TcpExecutionContext.SESSION_PREFIX)) {
+            LOGGER.log(Level.FINE, "Order not from a BOE session: {0} (no execution message)", order.getClOrdID());
+            return;
+        }
+        BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
+        if (state == null) return;
+
+        ReturnBitfields returnBitfields = state.getReturnBitfields();
+        IntFunction<byte[]> encoder = seq -> {
+            OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(trade, order, isAggressive, returnBitfields);
+            execMsg.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
+            execMsg.setSequenceNumber(seq);
+            return execMsg.toBytes();
+        };
+
         ClientConnectionHandler handler = sessionManager.getHandlerByUsername(order.getUsername());
-
-        if (handler != null && handler.getSession().isAuthenticated()) {
-            try {
-                OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(
-                        trade,
-                        order,
-                        isAggressive,
-                        handler.getSession().getReturnBitfields()
-                );
-                execMsg.setMatchingUnit(handler.getSession().getMatchingUnit());
-                handler.sendSequenced(seq -> {
-                    execMsg.setSequenceNumber(seq);
-                    return execMsg.toBytes();
-                });
-
-                LOGGER.log(Level.INFO, "Sent execution to {0}: {1}",
-                        new Object[]{order.getUsername(), execMsg});
-
-            } catch (IOException e) {
-                LOGGER.log(Level.SEVERE, "Failed to send execution message to " + order.getUsername(), e);
+        try {
+            if (handler != null && handler.getSession().isAuthenticated()) {
+                handler.sendSequenced(encoder);
+                LOGGER.log(Level.INFO, "Sent execution to {0}: {1}", new Object[]{order.getUsername(), order.getClOrdID()});
+            } else {
+                state.sendSequenced(encoder, null);
+                LOGGER.log(Level.INFO, "Journaled execution for disconnected {0}: {1}", new Object[]{order.getUsername(), order.getClOrdID()});
             }
-        } else LOGGER.log(Level.FINE, "User not connected via TCP: {0} (order from REST API)", order.getUsername());
-
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Failed to send execution message to " + order.getUsername() + " (journaled for replay)", e);
+        }
     }
 
     private void loadActiveOrders() {

@@ -66,15 +66,11 @@ public class HeartbeatMonitor {
 
         try {
             ServerHeartbeatMessage heartbeat = new ServerHeartbeatMessage();
-            heartbeat.setMatchingUnit(handler.getSession().getMatchingUnit());
-            handler.sendSequenced(seq -> {
-                heartbeat.setSequenceNumber(seq);
-                return heartbeat.toBytes();
-            });
+            handler.sendMessage(heartbeat.toBytes());
 
             handler.getSession().updateHeartbeatSent();
 
-            LOGGER.log(Level.FINE, "[Session {0}] → Sent ServerHeartbeat (seq={1})", new Object[]{handler.getSession().getConnectionId(), heartbeat.getSequenceNumber()});
+            LOGGER.log(Level.FINE, "[Session {0}] → Sent ServerHeartbeat", handler.getSession().getConnectionId());
 
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "[Session " + handler.getSession().getConnectionId() + "] Error sending heartbeat", e);

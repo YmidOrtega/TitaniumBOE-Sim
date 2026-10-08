@@ -19,6 +19,7 @@ public class ClientSessionManager {
     private final ConcurrentHashMap<Integer, ClientConnectionHandler> handlers;
     private final ConcurrentHashMap<String, ClientConnectionHandler> handlersByUsername;
     private final SessionStatistics statistics;
+    private final BoeSessionRegistry sessionStates = new BoeSessionRegistry();
 
     private final SessionRepository sessionRepository;
     private final ConcurrentHashMap<Integer, PersistedSession> activeSessions;
@@ -246,6 +247,10 @@ public class ClientSessionManager {
             .count();
     }
     
+    public BoeSessionRegistry getSessionStates() {
+        return sessionStates;
+    }
+
     public SessionStatistics getStatistics() {
         return statistics;
     }

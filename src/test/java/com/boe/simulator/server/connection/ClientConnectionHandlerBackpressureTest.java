@@ -10,6 +10,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
@@ -58,10 +59,11 @@ class ClientConnectionHandlerBackpressureTest {
                     "Paused reader must leave bytes in the TCP buffer, but read " + readWhilePaused);
 
             DataInputStream in = new DataInputStream(client.getInputStream());
-            for (int expectedSeq = 1; expectedSeq <= MESSAGES; expectedSeq++) {
+            for (int i = 0; i < MESSAGES; i++) {
                 byte[] msg = readMessage(in);
                 assertEquals(ORDER_REJECTED, msg[4], "Unauthenticated orders are rejected, never dropped");
-                assertEquals(expectedSeq, ByteBuffer.wrap(msg, 6, 4).order(ByteOrder.LITTLE_ENDIAN).getInt());
+                assertEquals(0, ByteBuffer.wrap(msg, 6, 4).order(ByteOrder.LITTLE_ENDIAN).getInt(), "Order Rejected is unsequenced");
+                assertEquals("BP" + i, new String(msg, 18, 20, StandardCharsets.US_ASCII).trim(), "Responses keep arrival order");
             }
             assertEquals(MESSAGES, handler.getSession().getMessagesReceived());
 

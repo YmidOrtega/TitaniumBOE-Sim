@@ -1,5 +1,7 @@
 package com.boe.simulator.protocol.message;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -11,18 +13,18 @@ class LogoutResponseMessageTest {
         byte reason = LogoutResponseMessage.REASON_USER_REQUESTED;
         String text = "User requested logout";
         int lastReceivedSeq = 10;
-        int numUnits = 1;
+        Map<Integer, Integer> units = Map.of(1, 7);
         byte matchingUnit = 2;
         int sequenceNumber = 54321;
 
-        LogoutResponseMessage message = new LogoutResponseMessage(reason, text, lastReceivedSeq, numUnits);
+        LogoutResponseMessage message = new LogoutResponseMessage(reason, text, lastReceivedSeq, units);
         message.setMatchingUnit(matchingUnit);
         message.setSequenceNumber(sequenceNumber);
 
         assertEquals(reason, message.getLogoutReason());
         assertEquals(text, message.getLogoutReasonText());
         assertEquals(lastReceivedSeq, message.getLastReceivedSequenceNumber());
-        assertEquals(numUnits, message.getNumberOfUnits());
+        assertEquals(units, message.getUnitSequences());
         assertEquals(matchingUnit, message.getMatchingUnit());
         assertEquals(sequenceNumber, message.getSequenceNumber());
     }
@@ -31,12 +33,12 @@ class LogoutResponseMessageTest {
     void toBytes_shouldReturnCorrectByteArray_whenCalled() {
         // Text is NUL-padded per BOE spec v2.11.90 (Text field type)
         // "User requested logout" = 21 bytes; remaining 39 bytes are 0x00
-        LogoutResponseMessage message = new LogoutResponseMessage(LogoutResponseMessage.REASON_USER_REQUESTED, "User requested logout", 10, 1);
+        LogoutResponseMessage message = new LogoutResponseMessage(LogoutResponseMessage.REASON_USER_REQUESTED, "User requested logout", 10, Map.of(1, 7));
         message.setMatchingUnit((byte) 2);
         message.setSequenceNumber(54321);
         byte[] expected = {
                 (byte) 0xBA, (byte) 0xBA,           // StartOfMessage
-                0x4A, 0x00,                          // MessageLength = 74
+                0x4F, 0x00,                          // MessageLength = 79
                 0x08,                                // MessageType
                 0x02,                                // MatchingUnit
                 (byte) 0x31, (byte) 0xD4, 0x00, 0x00, // SequenceNumber = 54321
@@ -46,7 +48,8 @@ class LogoutResponseMessageTest {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0,
                 0x0A, 0x00, 0x00, 0x00,              // LastReceivedSequenceNumber = 10
-                0x01                                 // NumberOfUnits = 1
+                0x01,                                // NumberOfUnits = 1
+                0x01, 0x07, 0x00, 0x00, 0x00         // UnitNumber = 1, UnitSequence = 7
         };
 
         assertArrayEquals(expected, message.toBytes());
@@ -55,9 +58,9 @@ class LogoutResponseMessageTest {
     @Test
     void constructor_shouldParseByteArrayCorrectly() {
         // Parser uses trim() so NUL-padded bytes are correctly stripped
-        byte[] data = new byte[76];
+        byte[] data = new byte[81];
         data[0] = (byte) 0xBA; data[1] = (byte) 0xBA;
-        data[2] = 0x4A; data[3] = 0x00;
+        data[2] = 0x4F; data[3] = 0x00;
         data[4] = 0x08;
         data[5] = 0x02;
         // SequenceNumber = 54321 = 0xD431 little-endian
@@ -70,13 +73,14 @@ class LogoutResponseMessageTest {
         // LastReceivedSequenceNumber = 10 at offset 71
         data[71] = 0x0A; data[72] = 0x00; data[73] = 0x00; data[74] = 0x00;
         data[75] = 0x01;
+        data[76] = 0x01; data[77] = 0x07;
 
         LogoutResponseMessage message = new LogoutResponseMessage(data);
 
         assertEquals(LogoutResponseMessage.REASON_USER_REQUESTED, message.getLogoutReason());
         assertEquals("User requested logout", message.getLogoutReasonText());
         assertEquals(10, message.getLastReceivedSequenceNumber());
-        assertEquals(1, message.getNumberOfUnits());
+        assertEquals(Map.of(1, 7), message.getUnitSequences());
         assertEquals(2, message.getMatchingUnit());
         assertEquals(54321, message.getSequenceNumber());
     }
@@ -116,7 +120,7 @@ class LogoutResponseMessageTest {
 
     @Test
     void setters_shouldSetCorrectValues() {
-        LogoutResponseMessage message = new LogoutResponseMessage((byte) 0, "", 0, 0);
+        LogoutResponseMessage message = new LogoutResponseMessage((byte) 0, "", 0, Map.of());
 
         message.setMatchingUnit((byte) 2);
         message.setSequenceNumber(54321);
@@ -127,8 +131,8 @@ class LogoutResponseMessageTest {
 
     @Test
     void toString_shouldReturnCorrectStringRepresentation() {
-        LogoutResponseMessage message = new LogoutResponseMessage(LogoutResponseMessage.REASON_USER_REQUESTED, "User requested logout", 10, 1);
-        String expected = "LogoutResponseMessage{reason=U, text='User requested logout', lastReceivedSeq=10, numberOfUnits=1, matchingUnit=0, sequenceNumber=0}";
+        LogoutResponseMessage message = new LogoutResponseMessage(LogoutResponseMessage.REASON_USER_REQUESTED, "User requested logout", 10, Map.of(1, 7));
+        String expected = "LogoutResponseMessage{reason=U, text='User requested logout', lastReceivedSeq=10, units={1=7}, matchingUnit=0, sequenceNumber=0}";
 
         assertEquals(expected, message.toString());
     }

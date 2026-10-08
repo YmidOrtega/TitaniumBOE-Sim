@@ -20,7 +20,9 @@ import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.boe.simulator.protocol.message.SessionState;
 import com.boe.simulator.server.config.ServerConfiguration;
+import com.boe.simulator.server.session.BoeSessionRegistry;
 
 class ClientConnectionHandlerSequencingTest {
 
@@ -67,6 +69,11 @@ class ClientConnectionHandlerSequencingTest {
         Field outputStream = ClientConnectionHandler.class.getDeclaredField("outputStream");
         outputStream.setAccessible(true);
         outputStream.set(handler, out);
+
+        Field sessionState = ClientConnectionHandler.class.getDeclaredField("sessionState");
+        sessionState.setAccessible(true);
+        sessionState.set(handler, new BoeSessionRegistry().bind("TEST", "S1"));
+        handler.getSession().setState(SessionState.AUTHENTICATED);
         return handler;
     }
 

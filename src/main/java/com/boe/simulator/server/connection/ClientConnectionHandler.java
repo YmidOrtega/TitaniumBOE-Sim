@@ -5,6 +5,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -14,6 +16,7 @@ import java.util.logging.Logger;
 
 import com.boe.simulator.protocol.message.*;
 import com.boe.simulator.protocol.serialization.BoeMessageSerializer;
+import com.boe.simulator.protocol.types.MessageType;
 import com.boe.simulator.server.auth.AuthenticationResult;
 import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
@@ -21,6 +24,7 @@ import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.heartbeat.HeartbeatMonitor;
 import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.ratelimit.RateLimiter;
+import com.boe.simulator.server.session.BoeSessionState;
 import com.boe.simulator.server.session.ClientSession;
 import com.boe.simulator.server.session.ClientSessionManager;
 import com.boe.simulator.server.validation.MessageValidator;
@@ -36,15 +40,20 @@ public class ClientConnectionHandler implements Runnable {
     private final ClientSessionManager sessionManager;
     private final ErrorHandler errorHandler;
     private final RateLimiter rateLimiter;
-    private final OrderManager orderManager;  // NUEVO
+    private final OrderManager orderManager;
 
     private InputStream inputStream;
     private OutputStream outputStream;
     private volatile boolean running;
     private volatile boolean readerDone;
     private final ReentrantLock sendLock = new ReentrantLock();
-    private final LinkedBlockingQueue<BoeMessage> inbound = new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<Inbound> inbound = new LinkedBlockingQueue<>();
     private final UnacknowledgedMessageGate gate;
+    private volatile boolean replayInProgress;
+    private volatile BoeSessionState sessionState;
+    private volatile boolean ownsAuthSession;
+
+    private record Inbound(BoeMessage message, boolean receivedDuringReplay) {}
 
     public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService, ClientSessionManager sessionManager, ErrorHandler errorHandler, RateLimiter rateLimiter, OrderManager orderManager) {
         this.socket = socket;
@@ -109,7 +118,8 @@ public class ClientConnectionHandler implements Runnable {
                     LOGGER.log(Level.WARNING, "[Session {0}] {1} unacknowledged messages - pausing socket reads",
                             new Object[]{session.getConnectionId(), gate.unacknowledged()});
                 }
-                inbound.add(message);
+                if (message.getMessageType() == MessageType.LOGIN_REQUEST.wireValue()) replayInProgress = true;
+                inbound.add(new Inbound(message, replayInProgress));
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -130,7 +140,7 @@ public class ClientConnectionHandler implements Runnable {
 
     private void processLoop() {
         while (running) {
-            BoeMessage message;
+            Inbound message;
             try {
                 message = inbound.poll(100, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
@@ -143,7 +153,7 @@ public class ClientConnectionHandler implements Runnable {
             }
 
             try {
-                handleInbound(message);
+                handleInbound(message.message(), message.receivedDuringReplay());
             } catch (Exception e) {
                 errorHandler.handleError(session.getConnectionId(), "Error processing message", e);
                 LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Unexpected error", e);
@@ -165,7 +175,7 @@ public class ClientConnectionHandler implements Runnable {
         shutdownInputQuietly();
     }
 
-    private void handleInbound(BoeMessage message) {
+    private void handleInbound(BoeMessage message, boolean receivedDuringReplay) {
         MessageValidator.ValidationResult validation = MessageValidator.validate(message);
         if (!validation.isValid()) {
             LOGGER.log(Level.WARNING, "[Session {0}] Invalid message: {1}", new Object[]{
@@ -184,10 +194,10 @@ public class ClientConnectionHandler implements Runnable {
             });
         }
 
-        processMessage(message);
+        processMessage(message, receivedDuringReplay);
     }
 
-    private void processMessage(BoeMessage message) {
+    private void processMessage(BoeMessage message, boolean receivedDuringReplay) {
         byte messageType = message.getMessageType();
 
         try {
@@ -203,7 +213,7 @@ public class ClientConnectionHandler implements Runnable {
                 case SessionMessage sessionMessage -> handleSessionMessage(sessionMessage);
                 case ApplicationMessage applicationMessage -> {
                     rateLimiter.acquire(session.getConnectionId());
-                    handleApplicationMessage(applicationMessage);
+                    handleApplicationMessage(applicationMessage, receivedDuringReplay);
                 }
                 default -> LOGGER.log(Level.WARNING, "[Session {0}] Unhandled message type: {1}", new Object[]{
                         session.getConnectionId(),
@@ -227,7 +237,21 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void handleApplicationMessage(ApplicationMessage message) {
+    private void handleApplicationMessage(ApplicationMessage message, boolean receivedDuringReplay) {
+        BoeSessionState state = sessionState;
+        if (state != null && session.isAuthenticated()) {
+            int sequenceNumber = inboundSequenceOf(message);
+            if (state.checkInbound(sequenceNumber) == BoeSessionState.InboundCheck.BACKWARD) {
+                logoutForProtocolViolation("Sequence number " + Integer.toUnsignedString(sequenceNumber)
+                        + " is not above last processed " + Integer.toUnsignedString(state.lastProcessedInbound()));
+                return;
+            }
+            if (receivedDuringReplay && !(message instanceof CancelOrderMessage)) {
+                rejectReceivedDuringReplay(message);
+                return;
+            }
+        }
+
         switch (message) {
             case NewOrderMessage newOrderMessage       -> handleNewOrder(newOrderMessage);
             case CancelOrderMessage cancelOrderMessage -> handleCancelOrder(cancelOrderMessage);
@@ -246,75 +270,189 @@ public class ClientConnectionHandler implements Runnable {
                 request.getSessionSubID()
         });
 
-        // Update session info
         session.setUsername(request.getUsername());
         session.setSessionSubID(request.getSessionSubID());
-        session.setMatchingUnit(request.getMatchingUnit());
         session.setReturnBitfields(request.getReturnBitfields());
-        session.updateReceivedSequenceNumber(request.getSequenceNumber());
 
         AuthenticationResult authResult = authService.authenticate(
                 request.getUsername(),
                 request.getPassword(),
                 request.getSessionSubID()
         );
+        if (!authResult.isAccepted()) {
+            rejectLogin(request, authResult.toLoginResponseStatusByte(), authResult.message());
+            return;
+        }
+        ownsAuthSession = true;
 
-        // Create and send LoginResponse
-        sendLoginResponse(authResult, request.getSequenceNumber());
+        BoeSessionState state = sessionManager.getSessionStates().bind(request.getUsername(), request.getSessionSubID());
+        UnitSequences units = request.getUnitSequences();
 
-        if (authResult.isAccepted()) {
+        String unitError = validateUnitSequences(units, state);
+        if (unitError != null) {
+            authService.endSession(request.getUsername());
+            ownsAuthSession = false;
+            byte status = unitError.startsWith("Sequence ahead")
+                    ? LoginResponseMessage.STATUS_SEQUENCE_AHEAD
+                    : LoginResponseMessage.STATUS_INVALID_UNIT;
+            rejectLogin(request, status, unitError);
+            return;
+        }
+
+        state.setReturnBitfields(request.getReturnBitfields());
+        int replayAfter = replayStartFor(units);
+
+        state.lock();
+        try {
+            sessionState = state;
             session.setState(SessionState.AUTHENTICATED);
-            heartbeatMonitor.start();
             sessionManager.registerUsername(this, request.getUsername());
-            sessionManager.getStatistics().incrementSuccessfulLogins();
 
-            LOGGER.log(Level.INFO, "[Session {0}] User authenticated successfully",
-                    session.getConnectionId());
-        } else {
-            session.setState(SessionState.ERROR);
-            sessionManager.getStatistics().incrementFailedLogins();
-            LOGGER.log(Level.WARNING, "[Session {0}] Authentication failed: {1}", new Object[]{
-                    session.getConnectionId(),
-                    authResult.message()
-            });
-            
-            // Close connection gracefully after failed authentication
-            try {
-                Thread.sleep(100); // Give time for LoginResponse to be sent
-                running = false;
-                socket.close();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (IOException e) {
-                LOGGER.log(Level.FINE, "Error closing socket after failed authentication", e);
+            sendMessage(new LoginResponseMessage(
+                    LoginResponseMessage.STATUS_ACCEPTED,
+                    authResult.message(),
+                    state.lastProcessedInbound(),
+                    Map.of((int) BoeSessionState.MATCHING_UNIT, state.lastSentSequence()),
+                    units.isNoUnspecifiedUnitReplay(),
+                    request.getNumberOfParamGroups(),
+                    request.getParamGroupBytes()
+            ).toBytes());
+
+            List<byte[]> missed = replayAfter >= 0 ? state.messagesAfter(replayAfter) : List.of();
+            for (byte[] replayed : missed) sendMessage(replayed);
+
+            replayInProgress = false;
+            sendMessage(new ReplayCompleteMessage().toBytes());
+
+            LOGGER.log(Level.INFO, "[Session {0}] Login accepted: replayed {1} messages (last sent seq {2}, last received seq {3})",
+                    new Object[]{session.getConnectionId(), missed.size(), state.lastSentSequence(), state.lastProcessedInbound()});
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending login response or replay", e);
+        } finally {
+            state.unlock();
+            replayInProgress = false;
+        }
+
+        heartbeatMonitor.start();
+        sessionManager.getStatistics().incrementSuccessfulLogins();
+    }
+
+    private String validateUnitSequences(UnitSequences units, BoeSessionState state) {
+        for (Map.Entry<Integer, Integer> unit : units.lastReceivedByUnit().entrySet()) {
+            int unitNumber = unit.getKey();
+            int lastReceived = unit.getValue();
+            if (unitNumber != BoeSessionState.MATCHING_UNIT) {
+                if (lastReceived != 0) return "Invalid unit " + unitNumber + " (only unit " + BoeSessionState.MATCHING_UNIT + " exists)";
+            } else if (Integer.compareUnsigned(lastReceived, state.lastSentSequence()) > 0) {
+                return "Sequence ahead: unit " + unitNumber + " last received " + Integer.toUnsignedString(lastReceived)
+                        + " but highest sent is " + state.lastSentSequence();
             }
+        }
+        return null;
+    }
+
+    // -1 = no replay
+    private int replayStartFor(UnitSequences units) {
+        if (!units.isPresent()) return 0;
+        Integer lastReceived = units.lastReceivedByUnit().get((int) BoeSessionState.MATCHING_UNIT);
+        if (lastReceived != null) return lastReceived;
+        return units.isNoUnspecifiedUnitReplay() ? -1 : 0;
+    }
+
+    private void rejectLogin(LoginRequestMessage request, byte status, String text) {
+        try {
+            sendMessage(new LoginResponseMessage(
+                    status,
+                    text,
+                    0,
+                    Map.of(),
+                    request.getUnitSequences().isNoUnspecifiedUnitReplay(),
+                    request.getNumberOfParamGroups(),
+                    request.getParamGroupBytes()
+            ).toBytes());
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LoginResponse", e);
+        }
+        replayInProgress = false;
+        session.setState(SessionState.ERROR);
+        sessionManager.getStatistics().incrementFailedLogins();
+        LOGGER.log(Level.WARNING, "[Session {0}] Login rejected ({1}): {2}", new Object[]{
+                session.getConnectionId(), (char) status, text
+        });
+
+        try {
+            Thread.sleep(100); // Give time for LoginResponse to be sent
+            running = false;
+            socket.close();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            LOGGER.log(Level.FINE, "Error closing socket after failed login", e);
         }
     }
 
     private void handleLogoutRequest(LogoutRequestMessage request) {
         LOGGER.log(Level.INFO, "[Session {0}] Processing logout request", session.getConnectionId());
 
-        session.updateReceivedSequenceNumber(request.getSequenceNumber());
+        sendLogout(LogoutResponseMessage.REASON_USER_REQUESTED, "Logout successful");
+    }
+
+    private void logoutForProtocolViolation(String text) {
+        LOGGER.log(Level.WARNING, "[Session {0}] Protocol violation - logging out: {1}",
+                new Object[]{session.getConnectionId(), text});
+        sendLogout(LogoutResponseMessage.REASON_PROTOCOL_VIOLATION, text);
+    }
+
+    private void sendLogout(byte reason, String text) {
         session.setState(SessionState.DISCONNECTING);
-
         heartbeatMonitor.stop();
-        if (session.getUsername() != null) authService.endSession(session.getUsername());
 
-        // Send LogoutResponse
-        sendLogoutResponse(request.getSequenceNumber());
+        BoeSessionState state = sessionState;
+        if (state != null) state.lock();
+        try {
+            sendMessage(new LogoutResponseMessage(
+                    reason,
+                    text,
+                    state != null ? state.lastProcessedInbound() : 0,
+                    state != null ? Map.of((int) BoeSessionState.MATCHING_UNIT, state.lastSentSequence()) : Map.of()
+            ).toBytes());
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent Logout ({1})", new Object[]{session.getConnectionId(), (char) reason});
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending Logout", e);
+        } finally {
+            if (state != null) state.unlock();
+        }
 
-        // Close connection after logout
+        if (ownsAuthSession) {
+            authService.endSession(session.getUsername());
+            ownsAuthSession = false;
+        }
         running = false;
     }
 
     private void handleClientHeartbeat(ClientHeartbeatMessage heartbeat) {
-        LOGGER.log(Level.FINE, "[Session {0}] Client heartbeat received: seq={1}",
-                new Object[]{session.getConnectionId(), heartbeat.getSequenceNumber()});
-
-        session.updateReceivedSequenceNumber(heartbeat.getSequenceNumber());
+        LOGGER.log(Level.FINE, "[Session {0}] Client heartbeat received", session.getConnectionId());
         session.updateHeartbeatReceived();
+    }
 
-        LOGGER.log(Level.FINE, "[Session {0}] Heartbeat acknowledged", session.getConnectionId());
+    private static int inboundSequenceOf(ApplicationMessage message) {
+        return switch (message) {
+            case NewOrderMessage m -> m.getSequenceNumber();
+            case CancelOrderMessage m -> m.getSequenceNumber();
+            case ModifyOrderMessage m -> m.getSequenceNumber();
+            default -> 0;
+        };
+    }
+
+    private void rejectReceivedDuringReplay(ApplicationMessage message) {
+        switch (message) {
+            case NewOrderMessage m -> sendOrderRejected(m.getClOrdID(),
+                    OrderRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay");
+            case ModifyOrderMessage m -> sendUserModifyRejected(m.getClOrdID(),
+                    UserModifyRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay");
+            default -> LOGGER.log(Level.WARNING, "[Session {0}] Ignoring {1} received during replay",
+                    new Object[]{session.getConnectionId(), message.getClass().getSimpleName()});
+        }
     }
 
     private void handleNewOrder(NewOrderMessage newOrder) {
@@ -338,8 +476,6 @@ public class ClientConnectionHandler implements Runnable {
             );
             return;
         }
-
-        session.updateReceivedSequenceNumber(newOrder.getSequenceNumber());
 
         OrderManager.OrderResponse response = orderManager.processNewOrder(newOrder, session);
 
@@ -366,8 +502,6 @@ public class ClientConnectionHandler implements Runnable {
             return;
         }
 
-        session.updateReceivedSequenceNumber(modifyOrder.getSequenceNumber());
-
         OrderManager.ModifyResponse response = orderManager.processModifyOrder(modifyOrder, session);
 
         if (response.isModified()) {
@@ -390,8 +524,6 @@ public class ClientConnectionHandler implements Runnable {
             return;
         }
 
-        session.updateReceivedSequenceNumber(cancelOrder.getSequenceNumber());
-
         OrderManager.CancelResponse response = orderManager.processCancelOrder(cancelOrder, session);
 
         if (response.isCancelled()) sendOrderCancelled(response.getOrder(), response.getCancelReason());
@@ -404,12 +536,12 @@ public class ClientConnectionHandler implements Runnable {
     }
 
     public void sendSequenced(IntFunction<byte[]> encoder) throws IOException {
-        sendLock.lock();
-        try {
-            sendMessage(encoder.apply(session.getNextSentSequenceNumber()));
-        } finally {
-            sendLock.unlock();
+        BoeSessionState state = sessionState;
+        if (state == null) {
+            sendMessage(encoder.apply(0));
+            return;
         }
+        state.sendSequenced(encoder, session.isAuthenticated() ? this::sendMessage : null);
     }
 
     public void sendMessage(byte[] messageBytes) throws IOException {
@@ -428,65 +560,11 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendLoginResponse(AuthenticationResult authResult, int lastReceivedSeq) {
-        try {
-            LoginResponseMessage response = new LoginResponseMessage(
-                    authResult.toLoginResponseStatusByte(),
-                    authResult.message(),
-                    lastReceivedSeq,
-                    1
-            );
-
-            response.setMatchingUnit(session.getMatchingUnit());
-            sendSequenced(seq -> {
-                response.setSequenceNumber(seq);
-                return response.toBytes();
-            });
-
-            LOGGER.log(Level.INFO, "[Session {0}] → Sent LoginResponse: status={1}, msg=''{2}''", new Object[]{
-                    session.getConnectionId(),
-                    (char)authResult.toLoginResponseStatusByte(),
-                    authResult.message()
-            });
-
-            if (authResult.isAccepted()) {
-                ReplayCompleteMessage replayComplete = new ReplayCompleteMessage(session.getMatchingUnit(), 0);
-                sendMessage(replayComplete.toBytes());
-                LOGGER.log(Level.INFO, "[Session {0}] → Sent ReplayComplete", session.getConnectionId());
-            }
-
-        } catch (IOException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LoginResponse", e);
-        }
-    }
-
-    private void sendLogoutResponse(int lastReceivedSeq) {
-        try {
-            LogoutResponseMessage response = new LogoutResponseMessage(
-                    LogoutResponseMessage.REASON_USER_REQUESTED,
-                    "Logout successful",
-                    lastReceivedSeq,
-                    1
-            );
-
-            response.setMatchingUnit(session.getMatchingUnit());
-            sendSequenced(seq -> {
-                response.setSequenceNumber(seq);
-                return response.toBytes();
-            });
-
-            LOGGER.log(Level.INFO, "[Session {0}] → Sent LogoutResponse", session.getConnectionId());
-
-        } catch (IOException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LogoutResponse", e);
-        }
-    }
-
     private void sendOrderAcknowledgment(com.boe.simulator.server.order.Order order) {
         try {
             sendSequenced(seq -> OrderAcknowledgmentMessage.fromOrder(
                     order,
-                    session.getMatchingUnit(),
+                    BoeSessionState.MATCHING_UNIT,
                     seq,
                     session.getReturnBitfields()
             ).toBytes());
@@ -506,12 +584,7 @@ public class ClientConnectionHandler implements Runnable {
 
     private void sendOrderRejected(String clOrdID, byte reason, String text) {
         try {
-            OrderRejectedMessage rejected = new OrderRejectedMessage(clOrdID, reason, text);
-            rejected.setMatchingUnit(session.getMatchingUnit());
-            sendSequenced(seq -> {
-                rejected.setSequenceNumber(seq);
-                return rejected.toBytes();
-            });
+            sendMessage(new OrderRejectedMessage(clOrdID, reason, text).toBytes());
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderRejected: ClOrdID={1}, Reason={2}", new Object[]{
                     session.getConnectionId(),
@@ -528,7 +601,7 @@ public class ClientConnectionHandler implements Runnable {
         try {
             sendSequenced(seq -> OrderModifiedMessage.fromOrder(
                     order,
-                    session.getMatchingUnit(),
+                    BoeSessionState.MATCHING_UNIT,
                     seq
             ).toBytes());
 
@@ -544,9 +617,7 @@ public class ClientConnectionHandler implements Runnable {
 
     private void sendUserModifyRejected(String clOrdID, byte reason, String text) {
         try {
-            UserModifyRejectedMessage rejected = new UserModifyRejectedMessage(clOrdID, reason, text);
-
-            sendMessage(rejected.toBytes());
+            sendMessage(new UserModifyRejectedMessage(clOrdID, reason, text).toBytes());
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent UserModifyRejected: ClOrdID={1}, Reason={2}",
                     new Object[]{session.getConnectionId(), clOrdID, (char) reason});
@@ -560,7 +631,7 @@ public class ClientConnectionHandler implements Runnable {
     private void sendOrderCancelled(com.boe.simulator.server.order.Order order, byte reason) {
         try {
             OrderCancelledMessage cancelled = OrderCancelledMessage.fromOrder(order, reason);
-            cancelled.setMatchingUnit(session.getMatchingUnit());
+            cancelled.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
             sendSequenced(seq -> {
                 cancelled.setSequenceNumber(seq);
                 return cancelled.toBytes();
@@ -589,7 +660,7 @@ public class ClientConnectionHandler implements Runnable {
         running = false;
 
         if (heartbeatMonitor != null) heartbeatMonitor.shutdown();
-        if (session.isAuthenticated()) authService.endSession(session.getUsername());
+        if (ownsAuthSession) authService.endSession(session.getUsername());
 
         errorHandler.clearConnectionStats(session.getConnectionId());
         rateLimiter.clearConnection(session.getConnectionId());
