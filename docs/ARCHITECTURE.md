@@ -79,7 +79,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 506 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 520 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -375,6 +375,37 @@ respuesta: `M` (por defecto) un Order Cancelled por orden, `S` un único Mass Ca
 exige vacío. "Idénticos" son los que coinciden en RiskRoot, ClearingFirm y los filtros de lockout,
 instrumento y GTC (`IdenticalRequestLimiter`, ventana deslizante de 1 s).
 
+**Códigos de motivo del Order Rejected** (*Order Reason Codes*, p.213):
+
+| Caso | Código |
+|---|---|
+| OrderQty mayor que 999.999 | `M` *Order size exceeded* |
+| Símbolo fuera de la lista del simulador | `Y` *Symbol not supported* |
+| ClOrdID de otra orden viva | `D` |
+| Máximo de órdenes abiertas | `o` |
+| Recibido durante el replay | `y` |
+| Cualquier otra validación, campo no soportado o error interno | `Z` *Unforeseen reason* + texto |
+
+Order Cancelled usa `U` (petición del usuario, también en los mass cancel) y `N` (IOC/FOK sin
+liquidez). El campo opcional Subreason (p.215) no se envía.
+
+**Mensajes que el simulador no procesa.** La spec solo dice que una violación del protocolo acaba en
+`Logout` `!`; nunca se deja un mensaje sin respuesta:
+
+| Mensaje recibido | Respuesta |
+|---|---|
+| Quote Update (`0x55`) / Quote Update (Short) (`0x59`) | Quote Update Rejected (`0x58`, sin secuencia) `F` *Not enabled for quotes* con el QuoteUpdateID; la sesión sigue |
+| Otro tipo de la Tabla 134 sin implementar (New Order Cross, Purge Orders, Reset Risk, complejas…) | `Logout` `!` "Unsupported message type 0x47 (PURGE_ORDERS)" y cierre |
+| Un tipo que solo envía Cboe (Tabla 135) | `Logout` `!` "Cboe-only message type …" y cierre |
+| Un tipo que no existe | `Logout` `!` "Unknown message type 0x7F" y cierre |
+| Un tipo implementado que no se puede parsear | `Logout` `!` "Malformed message type …" y cierre |
+
+**Orden de las respuestas.** El ACK (o el Order Modified) sale **antes** que las ejecuciones que
+provoca la propia orden, y una IOC/FOK termina con su Order Cancelled. Las ejecuciones del agresor
+se construyen en el momento del cruce (con su `LeavesQty` de ese instante), `OrderManager` las
+aparca y viajan en la respuesta para que `ClientConnectionHandler` las envíe tras el ACK. Las de la
+orden pasiva salen en el acto: van a otra sesión.
+
 **Cierre del día y apagado.** A las **17:30 America/New_York** (horario de verano incluido; la tarea se
 reprograma cada día) todas las sesiones conectadas reciben `Logout` `E` *End of day* y, después,
 el reset diario borra órdenes, trades y estado de secuencia. Al apagar el servidor cada sesión
@@ -537,6 +568,9 @@ El Modify Order requiere un orden específico para mantener la integridad del Or
 6. Intentar matching al nuevo precio
 7. Si leavesQty > 0 → addOrder(book) al final del nivel (pierde la prioridad)
 ```
+
+Si el modify cruza y llena la orden entera, la respuesta es Order Modified seguido de las
+ejecuciones; Order Cancelled se reserva para el caso 4.
 
 Cualquier otro cambio, o un modify sin cambios, pierde la prioridad (p.77).
 
@@ -891,13 +925,13 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-506 tests distribuidos en 53 clases (cifras de `mvn test`, no estimadas):
+520 tests distribuidos en 55 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 231 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
+| Wire format (`protocol/message/`) | 235 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
-| Order management (`server/order/`) | 59 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
+| Order management (`server/order/`) | 62 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
 | **Matching engine (`server/matching/`)** | **41** | Prioridad precio-tiempo, self-trade, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
@@ -905,7 +939,7 @@ Detalle completo y limitación conocida en §6.3.
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 13 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
-| Conexión (`server/connection/`) | 38 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel, Modify e IOC y métricas con sockets reales |
+| Conexión (`server/connection/`) | 45 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel, Modify e IOC, orden ACK → ejecuciones, Quote Update Rejected y Logout `!` por mensajes no soportados, y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
 | Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
