@@ -12,12 +12,10 @@ import java.time.ZoneId;
  */
 public final class BoeTime {
 
-    // Option maturity dates are U.S. exchange calendar dates
     private static final ZoneId EXCHANGE_ZONE = ZoneId.of("America/New_York");
 
     private BoeTime() {}
 
-    // System.nanoTime() is monotonic with an arbitrary origin, so it cannot be used here
     public static long nowEpochNanos() {
         return toEpochNanos(Instant.now());
     }
