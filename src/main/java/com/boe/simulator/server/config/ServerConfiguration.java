@@ -17,6 +17,10 @@ public class ServerConfiguration {
     // Rate limiting
     private final int rateLimitPerSecond;
 
+    // Flow control
+    private final int maxUnacknowledgedMessages;
+    private final int resumeReadingBelow;
+
     // Logging
     private final Level logLevel;
 
@@ -30,6 +34,8 @@ public class ServerConfiguration {
         this.heartbeatIntervalSeconds = builder.heartbeatIntervalSeconds;
         this.heartbeatTimeoutSeconds = builder.heartbeatTimeoutSeconds;
         this.rateLimitPerSecond = builder.rateLimitPerSecond;
+        this.maxUnacknowledgedMessages = builder.maxUnacknowledgedMessages;
+        this.resumeReadingBelow = builder.resumeReadingBelow;
         this.logLevel = builder.logLevel;
     }
     
@@ -57,6 +63,8 @@ public class ServerConfiguration {
     public long getHeartbeatIntervalSeconds() { return heartbeatIntervalSeconds; }
     public long getHeartbeatTimeoutSeconds() { return heartbeatTimeoutSeconds; }
     public int getRateLimitPerSecond() { return rateLimitPerSecond; }
+    public int getMaxUnacknowledgedMessages() { return maxUnacknowledgedMessages; }
+    public int getResumeReadingBelow() { return resumeReadingBelow; }
     public Level getLogLevel() { return logLevel; }
     
     @Override
@@ -69,6 +77,8 @@ public class ServerConfiguration {
                 ", heartbeatInterval=" + heartbeatIntervalSeconds + "s" +
                 ", heartbeatTimeout=" + heartbeatTimeoutSeconds + "s" +
                 ", rateLimit=" + rateLimitPerSecond + "/s" +
+                ", maxUnacknowledged=" + maxUnacknowledgedMessages +
+                ", resumeReadingBelow=" + resumeReadingBelow +
                 ", logLevel=" + logLevel +
                 '}';
     }
@@ -81,6 +91,8 @@ public class ServerConfiguration {
         private long heartbeatIntervalSeconds = 10;
         private long heartbeatTimeoutSeconds = 30;
         private int rateLimitPerSecond = 1_000;
+        private int maxUnacknowledgedMessages = 1_024;
+        private int resumeReadingBelow = 960;
         private Level logLevel = Level.INFO;
         
         public Builder host(String host) {
@@ -121,6 +133,14 @@ public class ServerConfiguration {
         public Builder rateLimitPerSecond(int limit) {
             if (limit < 1) throw new IllegalArgumentException("Rate limit must be at least 1");
             this.rateLimitPerSecond = limit;
+            return this;
+        }
+
+        public Builder flowControl(int maxUnacknowledged, int resumeBelow) {
+            if (resumeBelow < 1 || resumeBelow > maxUnacknowledged)
+                throw new IllegalArgumentException("Resume threshold must be between 1 and the pause threshold");
+            this.maxUnacknowledgedMessages = maxUnacknowledged;
+            this.resumeReadingBelow = resumeBelow;
             return this;
         }
         

@@ -5,6 +5,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntFunction;
 import java.util.logging.Level;
@@ -39,7 +41,10 @@ public class ClientConnectionHandler implements Runnable {
     private InputStream inputStream;
     private OutputStream outputStream;
     private volatile boolean running;
+    private volatile boolean readerDone;
     private final ReentrantLock sendLock = new ReentrantLock();
+    private final LinkedBlockingQueue<BoeMessage> inbound = new LinkedBlockingQueue<>();
+    private final UnacknowledgedMessageGate gate;
 
     public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService, ClientSessionManager sessionManager, ErrorHandler errorHandler, RateLimiter rateLimiter, OrderManager orderManager) {
         this.socket = socket;
@@ -52,6 +57,7 @@ public class ClientConnectionHandler implements Runnable {
         this.errorHandler = errorHandler;
         this.rateLimiter = rateLimiter;
         this.orderManager = orderManager;
+        this.gate = new UnacknowledgedMessageGate(config.getMaxUnacknowledgedMessages(), config.getResumeReadingBelow());
 
         LOGGER.log(Level.INFO, "[Session {0}] Handler created for {1}", new Object[]{
                 session.getConnectionId(),
@@ -61,12 +67,20 @@ public class ClientConnectionHandler implements Runnable {
 
     @Override
     public void run() {
+        Thread processor = null;
         try {
             initialize();
-            messageLoop();
+            processor = Thread.ofVirtual()
+                    .name("boe-processor-" + session.getConnectionId())
+                    .start(this::processLoop);
+            readLoop();
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Handler error", e);
         } finally {
+            readerDone = true;
+            joinQuietly(processor);
+            running = false;
+            gate.close();
             cleanup();
         }
     }
@@ -82,53 +96,95 @@ public class ClientConnectionHandler implements Runnable {
         LOGGER.log(Level.INFO, "[Session {0}] Waiting for login request...", session.getConnectionId());
     }
 
-    private void messageLoop() {
+    private void readLoop() {
         while (running) {
             try {
-                // Read message
+                gate.awaitReadable();
+                if (!running) break;
+
                 BoeMessage message = serializer.deserialize(inputStream);
                 session.incrementMessagesReceived();
 
-                MessageValidator.ValidationResult validation = MessageValidator.validate(message);
-                if (!validation.isValid()) {
-                    LOGGER.log(Level.WARNING, "[Session {0}] Invalid message: {1}", new Object[]{
-                            session.getConnectionId(),
-                            validation.getMessage()
-                    });
-                    errorHandler.handleError(session.getConnectionId(), "Message validation", new IllegalArgumentException(validation.getMessage()));
-                    continue;
+                if (gate.onRead()) {
+                    LOGGER.log(Level.WARNING, "[Session {0}] {1} unacknowledged messages - pausing socket reads",
+                            new Object[]{session.getConnectionId(), gate.unacknowledged()});
                 }
+                inbound.add(message);
 
-                byte messageType = message.getMessageType();
-
-                if (LOGGER.isLoggable(Level.FINE)) {
-                    LOGGER.log(Level.FINE, "[Session {0}] ← Received {1} (length: {2} bytes)", new Object[]{
-                            session.getConnectionId(),
-                            BoeMessageFactory.getMessageTypeName(messageType),
-                            message.getLength()
-                    });
-                }
-
-                processMessage(message);
-
-                if (errorHandler.shouldTerminateConnection(session.getConnectionId())) {
-                    LOGGER.log(Level.SEVERE, "[Session {0}] Too many errors - terminating", session.getConnectionId());
-                    break;
-                }
-
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             } catch (SocketException e) {
-                errorHandler.handleError(session.getConnectionId(), "Socket error", e);
-                LOGGER.log(Level.INFO, "[Session {0}] Client disconnected", session.getConnectionId());
+                if (running) {
+                    errorHandler.handleError(session.getConnectionId(), "Socket error", e);
+                    LOGGER.log(Level.INFO, "[Session {0}] Client disconnected", session.getConnectionId());
+                }
                 break;
             } catch (IOException e) {
                 if (running) errorHandler.handleError(session.getConnectionId(), "IO error reading message", e);
 
                 break;
+            }
+        }
+    }
+
+    private void processLoop() {
+        while (running) {
+            BoeMessage message;
+            try {
+                message = inbound.poll(100, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            if (message == null) {
+                if (readerDone) break;
+                continue;
+            }
+
+            try {
+                handleInbound(message);
             } catch (Exception e) {
                 errorHandler.handleError(session.getConnectionId(), "Error processing message", e);
                 LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Unexpected error", e);
+            } finally {
+                if (gate.onAcknowledged()) {
+                    LOGGER.log(Level.INFO, "[Session {0}] {1} unacknowledged messages - resuming socket reads",
+                            new Object[]{session.getConnectionId(), gate.unacknowledged()});
+                }
+            }
+
+            if (errorHandler.shouldTerminateConnection(session.getConnectionId())) {
+                LOGGER.log(Level.SEVERE, "[Session {0}] Too many errors - terminating", session.getConnectionId());
+                break;
             }
         }
+
+        running = false;
+        gate.close();
+        shutdownInputQuietly();
+    }
+
+    private void handleInbound(BoeMessage message) {
+        MessageValidator.ValidationResult validation = MessageValidator.validate(message);
+        if (!validation.isValid()) {
+            LOGGER.log(Level.WARNING, "[Session {0}] Invalid message: {1}", new Object[]{
+                    session.getConnectionId(),
+                    validation.getMessage()
+            });
+            errorHandler.handleError(session.getConnectionId(), "Message validation", new IllegalArgumentException(validation.getMessage()));
+            return;
+        }
+
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.log(Level.FINE, "[Session {0}] ← Received {1} (length: {2} bytes)", new Object[]{
+                    session.getConnectionId(),
+                    BoeMessageFactory.getMessageTypeName(message.getMessageType()),
+                    message.getLength()
+            });
+        }
+
+        processMessage(message);
     }
 
     private void processMessage(BoeMessage message) {
@@ -554,6 +610,22 @@ public class ClientConnectionHandler implements Runnable {
 
         session.setState(SessionState.DISCONNECTED);
         LOGGER.log(Level.INFO, "[Session {0}] Connection closed", session.getConnectionId());
+    }
+
+    private void shutdownInputQuietly() {
+        try {
+            if (!socket.isClosed() && !socket.isInputShutdown()) socket.shutdownInput();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void joinQuietly(Thread thread) {
+        if (thread == null) return;
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void closeQuietly(AutoCloseable closeable) {
