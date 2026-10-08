@@ -11,14 +11,21 @@ import io.javalin.websocket.WsContext;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class WebSocketService {
     private static final Logger LOGGER = Logger.getLogger(WebSocketService.class.getName());
 
+    private static final long IDLE_TIMEOUT_MILLIS = 300_000; // 5 minutes
+    private static final long CLEANUP_INTERVAL_SECONDS = 60;
+
     private final Map<String, WebSocketSession> sessions;
     private final ObjectMapper objectMapper;
+    private ScheduledExecutorService cleanupScheduler;
 
     public WebSocketService() {
         this.sessions = new ConcurrentHashMap<>();
@@ -41,6 +48,11 @@ public class WebSocketService {
             LOGGER.log(Level.INFO, "WebSocket session removed: {0} (total: {1})",
                     new Object[]{sessionId, sessions.size()});
         }
+    }
+
+    public void recordActivity(String sessionId) {
+        WebSocketSession session = sessions.get(sessionId);
+        if (session != null) session.updateActivity();
     }
 
     public void subscribe(String sessionId, String symbol) {
@@ -163,14 +175,50 @@ public class WebSocketService {
         return new ArrayList<>(sessions.keySet());
     }
 
-    public void cleanupInactiveSessions() {
-        List<String> toRemove = sessions.values().stream()
-                .filter(session -> !session.isActive())
-                .map(WebSocketSession::getSessionId)
+    public synchronized void startCleanup() {
+        if (cleanupScheduler != null) return;
+        cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "WebSocket-Cleanup");
+            t.setDaemon(true);
+            return t;
+        });
+        cleanupScheduler.scheduleAtFixedRate(() -> {
+            try {
+                cleanupInactiveSessions();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "WebSocket cleanup failed", e);
+            }
+        }, CLEANUP_INTERVAL_SECONDS, CLEANUP_INTERVAL_SECONDS, TimeUnit.SECONDS);
+    }
+
+    public synchronized void stopCleanup() {
+        if (cleanupScheduler == null) return;
+        cleanupScheduler.shutdownNow();
+        cleanupScheduler = null;
+    }
+
+    public int cleanupInactiveSessions() {
+        return cleanupInactiveSessions(IDLE_TIMEOUT_MILLIS);
+    }
+
+    int cleanupInactiveSessions(long idleMillis) {
+        List<WebSocketSession> stale = sessions.values().stream()
+                .filter(session -> !session.getContext().session.isOpen() || session.isIdleFor(idleMillis))
                 .toList();
 
-        toRemove.forEach(this::removeSession);
+        for (WebSocketSession session : stale) {
+            WsContext ctx = session.getContext();
+            if (ctx.session.isOpen()) {
+                try {
+                    ctx.closeSession(1001, "Idle timeout");
+                } catch (Exception e) {
+                    LOGGER.log(Level.FINE, "Error closing idle WebSocket session " + session.getSessionId(), e);
+                }
+            }
+            removeSession(session.getSessionId());
+        }
 
-        if (!toRemove.isEmpty()) LOGGER.log(Level.INFO, "Cleaned up {0} inactive WebSocket sessions", toRemove.size());
+        if (!stale.isEmpty()) LOGGER.log(Level.INFO, "Cleaned up {0} inactive WebSocket sessions", stale.size());
+        return stale.size();
     }
 }

@@ -160,6 +160,7 @@ public class RestApiServer {
 
         // Start server
         app.start(port);
+        webSocketService.startCleanup();
         running = true;
 
         // Bot management endpoints
@@ -187,6 +188,7 @@ public class RestApiServer {
 
         LOGGER.info("Stopping REST API Server...");
 
+        webSocketService.stopCleanup();
         if (app != null) app.stop();
 
         running = false;

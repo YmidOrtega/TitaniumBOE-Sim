@@ -42,6 +42,7 @@ public class WebSocketHandler {
         ws.onMessage(ctx -> {
             String sessionId = ctx.attribute("sessionId");
             String message = ctx.message();
+            webSocketService.recordActivity(sessionId);
 
             try {
                 @SuppressWarnings("unchecked")
