@@ -221,6 +221,11 @@ public class ClientConnectionHandler implements Runnable {
             return;
         }
 
+        if (!session.isAuthenticated()) {
+            logoutForProtocolViolation(String.format("Login Request must be the first message (got 0x%02X)", messageType));
+            return;
+        }
+
         try {
             // Create specific message object
             BoeProtocolMessage specificMessage = BoeMessageFactory.createMessage(message);
@@ -259,7 +264,7 @@ public class ClientConnectionHandler implements Runnable {
 
     private void handleApplicationMessage(ApplicationMessage message, boolean receivedDuringReplay) {
         BoeSessionState state = sessionState;
-        if (state != null && session.isAuthenticated()) {
+        if (state != null) {
             int sequenceNumber = inboundSequenceOf(message);
             if (state.checkInbound(sequenceNumber) == BoeSessionState.InboundCheck.BACKWARD) {
                 logoutForProtocolViolation("Sequence number " + Integer.toUnsignedString(sequenceNumber)
@@ -498,16 +503,6 @@ public class ClientConnectionHandler implements Runnable {
         }
 
 
-        if (!session.isAuthenticated()) {
-            LOGGER.log(Level.WARNING, "[Session {0}] NewOrder rejected - not authenticated", session.getConnectionId());
-            sendOrderRejected(
-                    newOrder.getClOrdID(),
-                    OrderRejectedMessage.REASON_SESSION_NOT_AUTHENTICATED,
-                    "Session not authenticated"
-            );
-            return;
-        }
-
         OrderManager.OrderResponse response = orderManager.processNewOrder(newOrder, session);
 
         if (response.isAcknowledged()) sendOrderAcknowledgment(response.getOrder());
@@ -525,14 +520,6 @@ public class ClientConnectionHandler implements Runnable {
                 new Object[]{session.getConnectionId(),
                         modifyOrder.getOrigClOrdID(), modifyOrder.getClOrdID()});
 
-        if (!session.isAuthenticated()) {
-            LOGGER.log(Level.WARNING, "[Session {0}] ModifyOrder rejected - not authenticated",
-                    session.getConnectionId());
-            sendUserModifyRejected(modifyOrder.getClOrdID(),
-                    UserModifyRejectedMessage.REASON_UNKNOWN, "Session not authenticated");
-            return;
-        }
-
         OrderManager.ModifyResponse response = orderManager.processModifyOrder(modifyOrder, session);
 
         if (response.isModified()) {
@@ -549,11 +536,6 @@ public class ClientConnectionHandler implements Runnable {
         LOGGER.log(Level.INFO, "[Session {0}] Processing CancelOrder: {1}", new Object[]{
                 session.getConnectionId(),
         });
-
-        if (!session.isAuthenticated()) {
-            LOGGER.log(Level.WARNING, "[Session {0}] CancelOrder rejected - not authenticated", session.getConnectionId());
-            return;
-        }
 
         OrderManager.CancelResponse response = orderManager.processCancelOrder(cancelOrder, session);
 
