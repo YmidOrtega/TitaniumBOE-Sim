@@ -14,7 +14,6 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
@@ -136,7 +135,6 @@ class OrderValidatorTest {
         if ((bf1 & 0x08) != 0) buffer.put(ordType);
         if ((bf2 & 0x01) != 0) {
             byte[] symbolBytes = new byte[8];
-            Arrays.fill(symbolBytes, (byte) 0x20);
             if (symbol != null) {
                 byte[] srcBytes = symbol.getBytes(StandardCharsets.US_ASCII);
                 System.arraycopy(srcBytes, 0, symbolBytes, 0, Math.min(srcBytes.length, 8));

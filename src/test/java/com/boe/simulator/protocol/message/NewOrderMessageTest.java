@@ -40,6 +40,16 @@ class NewOrderMessageTest {
     }
 
     @Test
+    void toBytes_shouldNulPadAlphanumericSymbol() {
+        byte[] bytes = optionOrder().toBytes();
+
+        int symbolOffset = BITFIELDS_OFFSET + 4;
+        byte[] symbol = Arrays.copyOfRange(bytes, symbolOffset, symbolOffset + 8);
+
+        assertArrayEquals(new byte[]{'A', 'A', 'P', 'L', 0x00, 0x00, 0x00, 0x00}, symbol);
+    }
+
+    @Test
     void parse_shouldRoundTripMaturityDateAndSymbol() {
         NewOrderMessage parsed = NewOrderMessage.parse(optionOrder().toBytes());
 

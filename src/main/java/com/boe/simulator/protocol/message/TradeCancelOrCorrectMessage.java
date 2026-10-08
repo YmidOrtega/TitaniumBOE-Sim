@@ -133,7 +133,7 @@ public final class TradeCancelOrCorrectMessage extends ApplicationMessage {
         buf.putLong(execRefID);
         buf.put(side);
         buf.put(baseLiquidityIndicator);
-        putAlpha(buf, clearingFirm, 4);
+        putText(buf, clearingFirm, 4);
         putText(buf, clearingAccount, 4);
         buf.putInt(lastShares);
         BinaryPrice.fromPrice(lastPx).putInto(buf);
@@ -148,16 +148,6 @@ public final class TradeCancelOrCorrectMessage extends ApplicationMessage {
 
     private static void putText(ByteBuffer buf, String s, int len) {
         byte[] bytes = new byte[len];
-        if (s != null && !s.isEmpty()) {
-            byte[] src = s.getBytes(StandardCharsets.US_ASCII);
-            System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));
-        }
-        buf.put(bytes);
-    }
-
-    private static void putAlpha(ByteBuffer buf, String s, int len) {
-        byte[] bytes = new byte[len];
-        java.util.Arrays.fill(bytes, (byte) 0x20);
         if (s != null && !s.isEmpty()) {
             byte[] src = s.getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));

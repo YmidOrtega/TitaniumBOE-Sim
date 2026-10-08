@@ -68,7 +68,7 @@ public final class LogoutResponseMessage extends SessionMessage {
         // Read LogoutReason (1 byte)
         this.logoutReason = buffer.get();
         
-        // Read LogoutReasonText (60 bytes fixed, space-padded)
+        // Read LogoutReasonText (60 bytes fixed, NUL-padded)
         byte[] textBytes = new byte[LOGOUT_REASON_SIZE];
         buffer.get(textBytes);
         this.logoutReasonText = new String(textBytes, StandardCharsets.US_ASCII).trim();
@@ -117,7 +117,7 @@ public final class LogoutResponseMessage extends SessionMessage {
         // Logout Reason (1 byte)
         buffer.put(logoutReason);
         
-        // Logout Reason Text (60 bytes fixed, space-padded)
+        // Logout Reason Text (60 bytes fixed, NUL-padded)
         buffer.put(toFixedLengthBytes(logoutReasonText, LOGOUT_REASON_SIZE));
         
         // Last Received Sequence Number (4 bytes)

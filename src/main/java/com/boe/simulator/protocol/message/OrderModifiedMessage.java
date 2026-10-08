@@ -111,7 +111,7 @@ public final class OrderModifiedMessage extends ApplicationMessage {
 
         if ((bitfields[0] & 0x04) != 0) BinaryPrice.fromPrice(price).putInto(buf);
         if ((bitfields[0] & 0x10) != 0) buf.put(ordType);
-        if ((bitfields[1] & 0x01) != 0) putAlpha(buf, symbol, 8);
+        if ((bitfields[1] & 0x01) != 0) putText(buf, symbol, 8);
         if ((bitfields[1] & 0x40) != 0) buf.put(capacity);
         if ((bitfields[4] & 0x02) != 0) buf.putInt(leavesQty);
 
@@ -130,16 +130,6 @@ public final class OrderModifiedMessage extends ApplicationMessage {
 
     private static void putText(ByteBuffer buf, String s, int len) {
         byte[] bytes = new byte[len];
-        if (s != null && !s.isEmpty()) {
-            byte[] src = s.getBytes(StandardCharsets.US_ASCII);
-            System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));
-        }
-        buf.put(bytes);
-    }
-
-    private static void putAlpha(ByteBuffer buf, String s, int len) {
-        byte[] bytes = new byte[len];
-        java.util.Arrays.fill(bytes, (byte) 0x20);
         if (s != null && !s.isEmpty()) {
             byte[] src = s.getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));

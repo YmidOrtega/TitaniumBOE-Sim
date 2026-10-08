@@ -3,7 +3,6 @@ package com.boe.simulator.protocol.message;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 public final class LoginRequestMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x37;
@@ -88,13 +87,13 @@ public final class LoginRequestMessage extends SessionMessage {
         // Sequence Number (4 bytes)
         buffer.putInt(sequenceNumber);
 
-        // Session Sub ID (4 bytes, padded with spaces 0x20)
+        // Session Sub ID (4 bytes, NUL-padded)
         buffer.put(toFixedLengthBytes(sessionSubID, SESSION_SUB_ID_SIZE));
 
-        // Username (4 bytes, padded with spaces 0x20)
+        // Username (4 bytes, NUL-padded)
         buffer.put(toFixedLengthBytes(username, USERNAME_SIZE));
 
-        // Password (10 bytes, padded with spaces 0x20)
+        // Password (10 bytes, NUL-padded)
         buffer.put(toFixedLengthBytes(password, PASSWORD_SIZE));
 
         // Number of Parameter Groups (1 byte)
@@ -104,9 +103,9 @@ public final class LoginRequestMessage extends SessionMessage {
         return buffer.array();
     }
 
+    // NUL-padded per BOE spec v2.11.90 (Alphanumeric / Text field types)
     private byte[] toFixedLengthBytes(String str, int length) {
         byte[] result = new byte[length];
-        Arrays.fill(result, (byte) 0x20);
 
         if (str != null && !str.isEmpty()) {
             byte[] strBytes = str.getBytes(StandardCharsets.US_ASCII);

@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets;
  *   [58]  LeavesQty            4B  Binary
  *   [62]  BaseLiquidityIndicator 1B Alphanumeric
  *   [63]  SubLiquidityIndicator  1B Alphanumeric (0x00 = none)
- *   [64]  ContraBroker           4B Alphanumeric (space-padded)
+ *   [64]  ContraBroker           4B Alphanumeric (NUL-padded)
  *   [68]  ReservedInternal       1B
  *   [69]  NumberOfReturnBitfields 1B
  *   [70]  ReturnBitfield¹…ᴺ    NB
@@ -136,7 +136,7 @@ public final class OrderExecutedMessage extends ApplicationMessage {
         buf.putInt(leavesQty);
         buf.put(baseLiquidityIndicator);
         buf.put(subLiquidityIndicator);
-        putAlpha(buf, contraBroker, 4);
+        putText(buf, contraBroker, 4);
         buf.put((byte) 0x00);              // ReservedInternal
         buf.put((byte) numberOfBitfields);
         if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
@@ -148,12 +148,12 @@ public final class OrderExecutedMessage extends ApplicationMessage {
     private void writeOptional(ByteBuffer buf) {
         if (numberOfBitfields < 2) return;
 
-        if ((bitfields[1] & 0x01) != 0) putAlpha(buf, symbol, 8);
+        if ((bitfields[1] & 0x01) != 0) putText(buf, symbol, 8);
         if ((bitfields[1] & 0x40) != 0) buf.put(capacity);
 
         if (numberOfBitfields < 3) return;
 
-        if ((bitfields[2] & 0x02) != 0) putAlpha(buf, clearingFirm, 4);
+        if ((bitfields[2] & 0x02) != 0) putText(buf, clearingFirm, 4);
         if ((bitfields[2] & 0x04) != 0) putText(buf, clearingAccount, 4);
         if ((bitfields[2] & 0x40) != 0) buf.putInt(orderQty);
     }
@@ -194,7 +194,7 @@ public final class OrderExecutedMessage extends ApplicationMessage {
         msg.subLiquidityIndicator = buf.get();
 
         byte[] cb = new byte[4]; buf.get(cb);
-        msg.contraBroker = stripSpace(cb);
+        msg.contraBroker = stripNul(cb);
 
         buf.get(); // ReservedInternal
 
@@ -204,14 +204,14 @@ public final class OrderExecutedMessage extends ApplicationMessage {
 
         if (msg.numberOfBitfields >= 2) {
             if ((msg.bitfields[1] & 0x01) != 0) {
-                byte[] s = new byte[8]; buf.get(s); msg.symbol = stripSpace(s);
+                byte[] s = new byte[8]; buf.get(s); msg.symbol = stripNul(s);
             }
             if ((msg.bitfields[1] & 0x40) != 0) msg.capacity = buf.get();
         }
 
         if (msg.numberOfBitfields >= 3) {
             if ((msg.bitfields[2] & 0x02) != 0) {
-                byte[] cf = new byte[4]; buf.get(cf); msg.clearingFirm = stripSpace(cf);
+                byte[] cf = new byte[4]; buf.get(cf); msg.clearingFirm = stripNul(cf);
             }
             if ((msg.bitfields[2] & 0x04) != 0) {
                 byte[] ca = new byte[4]; buf.get(ca); msg.clearingAccount = stripNul(ca);
@@ -231,24 +231,10 @@ public final class OrderExecutedMessage extends ApplicationMessage {
         buf.put(bytes);
     }
 
-    private static void putAlpha(ByteBuffer buf, String s, int len) {
-        byte[] bytes = new byte[len];
-        java.util.Arrays.fill(bytes, (byte) 0x20);
-        if (s != null && !s.isEmpty()) {
-            byte[] src = s.getBytes(StandardCharsets.US_ASCII);
-            System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));
-        }
-        buf.put(bytes);
-    }
-
     private static String stripNul(byte[] b) {
         int end = b.length;
         while (end > 0 && b[end - 1] == 0) end--;
         return new String(b, 0, end, StandardCharsets.US_ASCII);
-    }
-
-    private static String stripSpace(byte[] b) {
-        return new String(b, StandardCharsets.US_ASCII).stripTrailing();
     }
 
     public void setMatchingUnit(byte matchingUnit) { this.matchingUnit = matchingUnit; }

@@ -358,10 +358,9 @@ public final class NewOrderMessage extends ApplicationMessage {
         return result;
     }
 
-    // Space-padded for Alphanumeric fields (Symbol, Account, etc.)
+    // NUL-padded for Alphanumeric fields (Symbol, Account, etc.)
     private static byte[] toAlphaPaddedBytes(String str, int length) {
         byte[] result = new byte[length];
-        java.util.Arrays.fill(result, (byte) 0x20);
         if (str != null && !str.isEmpty()) {
             byte[] src = str.getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(src, 0, result, 0, Math.min(src.length, length));

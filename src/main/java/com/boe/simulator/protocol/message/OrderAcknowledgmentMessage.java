@@ -166,13 +166,13 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
 
         if (numberOfBitfields < 2) return;
         // Byte 2 fields
-        if ((bitfields[1] & 0x01) != 0) putAlpha(buf, symbol, 8);
+        if ((bitfields[1] & 0x01) != 0) putText(buf, symbol, 8);
         if ((bitfields[1] & 0x40) != 0) buf.put(capacity);
 
         if (numberOfBitfields < 3) return;
         // Byte 3 fields
         if ((bitfields[2] & 0x01) != 0) putText(buf, account, 16);
-        if ((bitfields[2] & 0x02) != 0) putAlpha(buf, clearingFirm, 4);
+        if ((bitfields[2] & 0x02) != 0) putText(buf, clearingFirm, 4);
         if ((bitfields[2] & 0x04) != 0) putText(buf, clearingAccount, 4);
         if ((bitfields[2] & 0x40) != 0) buf.putInt(orderQty);
 
@@ -239,12 +239,12 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
         if ((bitfields[0] & 0x10) != 0) ordType = buf.get();
 
         if (numberOfBitfields < 2) return;
-        if ((bitfields[1] & 0x01) != 0) { byte[] s = new byte[8]; buf.get(s); symbol = stripSpace(s); }
+        if ((bitfields[1] & 0x01) != 0) { byte[] s = new byte[8]; buf.get(s); symbol = stripNul(s); }
         if ((bitfields[1] & 0x40) != 0) capacity = buf.get();
 
         if (numberOfBitfields < 3) return;
         if ((bitfields[2] & 0x01) != 0) { byte[] a = new byte[16]; buf.get(a); account = stripNul(a); }
-        if ((bitfields[2] & 0x02) != 0) { byte[] cf = new byte[4]; buf.get(cf); clearingFirm = stripSpace(cf); }
+        if ((bitfields[2] & 0x02) != 0) { byte[] cf = new byte[4]; buf.get(cf); clearingFirm = stripNul(cf); }
         if ((bitfields[2] & 0x04) != 0) { byte[] ca = new byte[4]; buf.get(ca); clearingAccount = stripNul(ca); }
         if ((bitfields[2] & 0x40) != 0) orderQty = buf.getInt();
 
@@ -257,20 +257,9 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
         if ((bitfields[3] & 0x08) != 0) openClose = buf.get();
     }
 
-    // Text fields: NUL-padded (0x00)
+    // Text, Alpha and Alphanumeric fields: NUL-padded (0x00)
     private static void putText(ByteBuffer buf, String s, int len) {
         byte[] bytes = new byte[len];
-        if (s != null && !s.isEmpty()) {
-            byte[] src = s.getBytes(StandardCharsets.US_ASCII);
-            System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));
-        }
-        buf.put(bytes);
-    }
-
-    // Alphanumeric fields: space-padded (0x20)
-    private static void putAlpha(ByteBuffer buf, String s, int len) {
-        byte[] bytes = new byte[len];
-        java.util.Arrays.fill(bytes, (byte) 0x20);
         if (s != null && !s.isEmpty()) {
             byte[] src = s.getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(src, 0, bytes, 0, Math.min(src.length, len));
@@ -290,10 +279,6 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
         int end = b.length;
         while (end > 0 && b[end - 1] == 0) end--;
         return new String(b, 0, end, StandardCharsets.US_ASCII);
-    }
-
-    private static String stripSpace(byte[] b) {
-        return new String(b, StandardCharsets.US_ASCII).stripTrailing();
     }
 
     // Getters
