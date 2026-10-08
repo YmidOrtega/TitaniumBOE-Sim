@@ -1,5 +1,7 @@
 package com.boe.simulator.server.order;
 
+import com.boe.simulator.protocol.message.CancelOrderMessage;
+import com.boe.simulator.protocol.message.CancelRejectedMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
 import com.boe.simulator.protocol.types.BinaryPrice;
@@ -256,6 +258,7 @@ class OrderManagerTest {
         // Assert
         assertTrue(response.isRejected(), "Cancel should be rejected");
         assertTrue(response.getRejectText().contains("Order not found"));
+        assertEquals(CancelRejectedMessage.REASON_ORDER_NOT_FOUND, response.getRejectReason());
         assertEquals(0, orderManager.getTotalOrdersCancelled(), "Total cancelled orders should be 0");
         verify(matchingEngine, never()).cancelOrder(any(Order.class));
     }
@@ -275,7 +278,7 @@ class OrderManagerTest {
 
         // Assert
         assertTrue(response.isRejected(), "Cancel should be rejected");
-        assertTrue(response.getRejectText().contains("Unauthorized"));
+        assertEquals(CancelRejectedMessage.REASON_ORDER_NOT_FOUND, response.getRejectReason(), "Another user's order is reported as not found");
         assertEquals(0, orderManager.getTotalOrdersCancelled(), "Total cancelled orders should be 0");
         verify(matchingEngine, never()).cancelOrder(any(Order.class));
     }
@@ -304,6 +307,7 @@ class OrderManagerTest {
         assertTrue(response.isRejected(), "Cancel should be rejected");
         assertTrue(response.getRejectText().contains("not cancellable"), 
             "Reject text was: " + response.getRejectText());
+        assertEquals(CancelRejectedMessage.REASON_TOO_LATE_TO_CANCEL, response.getRejectReason());
         assertEquals(0, orderManager.getTotalOrdersCancelled(), "Total cancelled orders should be 0");
     }
 
@@ -369,5 +373,139 @@ class OrderManagerTest {
         assertEquals("MinQty is not supported by the simulator", response.getRejectText());
         verifyNoInteractions(orderValidator);
         verify(matchingEngine, never()).processOrder(any(Order.class));
+    }
+
+    // ========== Mass Cancel ==========
+
+    private void placeOrder(String clOrdID, String symbol, String clearingFirm) {
+        lenient().when(orderValidator.validateNewOrder(any(NewOrderMessage.class)))
+                .thenReturn(OrderValidator.ValidationResult.valid());
+        lenient().when(matchingEngine.processOrder(any(Order.class))).thenReturn(Collections.emptyList());
+        NewOrderMessage message = createNewOrderMessage(clOrdID, '1', 100.0, 10, symbol);
+        message.setClearingFirm(clearingFirm);
+        assertTrue(orderManager.processNewOrder(message, clientSession).isAcknowledged());
+    }
+
+    private static CancelOrderMessage massCancel(String inst, String clearingFirm, String riskRoot, String massCancelId) {
+        CancelOrderMessage message = new CancelOrderMessage("");
+        if (clearingFirm != null) message.setClearingFirm(clearingFirm);
+        if (riskRoot != null) message.setRiskRoot(riskRoot);
+        if (massCancelId != null) message.setMassCancelId(massCancelId);
+        if (inst != null) message.setMassCancelInst(inst);
+        message.setSendTime(1L);
+        return CancelOrderMessage.parse(message.toBytes());
+    }
+
+    private List<String> cancelledIds(OrderManager.CancelResponse response) {
+        return response.getMassCancelledOrders().stream().map(Order::getClOrdID).sorted().toList();
+    }
+
+    @Test
+    void massCancel_firmFilterA_cancelsAllTheUsersOrders() {
+        placeOrder("A1", "AAPL", "TEST");
+        placeOrder("A2", "MSFT", "OTHR");
+
+        OrderManager.CancelResponse response = orderManager.processCancelOrder(massCancel("A", null, null, null), clientSession);
+
+        assertTrue(response.isMassCancelled());
+        assertEquals(List.of("A1", "A2"), cancelledIds(response));
+        assertEquals('M', response.getAckStyle(), "Acknowledgement Style defaults to M");
+        assertEquals(2, orderManager.getTotalOrdersCancelled());
+    }
+
+    @Test
+    void massCancel_firmFilterF_onlyCancelsThatClearingFirm() {
+        placeOrder("F1", "AAPL", "TEST");
+        placeOrder("F2", "AAPL", "OTHR");
+
+        OrderManager.CancelResponse response = orderManager.processCancelOrder(massCancel("F", "TEST", null, null), clientSession);
+
+        assertEquals(List.of("F1"), cancelledIds(response));
+        assertTrue(orderManager.findByClOrdID("F2").isPresent());
+    }
+
+    @Test
+    void massCancel_riskRoot_isAppliedEvenWithFirmFilterA() {
+        placeOrder("R1", "MSFT", "TEST");
+        placeOrder("R2", "AAPL", "TEST");
+
+        OrderManager.CancelResponse response = orderManager.processCancelOrder(massCancel("A", null, "MSFT", null), clientSession);
+
+        assertEquals(List.of("R1"), cancelledIds(response));
+    }
+
+    @Test
+    void massCancel_specTable38FiltersWithoutLockout_cancelsOnlyFirmAndRoot() {
+        placeOrder("T1", "MSFT", "TEST");
+        placeOrder("T2", "AAPL", "TEST");
+        placeOrder("T3", "MSFT", "OTHR");
+
+        OrderManager.CancelResponse response = orderManager.processCancelOrder(massCancel("FSNB", "TEST", "MSFT", "ABC123"), clientSession);
+
+        assertEquals(List.of("T1"), cancelledIds(response));
+        assertEquals('S', response.getAckStyle());
+        assertEquals("ABC123", response.getMassCancelId());
+        assertEquals(1, response.getMassCancelCount());
+    }
+
+    @Test
+    void massCancel_complexOnlyFilter_cancelsNothing() {
+        placeOrder("C1", "AAPL", "TEST");
+
+        OrderManager.CancelResponse response = orderManager.processCancelOrder(massCancel("AMNC", null, null, null), clientSession);
+
+        assertTrue(response.isMassCancelled());
+        assertEquals(0, response.getMassCancelCount());
+        assertTrue(orderManager.findByClOrdID("C1").isPresent());
+    }
+
+    @Test
+    void massCancel_doesNotTouchOtherUsersOrders() {
+        placeOrder("U1", "AAPL", "TEST");
+        ClientSession other = mock(ClientSession.class);
+        lenient().when(other.isAuthenticated()).thenReturn(true);
+        lenient().when(other.getUsername()).thenReturn("otherUser");
+        lenient().when(other.getSessionSubID()).thenReturn("otherSession");
+
+        assertEquals(0, orderManager.processCancelOrder(massCancel("A", null, null, null), other).getMassCancelCount());
+        assertTrue(orderManager.findByClOrdID("U1").isPresent());
+    }
+
+    @Test
+    void invalidMassCancels_areRejectedWithZ() {
+        assertMassCancelRejected(massCancel(null, null, null, null), "MassCancelInst is required for a mass cancel");
+        assertMassCancelRejected(massCancel("X", null, null, null), "Invalid Clearing Firm Filter 'X' in MassCancelInst");
+        assertMassCancelRejected(massCancel("F", null, null, null), "ClearingFirm is required with Clearing Firm Filter F");
+        assertMassCancelRejected(massCancel("AA", null, null, "ID1"), "Acknowledgement Style A is only valid on Purge Orders");
+        assertMassCancelRejected(massCancel("AI", null, null, "ID1"), "Acknowledgement Style I is only valid on Purge Orders");
+        assertMassCancelRejected(massCancel("AQ", null, null, null), "Invalid Acknowledgement Style 'Q' in MassCancelInst");
+        assertMassCancelRejected(massCancel("AS", null, null, null), "MassCancelID is required with Acknowledgement Style S");
+        assertMassCancelRejected(massCancel("AB", null, null, null), "MassCancelID is required with Acknowledgement Style B");
+        assertMassCancelRejected(massCancel("AM", null, null, "ID1"), "MassCancelID must be blank with Acknowledgement Style M");
+        assertMassCancelRejected(massCancel("AS", null, null, "ID1 "), "MassCancelID must not end in a space");
+        assertMassCancelRejected(massCancel("AMX", null, null, null), "Invalid Lockout Instruction 'X' in MassCancelInst");
+        assertMassCancelRejected(massCancel("AML", null, null, null), "Lockout is not supported by the simulator");
+        assertMassCancelRejected(massCancel("AMNX", null, null, null), "Invalid Instrument Type Filter 'X' in MassCancelInst");
+        assertMassCancelRejected(massCancel("AMNBX", null, null, null), "Invalid GTC Order Filter 'X' in MassCancelInst");
+    }
+
+    private void assertMassCancelRejected(CancelOrderMessage message, String text) {
+        OrderManager.CancelResponse response = orderManager.processCancelOrder(message, clientSession);
+        assertTrue(response.isRejected(), text);
+        assertEquals(CancelRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
+        assertEquals(text, response.getRejectText());
+    }
+
+    @Test
+    void cancelWithAStructureError_isRejectedWithZ() {
+        placeOrder("S1", "AAPL", "TEST");
+        CancelOrderMessage withoutSendTime = CancelOrderMessage.parse(new CancelOrderMessage("S1").toBytes());
+
+        OrderManager.CancelResponse response = orderManager.processCancelOrder(withoutSendTime, clientSession);
+
+        assertTrue(response.isRejected());
+        assertEquals(CancelRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
+        assertEquals("SendTime is required on Cancel Order", response.getRejectText());
+        assertTrue(orderManager.findByClOrdID("S1").isPresent());
     }
 }

@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -24,6 +25,7 @@ import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.heartbeat.HeartbeatMonitor;
 import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.order.OrderManager;
+import com.boe.simulator.server.ratelimit.IdenticalRequestLimiter;
 import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.BoeSessionState;
 import com.boe.simulator.server.session.ClientSession;
@@ -51,6 +53,7 @@ public class ClientConnectionHandler implements Runnable {
     private final ReentrantLock sendLock = new ReentrantLock();
     private final LinkedBlockingQueue<Inbound> inbound = new LinkedBlockingQueue<>();
     private final UnacknowledgedMessageGate gate;
+    private final IdenticalRequestLimiter identicalMassCancels = new IdenticalRequestLimiter(10, Duration.ofSeconds(1));
     private volatile boolean replayInProgress;
     private volatile BoeSessionState sessionState;
     private volatile boolean ownsAuthSession;
@@ -583,18 +586,37 @@ public class ClientConnectionHandler implements Runnable {
 
     private void handleCancelOrder(CancelOrderMessage cancelOrder) {
         LOGGER.log(Level.INFO, "[Session {0}] Processing CancelOrder: {1}", new Object[]{
-                session.getConnectionId(),
+                session.getConnectionId(), cancelOrder
         });
+
+        if (cancelOrder.isMassCancel() && cancelOrder.getFieldError() == null
+                && !identicalMassCancels.tryAcquire(identicalMassCancelKey(cancelOrder))) {
+            sendCancelRejected(cancelOrder.getOrigClOrdID(), CancelRejectedMessage.REASON_RATE_THRESHOLD,
+                    "More than 10 identical mass cancels per second");
+            return;
+        }
 
         OrderManager.CancelResponse response = orderManager.processCancelOrder(cancelOrder, session);
 
-        if (response.isCancelled()) sendOrderCancelled(response.getOrder(), response.getCancelReason());
-        else if (response.isMassCancelled()) sendMassCancelAcknowledgment(response.getMassCancelCount(), response.getMassCancelId());
-        else LOGGER.log(Level.WARNING, "[Session {0}] Cancel rejected: {1}", new Object[]{
-                    session.getConnectionId(),
-                    response.getRejectText()
-            });
+        if (response.isCancelled()) {
+            sendOrderCancelled(response.getOrder(), response.getCancelReason());
+        } else if (response.isMassCancelled()) {
+            char style = response.getAckStyle();
+            if (style == 'M' || style == 'B') {
+                for (com.boe.simulator.server.order.Order order : response.getMassCancelledOrders()) {
+                    sendOrderCancelled(order, response.getCancelReason());
+                }
+            }
+            if (style == 'S' || style == 'B') sendMassCancelAcknowledgment(response.getMassCancelId(), response.getMassCancelCount());
+        } else {
+            sendCancelRejected(response.getClOrdID(), response.getRejectReason(), response.getRejectText());
+        }
+    }
 
+    // Identical = same Symbol (RiskRoot), ClearingFirm, Lockout, Instrument Type and GTC filters (p.74)
+    private static String identicalMassCancelKey(CancelOrderMessage m) {
+        return m.getRiskRoot() + "|" + m.getClearingFirm() + "|" + m.massCancelInstChar(3)
+                + "|" + m.massCancelInstChar(4) + "|" + m.massCancelInstChar(5);
     }
 
     public void sendSequenced(IntFunction<byte[]> encoder) throws IOException {
@@ -721,13 +743,14 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendMassCancelAcknowledgment(int count, String massCancelId) {
-        LOGGER.log(Level.INFO, "[Session {0}] → Mass Cancel completed: {1} orders, ID={2}", new Object[]{
-                session.getConnectionId(),
-                count,
-                massCancelId
-        });
-
+    private void sendMassCancelAcknowledgment(String massCancelId, int count) {
+        try {
+            sendMessage(new MassCancelAcknowledgmentMessage(massCancelId, count).toBytes());
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent MassCancelAcknowledgment: {1} orders, ID={2}",
+                    new Object[]{session.getConnectionId(), count, massCancelId});
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending MassCancelAcknowledgment", e);
+        }
     }
 
     private void cleanup() {

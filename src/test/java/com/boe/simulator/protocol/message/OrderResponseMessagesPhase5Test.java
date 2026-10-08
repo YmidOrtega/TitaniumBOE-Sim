@@ -322,7 +322,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void cancelRejected_somAndMessageType() {
-        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_ALREADY_FILLED, "").toBytes();
+        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_TOO_LATE_TO_CANCEL, "").toBytes();
         assertEquals((byte) 0xBA, b[0]);
         assertEquals((byte) 0xBA, b[1]);
         assertEquals((byte) 0x2B, b[4]);
@@ -330,7 +330,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void cancelRejected_unsequencedHeaderZero() {
-        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_UNKNOWN, "").toBytes();
+        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_UNFORESEEN, "").toBytes();
         assertEquals(0x00, b[5], "MatchingUnit must be 0 (unsequenced)");
         assertEquals(0x00, b[6]);
         assertEquals(0x00, b[9], "SequenceNumber must be 0 (unsequenced)");

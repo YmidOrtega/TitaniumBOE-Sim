@@ -1,6 +1,7 @@
 package com.boe.simulator.server.order;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -12,6 +13,7 @@ import java.util.logging.Logger;
 
 import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.protocol.message.CancelOrderMessage;
+import com.boe.simulator.protocol.message.CancelRejectedMessage;
 import com.boe.simulator.protocol.message.ModifyOrderMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
 import java.math.BigDecimal;
@@ -366,6 +368,9 @@ public class OrderManager {
         LOGGER.log(Level.INFO, "[{0}] Processing CancelOrder: {1}",
                 new Object[]{context.getSessionIdentifier(), message});
 
+        if (message.getFieldError() != null) {
+            return CancelResponse.rejected(message.getOrigClOrdID(), CancelRejectedMessage.REASON_UNFORESEEN, message.getFieldError());
+        }
         if (message.isMassCancel()) return processMassCancel(message, context);
 
         return processSingleCancel(message.getOrigClOrdID(), context);
@@ -377,21 +382,21 @@ public class OrderManager {
         if (order == null) {
             LOGGER.log(Level.WARNING, "[{0}] Cancel rejected - order not found: {1}",
                     new Object[]{context.getSessionIdentifier(), origClOrdID});
-            return CancelResponse.rejected(origClOrdID, "Order not found or already terminated");
+            return CancelResponse.rejected(origClOrdID, CancelRejectedMessage.REASON_ORDER_NOT_FOUND, "Order not found or already terminated");
         }
 
         // Check permissions
         if (!order.getUsername().equals(context.getUsername())) {
             LOGGER.log(Level.WARNING, "[{0}] Cancel rejected - unauthorized: {1}",
                     new Object[]{context.getSessionIdentifier(), origClOrdID});
-            return CancelResponse.rejected(origClOrdID, "Unauthorized: order belongs to different user");
+            return CancelResponse.rejected(origClOrdID, CancelRejectedMessage.REASON_ORDER_NOT_FOUND, "Order not found or already terminated");
         }
 
         // Check state
         if (!order.getState().isCancellable()) {
             LOGGER.log(Level.WARNING, "[{0}] Cancel rejected - not cancellable: {1} (state: {2})",
                     new Object[]{context.getSessionIdentifier(), origClOrdID, order.getState()});
-            return CancelResponse.rejected(origClOrdID, "Order not cancellable in state: " + order.getState());
+            return CancelResponse.rejected(origClOrdID, CancelRejectedMessage.REASON_TOO_LATE_TO_CANCEL, "Order not cancellable in state: " + order.getState());
         }
 
         // Cancel order
@@ -413,7 +418,7 @@ public class OrderManager {
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error cancelling order", e);
-            return CancelResponse.rejected(origClOrdID, "Internal error: " + e.getMessage());
+            return CancelResponse.rejected(origClOrdID, CancelRejectedMessage.REASON_UNFORESEEN, "Internal error: " + e.getMessage());
         }
     }
 
@@ -426,18 +431,27 @@ public class OrderManager {
     }
 
     private CancelResponse processMassCancel(CancelOrderMessage message, OrderExecutionContext context) {
-        LOGGER.log(Level.INFO, "[{0}] Processing Mass Cancel: type={1}",
-                new Object[]{context.getSessionIdentifier(), message.getMassCancelType()});
+        LOGGER.log(Level.INFO, "[{0}] Processing Mass Cancel: {1}", new Object[]{context.getSessionIdentifier(), message});
 
-        List<Order> ordersToCancel = switch (message.getMassCancelType()) {
-            case FIRM -> filterOrdersByClearingFirm(message.getClearingFirm(), context);
-            case SYMBOL -> filterOrdersBySymbol(message.getRiskRoot(), context);
-            case ALL -> filterAllOrders(context);
-            default -> List.of();
-        };
+        String invalid = validateMassCancel(message);
+        if (invalid != null) {
+            LOGGER.log(Level.WARNING, "[{0}] Mass Cancel rejected: {1}", new Object[]{context.getSessionIdentifier(), invalid});
+            return CancelResponse.rejected(message.getOrigClOrdID(), CancelRejectedMessage.REASON_UNFORESEEN, invalid);
+        }
 
-        int cancelledCount = 0;
+        String clearingFirm = message.massCancelInstChar(1) == 'F' && !message.getClearingFirm().isBlank()
+                ? message.getClearingFirm() : null;
+        String riskRoot = message.getRiskRoot() != null && !message.getRiskRoot().isBlank() ? message.getRiskRoot() : null;
+        boolean complexOnly = Character.valueOf('C').equals(message.massCancelInstChar(4));
 
+        List<Order> ordersToCancel = complexOnly ? List.of() : activeOrdersByClOrdID.values().stream()
+                .filter(o -> o.getUsername().equals(context.getUsername()))
+                .filter(o -> clearingFirm == null || clearingFirm.equals(o.getClearingFirm()))
+                .filter(o -> riskRoot == null || riskRoot.equals(o.getSymbol()))
+                .filter(o -> o.getState().isCancellable())
+                .toList();
+
+        List<Order> cancelled = new ArrayList<>();
         for (Order order : ordersToCancel) {
             try {
                 matchingEngine.cancelOrder(order);
@@ -447,41 +461,51 @@ public class OrderManager {
                 activeOrdersByClOrdID.remove(order.getClOrdID());
                 activeOrdersByOrderID.remove(order.getOrderID());
 
-                cancelledCount++;
+                cancelled.add(order);
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Failed to cancel order: " + order.getClOrdID(), e);
             }
         }
 
-        totalOrdersCancelled.addAndGet(cancelledCount);
+        totalOrdersCancelled.addAndGet(cancelled.size());
 
         LOGGER.log(Level.INFO, "[{0}] Mass Cancel completed: {1} orders cancelled",
-                new Object[]{context.getSessionIdentifier(), cancelledCount});
+                new Object[]{context.getSessionIdentifier(), cancelled.size()});
 
-        return CancelResponse.massCancelled(cancelledCount, message.getMassCancelId());
+        Character style = message.massCancelInstChar(2);
+        return CancelResponse.massCancelled(cancelled, style != null ? style : 'M', message.getMassCancelId());
     }
 
-    private List<Order> filterOrdersByClearingFirm(String clearingFirm, OrderExecutionContext context) {
-        return activeOrdersByClOrdID.values().stream()
-                .filter(o -> o.getUsername().equals(context.getUsername()))
-                .filter(o -> clearingFirm.equals(o.getClearingFirm()))
-                .filter(o -> o.getState().isCancellable())
-                .toList();
-    }
+    // MassCancelInst rules from List of Optional Fields (p.204); null = valid
+    private static String validateMassCancel(CancelOrderMessage message) {
+        String inst = message.getMassCancelInst();
+        if (!message.hasMassCancelInst() || inst == null || inst.isEmpty()) return "MassCancelInst is required for a mass cancel";
 
-    private List<Order> filterOrdersBySymbol(String symbol, OrderExecutionContext context) {
-        return activeOrdersByClOrdID.values().stream()
-                .filter(o -> o.getUsername().equals(context.getUsername()))
-                .filter(o -> symbol.equals(o.getSymbol()))
-                .filter(o -> o.getState().isCancellable())
-                .toList();
-    }
+        char firmFilter = message.massCancelInstChar(1);
+        if (firmFilter != 'A' && firmFilter != 'F') return "Invalid Clearing Firm Filter '" + firmFilter + "' in MassCancelInst";
+        if (firmFilter == 'F' && !message.hasClearingFirm()) return "ClearingFirm is required with Clearing Firm Filter F";
 
-    private List<Order> filterAllOrders(OrderExecutionContext context) {
-        return activeOrdersByClOrdID.values().stream()
-                .filter(o -> o.getUsername().equals(context.getUsername()))
-                .filter(o -> o.getState().isCancellable())
-                .toList();
+        Character ackStyle = message.massCancelInstChar(2);
+        char style = ackStyle != null ? ackStyle : 'M';
+        if (style == 'A' || style == 'I') return "Acknowledgement Style " + style + " is only valid on Purge Orders";
+        if (style != 'M' && style != 'S' && style != 'B') return "Invalid Acknowledgement Style '" + style + "' in MassCancelInst";
+
+        String id = message.getMassCancelId();
+        boolean hasId = id != null && !id.isEmpty();
+        if ((style == 'S' || style == 'B') && !hasId) return "MassCancelID is required with Acknowledgement Style " + style;
+        if (style == 'M' && hasId) return "MassCancelID must be blank with Acknowledgement Style M";
+        if (hasId && id.endsWith(" ")) return "MassCancelID must not end in a space";
+
+        Character lockout = message.massCancelInstChar(3);
+        if (lockout != null && lockout != 'N' && lockout != 'L') return "Invalid Lockout Instruction '" + lockout + "' in MassCancelInst";
+        if (lockout != null && lockout == 'L') return "Lockout is not supported by the simulator";
+
+        Character instrument = message.massCancelInstChar(4);
+        if (instrument != null && instrument != 'B' && instrument != 'S' && instrument != 'C') return "Invalid Instrument Type Filter '" + instrument + "' in MassCancelInst";
+
+        Character gtc = message.massCancelInstChar(5);
+        if (gtc != null && gtc != 'C' && gtc != 'P') return "Invalid GTC Order Filter '" + gtc + "' in MassCancelInst";
+        return null;
     }
 
     // Tradable universe. Must stay in sync with the catalogue exposed by
@@ -711,30 +735,33 @@ public class OrderManager {
         private final String clOrdID;
         private final byte cancelReason;
         private final String rejectText;
-        private final int massCancelCount;
+        private final List<Order> massCancelledOrders;
+        private final char ackStyle;
         private final String massCancelId;
 
-        private CancelResponse(ResponseType type, Order order, String clOrdID, byte cancelReason,
-                               String rejectText, int massCancelCount, String massCancelId) {
+        private CancelResponse(ResponseType type, Order order, String clOrdID, byte reason,
+                               String rejectText, List<Order> massCancelledOrders, char ackStyle, String massCancelId) {
             this.type = type;
             this.order = order;
             this.clOrdID = clOrdID;
-            this.cancelReason = cancelReason;
+            this.cancelReason = reason;
             this.rejectText = rejectText;
-            this.massCancelCount = massCancelCount;
+            this.massCancelledOrders = massCancelledOrders;
+            this.ackStyle = ackStyle;
             this.massCancelId = massCancelId;
         }
 
         public static CancelResponse cancelled(Order order, byte reason) {
-            return new CancelResponse(ResponseType.CANCELLED, order, null, reason, null, 0, null);
+            return new CancelResponse(ResponseType.CANCELLED, order, null, reason, null, List.of(), 'M', null);
         }
 
-        public static CancelResponse rejected(String clOrdID, String text) {
-            return new CancelResponse(ResponseType.REJECTED, null, clOrdID, (byte)0, text, 0, null);
+        public static CancelResponse rejected(String clOrdID, byte reason, String text) {
+            return new CancelResponse(ResponseType.REJECTED, null, clOrdID, reason, text, List.of(), 'M', null);
         }
 
-        public static CancelResponse massCancelled(int count, String massCancelId) {
-            return new CancelResponse(ResponseType.MASS_CANCELLED, null, null, (byte)0, null, count, massCancelId);
+        public static CancelResponse massCancelled(List<Order> orders, char ackStyle, String massCancelId) {
+            return new CancelResponse(ResponseType.MASS_CANCELLED, null, null, OrderCancelledMessage.REASON_USER_REQUESTED,
+                    null, List.copyOf(orders), ackStyle, massCancelId);
         }
 
         public boolean isCancelled() {
@@ -766,7 +793,20 @@ public class OrderManager {
         }
 
         public int getMassCancelCount() {
-            return massCancelCount;
+            return massCancelledOrders.size();
+        }
+
+        public List<Order> getMassCancelledOrders() {
+            return massCancelledOrders;
+        }
+
+        // Acknowledgement Style, MassCancelInst 2nd character: M, S or B
+        public char getAckStyle() {
+            return ackStyle;
+        }
+
+        public byte getRejectReason() {
+            return cancelReason;
         }
 
         public String getMassCancelId() {

@@ -32,11 +32,8 @@ public final class CancelRejectedMessage extends ApplicationMessage {
 
     // CancelRejectReason codes (Order Reason Codes p.213)
     public static final byte REASON_TOO_LATE_TO_CANCEL  = (byte) 'J';
+    public static final byte REASON_RATE_THRESHOLD      = (byte) 'K';
     public static final byte REASON_ORDER_NOT_FOUND     = (byte) 'O';
-    public static final byte REASON_ALREADY_CANCELLED   = (byte) 'C';
-    public static final byte REASON_ALREADY_FILLED      = (byte) 'F';
-    public static final byte REASON_NOT_AUTHORIZED      = (byte) 'U';
-    public static final byte REASON_UNKNOWN             = (byte) 'X';
     public static final byte REASON_UNFORESEEN          = (byte) 'Z';
 
     private long transactTime;
