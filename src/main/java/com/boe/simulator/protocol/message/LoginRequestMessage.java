@@ -4,6 +4,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class LoginRequestMessage extends SessionMessage {
     private static final byte MESSAGE_TYPE = 0x37;
@@ -27,6 +29,7 @@ public final class LoginRequestMessage extends SessionMessage {
 
     // Optional parameter groups
     private final byte numberOfParamGroups;
+    private int receivedParamGroups;
 
     public LoginRequestMessage(String username, String password) {
         this(username, password, "", (byte) 0, ReturnBitfields.empty());
@@ -57,6 +60,7 @@ public final class LoginRequestMessage extends SessionMessage {
         this.sequenceNumber = 0;
         this.unitSequences = unitSequences != null ? unitSequences : UnitSequences.absent();
         this.numberOfParamGroups = (byte) (this.returnBitfields.entryCount() + (this.unitSequences.isPresent() ? 1 : 0));
+        this.receivedParamGroups = this.numberOfParamGroups & 0xFF;
     }
 
     @Override
@@ -180,11 +184,13 @@ public final class LoginRequestMessage extends SessionMessage {
         LoginRequestMessage msg = new LoginRequestMessage(username, password, sessionSubID, matchingUnit, returnBitfields, unitSequences);
         msg.setSequenceNumber(sequenceNumber);
         msg.paramGroupBytes = paramGroupBytes;
+        msg.receivedParamGroups = numberOfParamGroups;
         return msg;
     }
 
     private static void validateParamGroups(int numberOfGroups, ByteBuffer buf) {
         int unitSequencesGroups = 0;
+        Set<Byte> returnBitfieldTypes = new HashSet<>();
         for (int i = 1; i <= numberOfGroups; i++) {
             if (buf.remaining() < 3) throw new IllegalArgumentException("Parameter group " + i + " of " + numberOfGroups + " is missing");
 
@@ -197,12 +203,20 @@ public final class LoginRequestMessage extends SessionMessage {
             if (groupType == UnitSequences.PARAM_GROUP_TYPE) {
                 if (++unitSequencesGroups > 1) throw new IllegalArgumentException("Only one Unit Sequences parameter group may be included");
                 if (groupLen < 5) throw new IllegalArgumentException("Unit Sequences group is too short");
-                buf.get();
+                int noUnspecifiedUnitReplay = buf.get() & 0xFF;
+                if (noUnspecifiedUnitReplay > 1) throw new IllegalArgumentException("NoUnspecifiedUnitReplay must be 0x00 or 0x01, got 0x" + String.format("%02X", noUnspecifiedUnitReplay));
                 int numberOfUnits = buf.get() & 0xFF;
                 if (groupLen != 5 + numberOfUnits * 5) throw new IllegalArgumentException("Unit Sequences group length " + groupLen + " does not match " + numberOfUnits + " units");
+                Set<Integer> units = new HashSet<>();
+                for (int u = 0; u < numberOfUnits; u++) {
+                    int unit = buf.get() & 0xFF;
+                    buf.getInt();
+                    if (!units.add(unit)) throw new IllegalArgumentException("Unit " + unit + " appears twice in the Unit Sequences group");
+                }
             } else if (groupType == (byte) 0x81) {
                 if (groupLen < 5) throw new IllegalArgumentException("Return Bitfields group is too short");
-                buf.get();
+                byte returnType = buf.get();
+                if (!returnBitfieldTypes.add(returnType)) throw new IllegalArgumentException(String.format("Duplicate Return Bitfields group for message type 0x%02X", returnType));
                 int numberOfBitfields = buf.get() & 0xFF;
                 if (groupLen != 5 + numberOfBitfields) throw new IllegalArgumentException("Return Bitfields group length " + groupLen + " does not match " + numberOfBitfields + " bitfields");
             }
@@ -248,7 +262,7 @@ public final class LoginRequestMessage extends SessionMessage {
     }
 
     public int getNumberOfParamGroups() {
-        return numberOfParamGroups & 0xFF;
+        return receivedParamGroups;
     }
 
     public byte[] getParamGroupBytes() {

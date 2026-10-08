@@ -58,6 +58,26 @@ class LoginRequestStructureTest {
 
         assertArrayEquals(new byte[]{0x00, 0x41, 0x05}, m.getReturnBitfields().maskFor((byte) 0x25));
         assertEquals(Map.of(1, 5), m.getUnitSequences().lastReceivedByUnit());
+        assertEquals(3, m.getNumberOfParamGroups(), "The echoed count must match the echoed bytes, unknown groups included");
+        assertEquals(24, m.getParamGroupBytes().length);
+    }
+
+    @Test
+    void duplicateReturnBitfieldsForTheSameMessageType_areRejected() {
+        assertEquals("Duplicate Return Bitfields group for message type 0x25",
+                rejection(login(2, "06 00 81 25 01 00 06 00 81 25 01 01")));
+    }
+
+    @Test
+    void noUnspecifiedUnitReplayOtherThanZeroOrOne_isRejected() {
+        assertEquals("NoUnspecifiedUnitReplay must be 0x00 or 0x01, got 0x02",
+                rejection(login(1, "05 00 80 02 00")));
+    }
+
+    @Test
+    void sameUnitTwiceInUnitSequences_isRejected() {
+        assertEquals("Unit 1 appears twice in the Unit Sequences group",
+                rejection(login(1, "0F 00 80 00 02 01 05 00 00 00 01 06 00 00 00")));
     }
 
     @Test
