@@ -18,13 +18,15 @@ public class RateLimiter {
     }
 
     RateLimiter(int permitsPerSecond, LongSupplier nanoClock) {
-        if (permitsPerSecond < 1) throw new IllegalArgumentException("Rate limit must be at least 1");
+        if (permitsPerSecond < 0) throw new IllegalArgumentException("Rate limit must not be negative");
         this.buckets = new ConcurrentHashMap<>();
         this.permitsPerSecond = permitsPerSecond;
         this.nanoClock = nanoClock;
     }
 
+    // 0 permits per second = no limit
     public void acquire(int connectionId) {
+        if (permitsPerSecond == 0) return;
         long waitNanos = reserve(connectionId);
         if (waitNanos <= 0) return;
 

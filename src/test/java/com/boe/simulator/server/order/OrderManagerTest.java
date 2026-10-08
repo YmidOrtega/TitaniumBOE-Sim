@@ -672,7 +672,7 @@ class OrderManagerTest {
 
     @Test
     void processNewOrder_timeInForceTheSimulatorCannotHonor_isRejectedWithZ() {
-        String[][] cases = {{"1", "GTC"}, {"2", "AT_OPEN"}, {"6", "GTD"}, {"7", "AT_CLOSE"}};
+        String[][] cases = {{"2", "AT_OPEN"}, {"7", "AT_CLOSE"}};
         for (String[] c : cases) {
             NewOrderMessage message = createNewOrderMessage("TIF" + c[0], 1, 100.0, 10, "AAPL");
             message.setTimeInForce((byte) c[0].charAt(0));

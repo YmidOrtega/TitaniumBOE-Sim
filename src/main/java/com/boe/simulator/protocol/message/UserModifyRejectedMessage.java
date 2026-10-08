@@ -35,6 +35,8 @@ public final class UserModifyRejectedMessage extends ApplicationMessage {
     public static final byte REASON_PENDING_FILL        = (byte) 'P';
     public static final byte REASON_NOT_FOUND           = (byte) 'O';
     public static final byte REASON_DUPLICATE_CLORDID   = (byte) 'D';
+    public static final byte REASON_ORDER_SIZE_EXCEEDED = (byte) 'M';
+    public static final byte REASON_RATE_THRESHOLD      = (byte) 'K';
     public static final byte REASON_RECEIVED_DURING_REPLAY = (byte) 'y';
     public static final byte REASON_UNFORESEEN          = (byte) 'Z';
 

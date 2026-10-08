@@ -66,7 +66,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         { OptionalField.read("Symbol", 8), null, null, null, null, null,
           OptionalField.read("Capacity", 1), OptionalField.read("RoutingInst", 4) },
         { OptionalField.read("Account", 16), OptionalField.rejectUnless("DisplayIndicator", 1, "56"), null, null, null,
-          OptionalField.read("PreventMatch", 3), null, OptionalField.reject("ExpireTime", 8) },
+          OptionalField.read("PreventMatch", 3), null, OptionalField.read("ExpireTime", 8) },
         { OptionalField.read("MaturityDate", 4), OptionalField.read("StrikePrice", 8), OptionalField.read("PutOrCall", 1),
           OptionalField.read("RiskReset", 8), OptionalField.read("OpenClose", 1), OptionalField.ignore("CMTANumber", 4),
           OptionalField.reject("TargetPartyID", 4), null },
@@ -111,6 +111,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     private byte[] preventMatch;
     private String riskReset;
     private int minQty;
+    private long expireTime;
     private int maxFloor;
     private int displayRange;
     private BigDecimal stopPx;
@@ -225,6 +226,7 @@ public final class NewOrderMessage extends ApplicationMessage {
             case "PreventMatch" -> preventMatch = value;
             case "RiskReset" -> riskReset = text(value);
             case "MinQty" -> minQty = v.getInt();
+            case "ExpireTime" -> expireTime = v.getLong();
             case "MaxFloor" -> maxFloor = v.getInt();
             case "DisplayRange" -> displayRange = v.getInt();
             case "StopPx" -> stopPx = BinaryPrice.fromBytes(value).toPrice();
@@ -479,6 +481,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     public String getFieldError() { return fieldError; }
     public String getRiskReset() { return riskReset; }
     public int getMinQty() { return minQty; }
+    public long getExpireTime() { return expireTime; }
     public int getMaxFloor() { return maxFloor; }
     public int getDisplayRange() { return displayRange; }
     public BigDecimal getStopPx() { return stopPx; }

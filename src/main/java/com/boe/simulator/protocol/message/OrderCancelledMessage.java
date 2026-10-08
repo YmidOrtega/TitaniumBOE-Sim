@@ -35,6 +35,7 @@ public final class OrderCancelledMessage extends ApplicationMessage {
     // Cancel reason codes
     public static final byte REASON_USER_REQUESTED = (byte) 'U';
     public static final byte REASON_NO_LIQUIDITY   = (byte) 'N';
+    public static final byte REASON_ORDER_EXPIRED  = (byte) 'X';
 
     private byte matchingUnit;
     private int sequenceNumber;

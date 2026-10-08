@@ -94,8 +94,12 @@ class RateLimiterTest {
     }
 
     @Test
-    void constructor_rejectsNonPositiveRate() {
-        assertThrows(IllegalArgumentException.class, () -> new RateLimiter(0));
+    void constructor_rejectsANegativeRate_andZeroDisablesTheLimit() {
+        assertThrows(IllegalArgumentException.class, () -> new RateLimiter(-1));
+        RateLimiter off = new RateLimiter(0);
+        long start = System.nanoTime();
+        for (int i = 0; i < 10_000; i++) off.acquire(1);
+        assertTrue(System.nanoTime() - start < 1_000_000_000L, "0 = no limit");
     }
 
     private void drain(int connectionId) {

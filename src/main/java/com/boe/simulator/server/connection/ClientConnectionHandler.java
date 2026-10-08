@@ -27,6 +27,8 @@ import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.order.OrderState;
 import com.boe.simulator.server.ratelimit.IdenticalRequestLimiter;
+import com.boe.simulator.server.ratelimit.OrderRateThreshold;
+import com.boe.simulator.server.config.PortAttributes;
 import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.BoeSessionState;
 import com.boe.simulator.server.session.ClientSession;
@@ -57,6 +59,8 @@ public class ClientConnectionHandler implements Runnable {
     private final IdenticalRequestLimiter identicalMassCancels = new IdenticalRequestLimiter(10, Duration.ofSeconds(1));
     private final IdenticalRequestLimiter identicalPurges = new IdenticalRequestLimiter(10, Duration.ofSeconds(1));
     private final IdenticalRequestLimiter riskResets = new IdenticalRequestLimiter(1, Duration.ofMillis(100));
+    private final OrderRateThreshold orderRateThreshold;
+    private final PortAttributes portAttributes;
     private volatile boolean replayInProgress;
     private volatile BoeSessionState sessionState;
     private volatile boolean ownsAuthSession;
@@ -80,6 +84,9 @@ public class ClientConnectionHandler implements Runnable {
         this.orderManager = orderManager;
         this.healthMetrics = healthMetrics;
         this.gate = new UnacknowledgedMessageGate(config.getMaxUnacknowledgedMessages(), config.getResumeReadingBelow());
+        this.portAttributes = config.getPortAttributes();
+        this.orderRateThreshold = new OrderRateThreshold(config.getPortAttributes().portOrderRateThreshold(),
+                config.getPortAttributes().symbolOrderRateThreshold());
 
         LOGGER.log(Level.INFO, "[Session {0}] Handler created for {1}", new Object[]{
                 session.getConnectionId(),
@@ -298,6 +305,8 @@ public class ClientConnectionHandler implements Runnable {
             }
         }
 
+        if (overOrderRateThreshold(message)) return;
+
         switch (message) {
             case NewOrderMessage newOrderMessage       -> handleNewOrder(newOrderMessage);
             case CancelOrderMessage cancelOrderMessage -> handleCancelOrder(cancelOrderMessage);
@@ -327,6 +336,11 @@ public class ClientConnectionHandler implements Runnable {
         String bitfieldError = ReturnBitfieldRules.validate(request.getReturnBitfields());
         if (bitfieldError != null) {
             rejectLogin(request, LoginResponseMessage.STATUS_INVALID_BITFIELD, bitfieldError);
+            return;
+        }
+        if ((portAttributes.doneForDayRestatements() || portAttributes.carriedOrderRestatements())
+                && !requestsLiquidityIndicators(request.getReturnBitfields())) {
+            rejectLogin(request, LoginResponseMessage.STATUS_INVALID_BITFIELD, "Order Ack must return Base and Sub LiquidityIndicator");
             return;
         }
 
@@ -379,6 +393,10 @@ public class ClientConnectionHandler implements Runnable {
             ).toBytes());
 
             List<byte[]> missed = replayAfter >= 0 ? state.messagesAfter(replayAfter) : List.of();
+            if (portAttributes.carriedOrderRestatements() && state.lastSentSequence() == 0) {
+                sendRestatements(orderManager.carriedOrdersOf(request.getUsername()), SUB_LIQUIDITY_CARRIED);
+            }
+
             for (byte[] replayed : missed) sendMessage(replayed);
 
             replayInProgress = false;
@@ -550,6 +568,57 @@ public class ClientConnectionHandler implements Runnable {
             default -> 0;
         };
     }
+
+    // Above the Port / Symbol Order Rate Threshold new orders are rejected, modifies become cancels and cancels go through (p.221)
+    private boolean overOrderRateThreshold(ApplicationMessage message) {
+        String symbol = switch (message) {
+            case NewOrderMessage m -> m.getSymbol();
+            case ModifyOrderMessage m -> orderManager.findByClOrdID(m.getOrigClOrdID()).map(com.boe.simulator.server.order.Order::getSymbol).orElse(null);
+            default -> null;
+        };
+        if (!orderRateThreshold.exceeded(symbol)) return false;
+        switch (message) {
+            case NewOrderMessage m -> {
+                sendOrderRejected(m.getClOrdID(), OrderRejectedMessage.REASON_RATE_THRESHOLD, "Order rate threshold exceeded",
+                        OrderReturnFields.forNewOrder(m));
+                return true;
+            }
+            case ModifyOrderMessage m -> {
+                OrderManager.CancelResponse cancel = orderManager.processCancelOrder(new CancelOrderMessage(m.getOrigClOrdID()), session);
+                if (cancel.isCancelled()) sendOrderCancelled(cancel.getOrder(), cancel.getCancelReason());
+                else sendUserModifyRejected(m.getClOrdID(), UserModifyRejectedMessage.REASON_RATE_THRESHOLD,
+                        "Order rate threshold exceeded", modifyReturnFields(m));
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
+    // Done For Day (p.14) and Carried Order (p.15) restatements need these two Order Acknowledgment return fields
+    private static boolean requestsLiquidityIndicators(ReturnBitfields returnBitfields) {
+        byte[] mask = returnBitfields.maskFor(OrderAcknowledgmentMessage.MESSAGE_TYPE);
+        return mask != null && mask.length >= 7 && (mask[4] & 0x40) != 0 && (mask[6] & 0x01) != 0;
+    }
+
+    /** Unsolicited Order Acknowledgments with BaseLiquidityIndicator A and SubLiquidityIndicator D or C. */
+    public void sendRestatements(List<com.boe.simulator.server.order.Order> orders, byte subLiquidityIndicator) {
+        try {
+            for (com.boe.simulator.server.order.Order order : orders) {
+                sendSequenced(seq -> OrderAcknowledgmentMessage.fromOrder(order, BoeSessionState.MATCHING_UNIT, seq,
+                        OrderReturnFields.forOrder(order)
+                                .put(ReturnField.BASE_LIQUIDITY_INDICATOR, (byte) 'A')
+                                .put(ReturnField.SUB_LIQUIDITY_INDICATOR, subLiquidityIndicator)
+                                .select(session.getReturnBitfields(), OrderAcknowledgmentMessage.MESSAGE_TYPE)).toBytes());
+            }
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending restatements", e);
+        }
+    }
+
+    public static final byte SUB_LIQUIDITY_DONE_FOR_DAY = (byte) 'D';
+    public static final byte SUB_LIQUIDITY_CARRIED = (byte) 'C';
 
     private static String unsupportedMessageType(byte messageType) {
         MessageType type;
@@ -922,7 +991,10 @@ public class ClientConnectionHandler implements Runnable {
         running = false;
 
         if (heartbeatMonitor != null) heartbeatMonitor.shutdown();
-        if (ownsAuthSession) authService.endSession(session.getUsername());
+        if (ownsAuthSession) {
+            authService.endSession(session.getUsername());
+            orderManager.cancelOnDisconnect(session.getUsername());
+        }
 
         errorHandler.clearConnectionStats(session.getConnectionId());
         rateLimiter.clearConnection(session.getConnectionId());

@@ -21,6 +21,7 @@ public final class RiskResetAcknowledgmentMessage extends ApplicationMessage {
     private static final int SIZE = 27;
 
     public static final byte RESULT_IGNORED = (byte) ' ';
+    public static final byte RESULT_AUTOMATIC_RESETS_DISABLED = (byte) 'D';
     public static final byte RESULT_EMPTY_RESET = (byte) 'E';
     public static final byte RESULT_INVALID_MATCHING_UNIT = (byte) 'M';
     public static final byte RESULT_INVALID_RISK_ROOT = (byte) 'U';

@@ -104,7 +104,9 @@ class OrderManagerRiskTest {
         OrderManager.OrderResponse blocked = submit("A2", "MSFT");
         assertEquals('f', blocked.getRejectReason());
 
-        assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(resetRisk("F", "TEST", "", 0), "u1"));
+        assertEquals(RiskResetAcknowledgmentMessage.RESULT_AUTOMATIC_RESETS_DISABLED, orderManager.processResetRisk(resetRisk("F", "TEST", "", 0), "u1"),
+                "EFID Risk Reset is disabled by default (p.220): F is rejected");
+        assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(resetRisk("E", "TEST", "", 0), "u1"));
         assertTrue(submit("A3", "MSFT").isAcknowledged());
     }
 
@@ -172,11 +174,15 @@ class OrderManagerRiskTest {
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET, orderManager.processResetRisk(resetRisk("X", "TEST", "", 0), "u1"));
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_INVALID_RISK_ROOT, orderManager.processResetRisk(resetRisk("S", "TEST", "", 0), "u1"));
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_INVALID_RISK_ROOT, orderManager.processResetRisk(resetRisk("S", "TEST", "ZZZ", 0), "u1"));
-        assertEquals(RiskResetAcknowledgmentMessage.RESULT_INVALID_CLEARING_FIRM, orderManager.processResetRisk(resetRisk("F", "", "", 0), "u1"));
-        ResetRiskMessage badUnit = resetRisk("F", "TEST", "", 0);
+        assertEquals(RiskResetAcknowledgmentMessage.RESULT_INVALID_CLEARING_FIRM, orderManager.processResetRisk(resetRisk("E", "", "", 0), "u1"));
+        ResetRiskMessage badUnit = resetRisk("E", "TEST", "", 0);
         badUnit.setTargetMatchingUnit(5);
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_INVALID_MATCHING_UNIT,
                 orderManager.processResetRisk(ResetRiskMessage.parse(badUnit.toBytes()), "u1"));
-        assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(resetRisk("SF", "TEST", "AAPL", 0), "u1"));
+        assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(resetRisk("SE", "TEST", "AAPL", 0), "u1"));
+
+        orderManager.setPortAttributes(orderManager.getPortAttributes().withEfidRiskReset(true));
+        assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(resetRisk("F", "TEST", "", 0), "u1"),
+                "With EFID Risk Reset enabled, F is accepted");
     }
 }

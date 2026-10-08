@@ -21,6 +21,7 @@ public class ServerConfiguration {
     private final int maxUnacknowledgedMessages;
     private final int resumeReadingBelow;
     private final int maxOpenOrdersPerSession;
+    private final PortAttributes portAttributes;
 
     // Logging
     private final Level logLevel;
@@ -38,6 +39,7 @@ public class ServerConfiguration {
         this.maxUnacknowledgedMessages = builder.maxUnacknowledgedMessages;
         this.resumeReadingBelow = builder.resumeReadingBelow;
         this.maxOpenOrdersPerSession = builder.maxOpenOrdersPerSession;
+        this.portAttributes = builder.portAttributes;
         this.logLevel = builder.logLevel;
     }
     
@@ -68,6 +70,7 @@ public class ServerConfiguration {
     public int getMaxUnacknowledgedMessages() { return maxUnacknowledgedMessages; }
     public int getResumeReadingBelow() { return resumeReadingBelow; }
     public int getMaxOpenOrdersPerSession() { return maxOpenOrdersPerSession; }
+    public PortAttributes getPortAttributes() { return portAttributes; }
     public Level getLogLevel() { return logLevel; }
     
     @Override
@@ -94,10 +97,16 @@ public class ServerConfiguration {
         private int connectionTimeout = 30000; // 30 seconds
         private long heartbeatIntervalSeconds = 1;
         private long heartbeatTimeoutSeconds = 5;
-        private int rateLimitPerSecond = 1_000;
+        private int rateLimitPerSecond = 0; // 0 = off; the spec limit is the Port Order Rate Threshold
         private int maxUnacknowledgedMessages = 1_024;
         private int resumeReadingBelow = 960;
         private int maxOpenOrdersPerSession = 2_000; // spec: 200,000 per port
+        private PortAttributes portAttributes = PortAttributes.SPEC_DEFAULTS;
+
+        public Builder portAttributes(PortAttributes portAttributes) {
+            this.portAttributes = portAttributes;
+            return this;
+        }
         private Level logLevel = Level.INFO;
         
         public Builder host(String host) {
@@ -136,7 +145,7 @@ public class ServerConfiguration {
         }
 
         public Builder rateLimitPerSecond(int limit) {
-            if (limit < 1) throw new IllegalArgumentException("Rate limit must be at least 1");
+            if (limit < 0) throw new IllegalArgumentException("Rate limit must not be negative");
             this.rateLimitPerSecond = limit;
             return this;
         }

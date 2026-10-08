@@ -1,8 +1,10 @@
 package com.boe.simulator.server.order;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,8 +25,11 @@ import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.PutOrCall;
 import com.boe.simulator.protocol.types.RoutingInst;
 import com.boe.simulator.protocol.types.Side;
+import com.boe.simulator.protocol.types.BoeTime;
 import com.boe.simulator.protocol.types.PreventMatch;
 import com.boe.simulator.server.risk.RiskLockouts;
+import com.boe.simulator.server.config.PortAttributes;
+import com.boe.simulator.server.config.TradingDay;
 import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
@@ -34,6 +39,7 @@ import com.boe.simulator.protocol.message.PurgeOrdersMessage;
 import com.boe.simulator.protocol.message.ResetRiskMessage;
 import com.boe.simulator.protocol.message.RiskResetAcknowledgmentMessage;
 import com.boe.simulator.protocol.message.OrderReturnFields;
+import com.boe.simulator.protocol.message.ReturnField;
 import com.boe.simulator.protocol.message.ReturnBitfields;
 import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.server.config.ServerConfiguration;
@@ -62,6 +68,9 @@ public class OrderManager {
     private final ConcurrentHashMap<Long, Order> activeOrdersByOrderID;
     private final ConcurrentHashMap<Long, List<IntFunction<byte[]>>> deferredExecutions = new ConcurrentHashMap<>();
     private final RiskLockouts riskLockouts = new RiskLockouts();
+    private volatile PortAttributes portAttributes = PortAttributes.SPEC_DEFAULTS;
+    // End of day or shutdown: symbols are closed, so Cancel on Disconnect does not apply (p.218)
+    private volatile boolean marketClosed;
     // The request being processed on this thread: messages for its user wait for its response, in order
     private record CurrentRequest(long orderID, String username) {}
     private final ThreadLocal<CurrentRequest> currentRequest = new ThreadLocal<>();
@@ -105,6 +114,74 @@ public class OrderManager {
 
     public void setWebSocketService(WebSocketService webSocketService) {
         this.webSocketService = webSocketService;
+    }
+
+    public void setPortAttributes(PortAttributes portAttributes) {
+        this.portAttributes = portAttributes;
+        matchingEngine.setDefaultMtp(portAttributes.defaultMtp());
+    }
+
+    public PortAttributes getPortAttributes() {
+        return portAttributes;
+    }
+
+    public void setMarketClosed(boolean marketClosed) {
+        this.marketClosed = marketClosed;
+    }
+
+    public List<Order> persistingOrdersOf(String username) {
+        return userOrders(username).filter(Order::persistsOvernight).toList();
+    }
+
+    public List<Order> carriedOrdersOf(String username) {
+        return userOrders(username).filter(Order::isCarried).toList();
+    }
+
+    private java.util.stream.Stream<Order> userOrders(String username) {
+        return activeOrdersByOrderID.values().stream()
+                .filter(o -> username.equals(o.getUsername()) && isBoeOrder(o) && o.getState().isActive())
+                .sorted(java.util.Comparator.comparingLong(Order::getOrderID));
+    }
+
+    /** End of the trading day: Day orders expire, GTC/GTD orders are carried, lockouts are released. */
+    public void rollToNextDay() {
+        int expired = 0, carried = 0;
+        for (Order order : List.copyOf(activeOrdersByOrderID.values())) {
+            if (order.persistsOvernight() && order.getState().isActive()) {
+                order.markCarried();
+                carried++;
+                continue;
+            }
+            matchingEngine.cancelOrder(order);
+            if (order.getState().isActive()) order.expire();
+            orderRepository.saveAsync(order);
+            activeOrdersByClOrdID.remove(order.getClOrdID());
+            activeOrdersByOrderID.remove(order.getOrderID());
+            expired++;
+        }
+        riskLockouts.clear();
+        LOGGER.log(Level.INFO, "End of day: {0} Day orders expired, {1} GTC/GTD orders carried", new Object[]{expired, carried});
+    }
+
+    /** Cancel on Disconnect port attribute; the Order Cancelled messages are journaled for replay. */
+    public int cancelOnDisconnect(String username) {
+        PortAttributes.CancelScope scope = portAttributes.cancelOnDisconnect();
+        if (scope == PortAttributes.CancelScope.NONE || marketClosed || username == null) return 0;
+        List<Order> orders = activeOrdersByOrderID.values().stream()
+                .filter(o -> username.equals(o.getUsername()) && isBoeOrder(o) && o.getState().isCancellable())
+                .filter(o -> scope == PortAttributes.CancelScope.ALL || o.getTimeInForce() == TimeInForce.DAY)
+                .toList();
+        for (Order order : orders) {
+            matchingEngine.cancelOrder(order);
+            order.cancel(OrderCancelledMessage.REASON_USER_REQUESTED);
+            orderRepository.saveAsync(order);
+            activeOrdersByClOrdID.remove(order.getClOrdID());
+            activeOrdersByOrderID.remove(order.getOrderID());
+            sendUnsolicitedCancel(order, OrderCancelledMessage.REASON_USER_REQUESTED, SUBREASON_FIRM_DISCONNECT);
+        }
+        totalOrdersCancelled.addAndGet(orders.size());
+        if (!orders.isEmpty()) LOGGER.log(Level.INFO, "Cancel on Disconnect: {0} orders of {1}", new Object[]{orders.size(), username});
+        return orders.size();
     }
 
     public void setMaxOpenOrdersPerSession(int maxOpenOrdersPerSession) {
@@ -176,7 +253,7 @@ public class OrderManager {
             return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, e.getMessage());
         }
 
-        String timeInForceError = timeInForceError(message.getTimeInForce());
+        String timeInForceError = timeInForceError(message.getTimeInForce(), message.getExpireTime());
         if (timeInForceError != null) {
             LOGGER.log(Level.WARNING, "[{0}] Order rejected - {1}", new Object[]{context.getSessionIdentifier(), timeInForceError});
             totalOrdersRejected.incrementAndGet();
@@ -187,6 +264,25 @@ public class OrderManager {
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_ORDER_SIZE_EXCEEDED,
                     "OrderQty exceeds the maximum of 999,999");
+        }
+        boolean boePort = context instanceof TcpExecutionContext;
+        if (boePort && message.getOrderQty() > portAttributes.maximumOrderSize()) {
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_ORDER_SIZE_EXCEEDED,
+                    "OrderQty exceeds the port Maximum Order Size of " + portAttributes.maximumOrderSize());
+        }
+        String clearingFirm = message.getClearingFirm() != null && !message.getClearingFirm().isBlank() ? message.getClearingFirm()
+                : boePort && portAttributes.defaultClearingFirm() != null ? portAttributes.defaultClearingFirm() : "";
+        if (boePort && !portAttributes.allowsClearingFirm(clearingFirm)) {
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN,
+                    "ClearingFirm " + clearingFirm + " is not allowed on this port");
+        }
+        String account = message.getAccount() != null && !message.getAccount().isBlank() ? message.getAccount()
+                : boePort && portAttributes.defaultAccount() != null ? portAttributes.defaultAccount() : "";
+        Map<String, byte[]> echoFields = new java.util.HashMap<>(message.getRawFields());
+        if (boePort && portAttributes.defaultClearingOptionalData() != null) {
+            echoFields.putIfAbsent("ClearingOptionalData", portAttributes.defaultClearingOptionalData().getBytes(java.nio.charset.StandardCharsets.US_ASCII));
         }
 
         // 2. Validate message
@@ -216,7 +312,7 @@ public class OrderManager {
             );
         }
 
-        String orderClearingFirm = message.getClearingFirm() != null ? message.getClearingFirm() : "";
+        String orderClearingFirm = clearingFirm;
         applyRiskReset(message.getRiskReset(), context.getUsername(), orderClearingFirm, message.getSymbol(), message.getCustomGroupId());
         byte lockout = riskLockouts.check(context.getUsername(), orderClearingFirm, message.getSymbol(), message.getCustomGroupId());
         if (lockout != 0) {
@@ -267,10 +363,11 @@ public class OrderManager {
                     .price(message.getPrice())
                     .ordType(message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : OrdType.LIMIT)
                     .timeInForce(TimeInForce.fromByte(message.getTimeInForce()))
-                    .echoFields(message.getRawFields())
+                    .echoFields(echoFields)
                     .preventMatch(preventMatch)
                     .customGroupId(message.getCustomGroupId())
                     .minQty(message.getMinQty())
+                    .expireTime(message.getExpireTime())
                     .maxFloor(message.getMaxFloor())
                     .displayRange(message.getDisplayRange())
                     .stopPx(message.getStopPx())
@@ -278,8 +375,8 @@ public class OrderManager {
                     .capacity(message.getCapacity() != 0 ? Capacity.fromByte(message.getCapacity()) : Capacity.AGENCY)
                     .openClose(message.getOpenClose() != 0 ? OpenClose.fromByte(message.getOpenClose()) : OpenClose.NONE)
                     .putOrCall(message.getPutOrCall() != 0 ? PutOrCall.fromByte(message.getPutOrCall()) : null)
-                    .account(message.getAccount() != null ? message.getAccount() : "")
-                    .clearingFirm(message.getClearingFirm() != null ? message.getClearingFirm() : "")
+                    .account(account)
+                    .clearingFirm(clearingFirm)
                     .routingInst(message.getRoutingInst() != 0 ? RoutingInst.fromByte(message.getRoutingInst()) : RoutingInst.BOOK_ONLY)
                     .receivedSequence(message.getSequenceNumber())
                     .matchingUnit(BoeSessionState.MATCHING_UNIT)
@@ -356,6 +453,10 @@ public class OrderManager {
         }
 
         String invalid = validateModify(message, order);
+        if (invalid == null && message.getOrderQty() > portAttributes.maximumOrderSize()) {
+            return rejectModify(message, order, UserModifyRejectedMessage.REASON_ORDER_SIZE_EXCEEDED,
+                    "OrderQty exceeds the port Maximum Order Size of " + portAttributes.maximumOrderSize(), context);
+        }
         if (invalid != null) return rejectModify(message, order, UserModifyRejectedMessage.REASON_UNFORESEEN, invalid, context);
 
         BigDecimal newPrice   = message.getPrice() != null ? message.getPrice() : order.getPrice();
@@ -452,7 +553,10 @@ public class OrderManager {
                                         OrderExecutionContext context) {
         LOGGER.log(Level.WARNING, "[{0}] Modify rejected for {1}: {2}",
                 new Object[]{context.getSessionIdentifier(), message.getOrigClOrdID(), text});
-        if (!message.cancelsOrigOnReject()) return ModifyResponse.rejected(message.getClOrdID(), reason, text);
+        boolean cancelOriginal = message.getCancelOrigOnReject() != 0
+                ? message.cancelsOrigOnReject()
+                : context instanceof TcpExecutionContext && portAttributes.cancelOnReject();
+        if (!cancelOriginal) return ModifyResponse.rejected(message.getClOrdID(), reason, text);
 
         CancelResponse cancel = processSingleCancel(order.getClOrdID(), context);
         return cancel.isCancelled()
@@ -531,17 +635,37 @@ public class OrderManager {
         }
     }
 
-    private static String timeInForceError(byte value) {
+    private static String timeInForceError(byte value, long expireTime) {
         TimeInForce timeInForce;
         try {
             timeInForce = TimeInForce.fromByte(value);
         } catch (IllegalArgumentException e) {
             return "Invalid TimeInForce '" + (char) value + "'";
         }
+        if (timeInForce == TimeInForce.GTD) {
+            if (expireTime == 0) return "ExpireTime is required for TimeInForce GTD";
+            if (expireTime <= BoeTime.nowEpochNanos()) return "ExpireTime must be in the future";
+        } else if (expireTime != 0) {
+            return "ExpireTime is only valid with TimeInForce GTD";
+        }
         return switch (timeInForce) {
-            case DAY, IOC, FOK -> null;
+            case DAY, IOC, FOK, GTC, GTD -> null;
             default -> "TimeInForce " + timeInForce + " is not supported by the simulator";
         };
+    }
+
+    /** Cancels GTD orders whose ExpireTime has passed (Order Cancelled X). */
+    public int expireOrders(long nowEpochNanos) {
+        List<Order> expired = activeOrdersByOrderID.values().stream()
+                .filter(o -> o.getTimeInForce() == TimeInForce.GTD && o.getExpireTime() <= nowEpochNanos && o.getState().isCancellable())
+                .toList();
+        for (Order order : expired) {
+            matchingEngine.cancelOrder(order);
+            order.cancel(OrderCancelledMessage.REASON_ORDER_EXPIRED);
+            orderRepository.saveAsync(order);
+            handleUnsolicitedCancel(order, OrderCancelledMessage.REASON_ORDER_EXPIRED);
+        }
+        return expired.size();
     }
 
     private long countOpenBoeOrders(String username) {
@@ -628,12 +752,14 @@ public class OrderManager {
         String riskRoot = request.riskRoot();
         List<Integer> groups = request.customGroupIds();
         boolean complexOnly = Character.valueOf('C').equals(request.instChar(4));
+        boolean preserveGtc = Character.valueOf('P').equals(request.instChar(5));
 
         List<Order> ordersToCancel = complexOnly ? List.of() : activeOrdersByClOrdID.values().stream()
                 .filter(o -> o.getUsername().equals(context.getUsername()))
                 .filter(o -> clearingFirm == null || clearingFirm.equals(o.getClearingFirm()))
                 .filter(o -> riskRoot == null || riskRoot.equals(o.getSymbol()))
                 .filter(o -> groups.isEmpty() || groups.contains(o.getCustomGroupId()))
+                .filter(o -> !preserveGtc || !o.persistsOvernight())
                 .filter(o -> o.getState().isCancellable())
                 .toList();
 
@@ -715,6 +841,9 @@ public class OrderManager {
         String reset = message.getRiskReset();
         if (reset.isEmpty() || !reset.chars().allMatch(c -> RISK_RESET_VALUES.indexOf(c) >= 0)) return RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET;
         if (message.getTargetMatchingUnit() > BoeSessionState.MATCHING_UNIT) return RiskResetAcknowledgmentMessage.RESULT_INVALID_MATCHING_UNIT;
+        if (!portAttributes.efidRiskReset() && (reset.indexOf('F') >= 0 || reset.indexOf('G') >= 0)) {
+            return RiskResetAcknowledgmentMessage.RESULT_AUTOMATIC_RESETS_DISABLED;
+        }
 
         boolean root = reset.indexOf('S') >= 0 || reset.indexOf('T') >= 0;
         boolean firm = reset.indexOf('F') >= 0 || reset.indexOf('E') >= 0 || reset.indexOf('G') >= 0;
@@ -732,7 +861,8 @@ public class OrderManager {
     private void applyRiskReset(String reset, String username, String clearingFirm, String riskRoot, int customGroupId) {
         if (reset == null || reset.isEmpty()) return;
         if (reset.indexOf('S') >= 0 || reset.indexOf('T') >= 0) riskLockouts.release(username, clearingFirm, RiskLockouts.Level.RISK_ROOT, riskRoot, 0);
-        if (reset.indexOf('F') >= 0 || reset.indexOf('E') >= 0 || reset.indexOf('G') >= 0) riskLockouts.release(username, clearingFirm, RiskLockouts.Level.EFID, null, 0);
+        boolean efidReset = reset.indexOf('E') >= 0 || (portAttributes.efidRiskReset() && (reset.indexOf('F') >= 0 || reset.indexOf('G') >= 0));
+        if (efidReset) riskLockouts.release(username, clearingFirm, RiskLockouts.Level.EFID, null, 0);
         if (reset.indexOf('C') >= 0) riskLockouts.release(username, clearingFirm, RiskLockouts.Level.CUSTOM_GROUP, null, customGroupId);
     }
 
@@ -747,6 +877,7 @@ public class OrderManager {
     static final byte SUBREASON_EFID_LEVEL = (byte) 'A';
     static final byte SUBREASON_SYMBOL_LEVEL = (byte) 'B';
     static final byte SUBREASON_CUSTOM_GROUP_LEVEL = (byte) 'C';
+    static final byte SUBREASON_FIRM_DISCONNECT = (byte) 'J';
 
     private static final Set<String> VALID_SYMBOLS = Set.of(
             "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META",
@@ -790,11 +921,16 @@ public class OrderManager {
         activeOrdersByOrderID.remove(order.getOrderID());
         totalOrdersCancelled.incrementAndGet();
         LOGGER.log(Level.INFO, "Order {0} cancelled by the exchange (reason {1})", new Object[]{order.getClOrdID(), (char) reason});
+        sendUnsolicitedCancel(order, reason, (byte) 0);
+    }
+
+    private void sendUnsolicitedCancel(Order order, byte reason, byte subreason) {
         if (sessionManager == null || !isBoeOrder(order)) return;
         BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
         if (state == null) return;
-        OrderCancelledMessage msg = OrderCancelledMessage.fromOrder(order, reason,
-                OrderReturnFields.forOrder(order).select(state.getReturnBitfields(), OrderCancelledMessage.MESSAGE_TYPE));
+        OrderCancelledMessage msg = OrderCancelledMessage.fromOrder(order, reason, OrderReturnFields.forOrder(order)
+                .put(ReturnField.SUBREASON, subreason != 0 ? subreason : null)
+                .select(state.getReturnBitfields(), OrderCancelledMessage.MESSAGE_TYPE));
         msg.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
         deliver(order, seq -> {
             msg.setSequenceNumber(seq);
@@ -881,18 +1017,32 @@ public class OrderManager {
 
     private void loadActiveOrders() {
         try {
-            List<Order> activeOrders = orderRepository.findActiveOrders();
-            for (Order order : activeOrders) {
+            Instant lastClose = TradingDay.lastClose(Instant.now());
+            Map<Long, Order> latest = new java.util.HashMap<>();
+            for (Order order : orderRepository.findActiveOrders()) {
+                latest.merge(order.getOrderID(), order, (a, b) -> a.getLastModified().isAfter(b.getLastModified()) ? a : b);
+            }
+            int loaded = 0;
+            for (Order order : latest.values()) {
+                if (!order.persistsOvernight() && order.getCreatedAt().isBefore(lastClose)) {
+                    order.expire();
+                    orderRepository.saveAsync(order);
+                    continue;
+                }
+                if (order.persistsOvernight()) order.markCarried();
                 activeOrdersByClOrdID.put(order.getClOrdID(), order);
                 activeOrdersByOrderID.put(order.getOrderID(), order);
-
-                matchingEngine.getOrderBook(order.getSymbol()).ifPresent(book -> book.addOrder(order));
+                matchingEngine.restore(order);
+                loaded++;
             }
-            LOGGER.log(Level.INFO, "Loaded {0} active orders from database", activeOrders.size());
+            latest.keySet().stream().mapToLong(Long::longValue).max()
+                    .ifPresent(max -> orderIDGenerator.accumulateAndGet(max + 1, Math::max));
+            LOGGER.log(Level.INFO, "Loaded {0} active orders from database", loaded);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to load active orders", e);
         }
     }
+
 
     // Getters
     public RiskLockouts getRiskLockouts() { return riskLockouts; }

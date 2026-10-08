@@ -35,6 +35,8 @@ public class Order {
     private final PreventMatch preventMatch;
     private final int customGroupId;
     private final int minQty;
+    private final long expireTime;
+    private volatile boolean carried;
     private volatile int maxFloor;
     private final int displayRange;
     private final BigDecimal stopPx;
@@ -96,6 +98,7 @@ public class Order {
         this.preventMatch = builder.preventMatch;
         this.customGroupId = builder.customGroupId;
         this.minQty = builder.minQty;
+        this.expireTime = builder.expireTime;
         this.maxFloor = builder.maxFloor;
         this.displayRange = builder.displayRange;
         this.stopPx = builder.stopPx;
@@ -223,6 +226,10 @@ public class Order {
     public PreventMatch getPreventMatch() { return preventMatch; }
     public int getCustomGroupId() { return customGroupId; }
     public int getMinQty() { return minQty; }
+    public long getExpireTime() { return expireTime; }
+    public boolean isCarried() { return carried; }
+    public void markCarried() { this.carried = true; }
+    public boolean persistsOvernight() { return timeInForce == TimeInForce.GTC || timeInForce == TimeInForce.GTD; }
     public int getMaxFloor() { return maxFloor; }
     public int getDisplayRange() { return displayRange; }
     public BigDecimal getStopPx() { return modifiedStopPx != null ? modifiedStopPx : stopPx; }
@@ -310,6 +317,7 @@ public class Order {
         private PreventMatch preventMatch;
         private int customGroupId;
         private int minQty;
+        private long expireTime;
         private int maxFloor;
         private int displayRange;
         private BigDecimal stopPx;
@@ -375,6 +383,11 @@ public class Order {
 
         public Builder timeInForce(TimeInForce timeInForce) {
             this.timeInForce = timeInForce;
+            return this;
+        }
+
+        public Builder expireTime(long expireTime) {
+            this.expireTime = expireTime;
             return this;
         }
 

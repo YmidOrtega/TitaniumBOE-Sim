@@ -33,6 +33,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
 
     // Reject reason codes (Order Reason Codes p.213)
     public static final byte REASON_DUPLICATE_CLORDID          = (byte) 'D';
+    public static final byte REASON_RATE_THRESHOLD             = (byte) 'K';
     public static final byte REASON_ORDER_SIZE_EXCEEDED        = (byte) 'M';
     public static final byte REASON_SYMBOL_NOT_SUPPORTED       = (byte) 'Y';
     public static final byte REASON_MAX_OPEN_ORDERS_EXCEEDED   = (byte) 'o';

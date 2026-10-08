@@ -39,8 +39,8 @@ import com.boe.simulator.server.session.ClientSessionManager;
 
 public class CboeServer {
     // Exchange close, 17:30 ET (spec: Logout Message Fields)
-    static final ZoneId MARKET_ZONE = ZoneId.of("America/New_York");
-    static final LocalTime MARKET_CLOSE = LocalTime.of(17, 30);
+    static final ZoneId MARKET_ZONE = com.boe.simulator.server.config.TradingDay.MARKET_ZONE;
+    static final LocalTime MARKET_CLOSE = com.boe.simulator.server.config.TradingDay.MARKET_CLOSE;
 
     private static final Logger LOGGER = Logger.getLogger(CboeServer.class.getName());
 
@@ -99,6 +99,7 @@ public class CboeServer {
         this.orderManager = new OrderManager(dbManager);
         this.orderManager.setSessionManager(sessionManager);
         this.orderManager.setMaxOpenOrdersPerSession(config.getMaxOpenOrdersPerSession());
+        this.orderManager.setPortAttributes(config.getPortAttributes());
 
         // Initialize statistics generator
         this.statisticsGenerator = new StatisticsGeneratorService(
@@ -320,6 +321,7 @@ public class CboeServer {
 
             // Log out all sessions
             try {
+                orderManager.setMarketClosed(true);
                 sessionManager.logoutAll(LogoutResponseMessage.REASON_ADMIN_LOGOUT, "Server shutting down");
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error disconnecting sessions", e);
@@ -367,8 +369,15 @@ public class CboeServer {
     public void performDailyReset() {
         LOGGER.info("======= DAILY RESET STARTED =======");
         try {
+            orderManager.setMarketClosed(true);
+            if (config.getPortAttributes().doneForDayRestatements()) {
+                for (var handler : sessionManager.getAuthenticatedHandlers()) {
+                    handler.sendRestatements(orderManager.persistingOrdersOf(handler.getSession().getUsername()),
+                            com.boe.simulator.server.connection.ClientConnectionHandler.SUB_LIQUIDITY_DONE_FOR_DAY);
+                }
+            }
             sessionManager.logoutAll(LogoutResponseMessage.REASON_END_OF_DAY, "End of day");
-            orderManager.reset();
+            orderManager.rollToNextDay();
 
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_MESSAGES);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_TRADES);
@@ -376,9 +385,11 @@ public class CboeServer {
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_SESSIONS);
             sessionManager.getSessionStates().clear();
 
-            LOGGER.info("Daily reset complete: orders, trades, audit and sessions cleared. Users and config preserved.");
+            LOGGER.info("Daily reset complete: Day orders expired, GTC/GTD carried; trades, audit and sessions cleared. Users and config preserved.");
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Daily reset failed", e);
+        } finally {
+            orderManager.setMarketClosed(false);
         }
         LOGGER.info("======= DAILY RESET FINISHED =======");
     }
@@ -502,6 +513,13 @@ public class CboeServer {
             ScheduledExecutorService dailyResetScheduler = Executors.newSingleThreadScheduledExecutor(
                     r -> Thread.ofVirtual().name("daily-reset").unstarted(r));
             scheduleNextClose(dailyResetScheduler, server);
+            dailyResetScheduler.scheduleAtFixedRate(() -> {
+                try {
+                    server.getOrderManager().expireOrders(com.boe.simulator.protocol.types.BoeTime.nowEpochNanos());
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "GTD expiry sweep failed", e);
+                }
+            }, 1, 1, TimeUnit.SECONDS);
 
             // Keep the main thread alive
             try {

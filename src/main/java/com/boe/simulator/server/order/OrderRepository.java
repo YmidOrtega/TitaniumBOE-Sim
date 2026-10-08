@@ -299,7 +299,17 @@ public class OrderRepository {
             @JsonProperty("lastModified") String lastModified,
             @JsonProperty("routingInst") byte routingInst,
             @JsonProperty("receivedSequence") int receivedSequence,
-            @JsonProperty("lastSentSequence") int lastSentSequence
+            @JsonProperty("lastSentSequence") int lastSentSequence,
+            @JsonProperty("timeInForce") byte timeInForce,
+            @JsonProperty("expireTime") long expireTime,
+            @JsonProperty("preventMatch") String preventMatch,
+            @JsonProperty("customGroupId") int customGroupId,
+            @JsonProperty("minQty") int minQty,
+            @JsonProperty("maxFloor") int maxFloor,
+            @JsonProperty("displayRange") int displayRange,
+            @JsonProperty("stopPx") String stopPx,
+            @JsonProperty("stopElected") boolean stopElected,
+            @JsonProperty("notional") String notional
     ) {
 
         @JsonCreator
@@ -313,7 +323,7 @@ public class OrderRepository {
                     order.getSessionSubID(),
                     order.getUsername(),
                     order.getSide().wireValue(),
-                    order.getOrderQty(),
+                    order.getEffectiveOrderQty(),
                     order.getLeavesQty(),
                     order.getCumQty(),
                     order.getPrice() != null ? order.getPrice().toString() : null,
@@ -332,7 +342,17 @@ public class OrderRepository {
                     order.getLastModified().toString(),
                     order.getRoutingInst() != null ? order.getRoutingInst().wireValue() : RoutingInst.BOOK_ONLY.wireValue(),
                     order.getReceivedSequence(),
-                    order.getLastSentSequence()
+                    order.getLastSentSequence(),
+                    order.getTimeInForce().wireValue(),
+                    order.getExpireTime(),
+                    order.getPreventMatch() != null ? new String(order.getPreventMatch().toBytes(), java.nio.charset.StandardCharsets.US_ASCII) : null,
+                    order.getCustomGroupId(),
+                    order.getMinQty(),
+                    order.getMaxFloor(),
+                    order.getDisplayRange(),
+                    order.getStopPx() != null ? order.getStopPx().toString() : null,
+                    order.isStopElected(),
+                    order.getAvgPx() != null ? order.getAvgPx().multiply(BigDecimal.valueOf(order.getCumQty())).toString() : null
             );
         }
 
@@ -352,7 +372,15 @@ public class OrderRepository {
                     .clearingAccount(clearingAccount)
                     .openClose(openClose != 0 ? OpenClose.fromByte(openClose) : OpenClose.NONE)
                     .routingInst(RoutingInst.fromByte(routingInst))
-                    .receivedSequence(receivedSequence);
+                    .receivedSequence(receivedSequence)
+                    .timeInForce(timeInForce != 0 ? com.boe.simulator.protocol.types.TimeInForce.fromByte(timeInForce) : com.boe.simulator.protocol.types.TimeInForce.DAY)
+                    .expireTime(expireTime)
+                    .customGroupId(customGroupId)
+                    .minQty(minQty)
+                    .maxFloor(maxFloor)
+                    .displayRange(displayRange);
+            if (preventMatch != null) builder.preventMatch(com.boe.simulator.protocol.types.PreventMatch.fromBytes(preventMatch.getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+            if (stopPx != null) builder.stopPx(new BigDecimal(stopPx));
 
             if (price != null) builder.price(new BigDecimal(price));
 
@@ -381,11 +409,22 @@ public class OrderRepository {
                 cumQtyField.setAccessible(true);
                 cumQtyField.set(order, cumQty);
 
+                java.lang.reflect.Field createdAtField = Order.class.getDeclaredField("createdAt");
+                createdAtField.setAccessible(true);
+                createdAtField.set(order, Instant.parse(createdAt));
+
                 java.lang.reflect.Field lastModifiedField = Order.class.getDeclaredField("lastModified");
                 lastModifiedField.setAccessible(true);
                 lastModifiedField.set(order, Instant.parse(lastModified));
 
                 order.setLastSentSequence(lastSentSequence);
+
+                if (stopElected) order.elect();
+                if (notional != null) {
+                    java.lang.reflect.Field notionalField = Order.class.getDeclaredField("notional");
+                    notionalField.setAccessible(true);
+                    notionalField.set(order, new BigDecimal(notional));
+                }
             } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException | SecurityException e) {
                 LOGGER.log(Level.WARNING, "Failed to restore order state", e);
             }

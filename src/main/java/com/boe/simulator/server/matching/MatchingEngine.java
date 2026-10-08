@@ -33,7 +33,7 @@ public class MatchingEngine {
     private final TradeRepository tradeRepository;
     private final AtomicLong tradeIdGenerator;
     private final List<MatchingEventListener> eventListeners;
-    private final boolean allowSelfTrade;
+    private volatile PreventMatch defaultMtp;
     private final AtomicLong totalMatches;
     private final AtomicLong totalTradeVolume;
     private WebSocketService webSocketService;
@@ -49,7 +49,7 @@ public class MatchingEngine {
         this.tradeRepository = tradeRepository;
         this.tradeIdGenerator = new AtomicLong(1000000);
         this.eventListeners = new ArrayList<>();
-        this.allowSelfTrade = allowSelfTrade;
+        this.defaultMtp = allowSelfTrade ? null : PreventMatch.PORT_DEFAULT;
         this.totalMatches = new AtomicLong(0);
         this.totalTradeVolume = new AtomicLong(0);
 
@@ -189,6 +189,20 @@ public class MatchingEngine {
         }
     }
 
+    /** Puts an order recovered from the database back in the book (or the stop list) without matching it. */
+    public void restore(Order order) {
+        Object symbolLock = symbolLocks.computeIfAbsent(order.getSymbol(), k -> new Object());
+        synchronized (symbolLock) {
+            OrderBook book = orderBooks.computeIfAbsent(order.getSymbol(), OrderBook::new);
+            if (order.isPendingStop()) {
+                book.addStop(order);
+            } else if (order.getPrice() != null && order.getLeavesQty() > 0) {
+                if (order.isReserve()) order.reloadDisplay(nextDisplay(order));
+                book.addOrder(order);
+            }
+        }
+    }
+
     public boolean cancelOrder(Order order) {
         OrderBook book = orderBooks.get(order.getSymbol());
         if (book == null) return false;
@@ -308,9 +322,13 @@ public class MatchingEngine {
         return trades;
     }
 
+    // Default MTP Value port attribute (p.220); null = none
+    public void setDefaultMtp(PreventMatch defaultMtp) {
+        this.defaultMtp = defaultMtp;
+    }
+
     private PreventMatch effectivePreventMatch(Order order) {
-        if (order.getPreventMatch() != null) return order.getPreventMatch();
-        return allowSelfTrade ? null : PreventMatch.PORT_DEFAULT;
+        return order.getPreventMatch() != null ? order.getPreventMatch() : defaultMtp;
     }
 
     // Match Trade Prevention (PreventMatch, p.207): the inbound order's instruction applies
