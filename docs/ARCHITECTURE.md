@@ -314,6 +314,17 @@ Request en la misma conexión → `Logout` `!` y cierre.
 | New Order / Modify / Cancel | Order Rejected / User Modify Rejected / Cancel Rejected con `Z` + texto, y aviso en el log |
 | Client Heartbeat / Logout Request | solo aviso en el log |
 
+**New Order: campos opcionales.** `NewOrderMessage` conoce los 10 bitfields de la tabla *Input
+Bitfields Per Message* (p.171) con la longitud de cada campo (*List of Optional Fields*, p.196), así
+que nunca lee desplazado un campo que no implementa. Cada campo tiene un tratamiento:
+
+| Tratamiento | Campos |
+|---|---|
+| Se lee | ClearingFirm, ClearingAccount, Price, OrdType, TimeInForce, Symbol, Capacity, RoutingInst, Account, MaturityDate, StrikePrice, PutOrCall, OpenClose |
+| Se consume e ignora (informativo) | RiskReset, CMTANumber, SessionEligibility, AttributedQuote, RoutStrategy, RouteDeliveryMethod, ExDestination, EchoText, RoutingFirmID, CustomGroupId, ClearingOptionalData, ClientIDAttr, FrequentTraderID, Compression, OrderOrigin, ORS, Held |
+| Rechazo `Z` (cambia la ejecución y no está implementado) | MinQty, PreventMatch, ExpireTime, TargetPartyID, DisplayRange, StopPx, AuctionId, FloorDestination; ExecInst, MaxFloor, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
+| Rechazo (en blanco o reservado en la spec) | el resto de bits, y cualquier bit más allá del bitfield 10 |
+
 **Cierre del día y apagado.** A las **17:30 America/New_York** (horario de verano incluido; la tarea se
 reprograma cada día) todas las sesiones conectadas reciben `Logout` `E` *End of day* y, después,
 el reset diario borra órdenes, trades y estado de secuencia. Al apagar el servidor cada sesión
@@ -804,13 +815,13 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-422 tests distribuidos en 48 clases (cifras de `mvn test`, no estimadas):
+435 tests distribuidos en 48 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 197 | Parseo y serialización byte a byte contra la spec |
+| Wire format (`protocol/message/`) | 205 | Parseo y serialización byte a byte contra la spec |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
-| Order management (`server/order/`) | 34 | Validación, ciclo de vida, estados, límite de órdenes abiertas |
+| Order management (`server/order/`) | 39 | Validación, ciclo de vida, estados, límite de órdenes abiertas |
 | **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
