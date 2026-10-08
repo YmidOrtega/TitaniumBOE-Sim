@@ -3,8 +3,8 @@ package com.boe.simulator.server.validation;
 import com.boe.simulator.protocol.message.BoeMessage;
 
 public class MessageValidator {
-    private static final int MIN_MESSAGE_LENGTH = 4;
-    private static final int MAX_MESSAGE_LENGTH = 65535;
+    private static final int MIN_MESSAGE_LENGTH = 10;       // full header: MessageLength >= 8
+    private static final int MAX_MESSAGE_LENGTH = 2 + 0xFFFF; // StartOfMessage + max MessageLength
 
     public static ValidationResult validate(BoeMessage message) {
         if (message == null) return ValidationResult.invalid("Message is null");
@@ -19,7 +19,7 @@ public class MessageValidator {
         if (length > MAX_MESSAGE_LENGTH) return ValidationResult.invalid("Message too long: " + length + " bytes");
     
         // Check length field consistency
-        int lengthField = message.getLengthField();
+        int lengthField = message.getLengthField() & 0xFFFF;
         int expectedPayloadLength = length - 4;
         
         if (lengthField != expectedPayloadLength + 2) return ValidationResult.invalid("Length field mismatch: field=" + lengthField + ", expected=" + (expectedPayloadLength + 2));
