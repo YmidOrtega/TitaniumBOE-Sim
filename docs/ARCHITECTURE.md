@@ -491,15 +491,35 @@ el lock y frena el matching de ese símbolo. Debería encolarse y emitirse fuera
 El Modify Order requiere un orden específico para mantener la integridad del OrderBook:
 
 ```
-1. removeOrder(book)        // ANTES de cambiar el precio (TreeMap key)
-2. Calcular delta:
+1. Calcular delta:
      delta        = newOrderQty - order.getEffectiveOrderQty()
      newLeavesQty = order.getLeavesQty() + delta
-3. Si newLeavesQty <= 0 → order.cancel() → retorna []
-4. order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty)
-5. Intentar matching al nuevo precio
-6. Si leavesQty > 0 → addOrder(book) al nuevo precio
+2. Si solo baja la cantidad (mismo precio y OrdType, newLeavesQty > 0)
+     → book.updateInPlace: la orden conserva su sitio en la cola → retorna []
+3. removeOrder(book)        // ANTES de cambiar el precio (TreeMap key)
+4. Si newLeavesQty <= 0 → order.cancel() → retorna []
+5. order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty)
+6. Intentar matching al nuevo precio
+7. Si leavesQty > 0 → addOrder(book) al final del nivel (pierde la prioridad)
 ```
+
+Cualquier otro cambio, o un modify sin cambios, pierde la prioridad (p.77).
+
+**Validación en `OrderManager.processModifyOrder`:**
+
+| Caso | Respuesta |
+|---|---|
+| OrigClOrdID inexistente, terminado o de otro usuario | User Modify Rejected `O` |
+| Orden en un estado no modificable | `J` |
+| Campo no permitido en la tabla de la p.176 (Side, FrequentTraderID, bits en blanco o reservados, bitfield ≥ 3) | `Z` |
+| ExecInst, MaxFloor o StopPx con valor distinto del de por defecto | `Z` "*X is not supported by the simulator*" |
+| Falta OrderQty, o Price en una orden limitada; OrdType Stop o desconocido | `Z` |
+| ClOrdID nuevo igual al de otra orden viva | `D` |
+| ClOrdID reutilizado (igual a OrigClOrdID) sin que el modify solo baje la cantidad | `D` |
+| Modificación número 1.296 de la misma orden | `Z`; solo queda cancelarla |
+
+Con `CancelOrigOnReject = Y`, si el modify se rechaza (salvo por `O` o `J`) también se cancela la
+orden original: User Modify Rejected seguido de Order Cancelled.
 
 **Por qué este orden:** `OrderBook` usa `TreeMap<BigDecimal, List<Order>>` donde el precio es la clave. Si se actualizara el precio *antes* de remover la orden, el `removeOrder` buscaría en el nivel de precio *nuevo* y no encontraría la orden (todavía está en el nivel *viejo*).
 
@@ -836,21 +856,21 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-457 tests distribuidos en 51 clases (cifras de `mvn test`, no estimadas):
+478 tests distribuidos en 51 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 208 | Parseo y serialización byte a byte contra la spec |
+| Wire format (`protocol/message/`) | 215 | Parseo y serialización byte a byte contra la spec |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
-| Order management (`server/order/`) | 47 | Validación, ciclo de vida, estados, límite de órdenes abiertas, cancel y mass cancel |
-| **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
+| Order management (`server/order/`) | 56 | Validación, ciclo de vida, estados, límite de órdenes abiertas, cancel, mass cancel y modify |
+| **Matching engine (`server/matching/`)** | **33** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 13 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
-| Conexión (`server/connection/`) | 36 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel Order y métricas con sockets reales |
+| Conexión (`server/connection/`) | 37 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel y Modify y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
 | Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
@@ -875,7 +895,8 @@ ajena; con `allowSelfTrade=true` el cruce sí se ejecuta.
 el reprecio mueve la orden entre niveles sin dejar fantasmas y **la orden sigue siendo
 cancelable después**, que es la regresión concreta que aparecería si se actualizara el precio
 antes de removerla del `TreeMap`. Cubre también la lógica de delta sobre `leavesQty` en ambos
-sentidos, la auto-cancelación cuando el delta la deja en cero, y el reprecio agresivo que cruza.
+sentidos, la auto-cancelación cuando el delta la deja en cero, el reprecio agresivo que cruza y la
+prioridad temporal: bajar solo la cantidad la conserva; aumentarla, reprecio o un modify sin cambios la pierden.
 
 **`MatchingEngineConcurrencyTest`** — las dos capas de bloqueo (§6.3):
 símbolos distintos procesados en paralelo mantienen sus libros aislados; agresores concurrentes
