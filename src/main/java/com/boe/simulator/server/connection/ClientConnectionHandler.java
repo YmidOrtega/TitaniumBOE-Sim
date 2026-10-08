@@ -210,6 +210,10 @@ public class ClientConnectionHandler implements Runnable {
         byte messageType = message.getMessageType();
 
         if (messageType == MessageType.LOGIN_REQUEST.wireValue()) {
+            if (session.isAuthenticated()) {
+                logoutForProtocolViolation("Login Request already accepted on this connection");
+                return;
+            }
             LoginRequestMessage request;
             try {
                 request = LoginRequestMessage.parseFromBytes(message.getData());

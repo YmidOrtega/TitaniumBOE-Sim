@@ -105,6 +105,30 @@ class ClientConnectionHandlerLoginTest {
         verifyNoInteractions(auth);
     }
 
+    @Test
+    void secondLoginOnTheSameConnection_isLoggedOutAndReleasesTheFirstSession() throws Exception {
+        send(new LoginRequestMessage("U1", "pass", "S1").toBytes());
+        assertEquals(LoginResponseMessage.STATUS_ACCEPTED, new LoginResponseMessage(read()).getLoginResponseStatus());
+        read(); // Replay Complete
+
+        send(new LoginRequestMessage("U2", "pass", "S1").toBytes());
+
+        byte[] logout = readSkippingHeartbeats();
+        assertEquals(LOGOUT, logout[4]);
+        assertEquals(LogoutResponseMessage.REASON_PROTOCOL_VIOLATION, logout[10]);
+        assertEquals("Login Request already accepted on this connection", text(logout));
+        assertEquals(-1, in.read());
+        verify(auth, times(1)).authenticate(anyString(), anyString(), anyString());
+        verify(auth, timeout(1_000).times(1)).endSession("U1");
+    }
+
+    private byte[] readSkippingHeartbeats() throws IOException {
+        while (true) {
+            byte[] msg = read();
+            if (msg[4] != 0x09) return msg;
+        }
+    }
+
     private void send(byte[] bytes) throws IOException {
         out.write(bytes);
         out.flush();
