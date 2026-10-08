@@ -298,6 +298,13 @@ LoginRequest (+ grupo 0x80 opcional con el último número recibido por unidad)
 - Número por delante del servidor → login rechazado con `Q`; unidad inexistente con número ≠ 0 → `I`.
 - New Order / Modify recibidos antes de Replay Complete → rechazados con motivo `y`.
 
+**Login Request.** Se valida la estructura antes que nada: longitud mínima, que cada grupo de
+parámetros quepa y coincida con su contenido, un solo grupo `0x80` y nada sobrante. Si falla →
+LoginResponse `M` y cierre. Luego se validan los Return Bitfields contra la tabla *Return Bitfields
+Per Message* de la spec (`ReturnBitfieldRules`, p.180+): pedir un campo marcado `-` o en blanco →
+`F` con el byte y el bit en el texto. Cualquier mensaje anterior a un login aceptado → `Logout` `!`
+y cierre.
+
 **Heartbeats** (por defecto 1 s / 5 s, como la spec; configurables). `HeartbeatMonitor` revisa cada
 200 ms dos marcas de tiempo de `ClientSession`:
 
@@ -783,12 +790,12 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-389 tests distribuidos en 41 clases (cifras de `mvn test`, no estimadas):
+406 tests distribuidos en 46 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 178 | Parseo y serialización byte a byte contra la spec |
-| Session layer (`server/session/`) | 41 | Login, logout, estadísticas, estado de secuencia por sesión |
+| Wire format (`protocol/message/`) | 194 | Parseo y serialización byte a byte contra la spec |
+| Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
 | Order management (`server/order/`) | 34 | Validación, ciclo de vida, estados, límite de órdenes abiertas |
 | **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
@@ -797,7 +804,8 @@ Detalle completo y limitación conocida en §6.3.
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
-| Conexión (`server/connection/`) | 17 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay y heartbeats con sockets reales |
+| Conexión (`server/connection/`) | 21 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje) y métricas con sockets reales |
+| WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
 | Métricas (`server/metrics/`) | 5 | Contadores de salud |
