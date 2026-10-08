@@ -18,8 +18,8 @@ class ServerConfigurationTest {
         assertEquals(8080, config.getPort());
         assertEquals(100, config.getMaxConnections());
         assertEquals(30000, config.getConnectionTimeout());
-        assertEquals(10, config.getHeartbeatIntervalSeconds());
-        assertEquals(30, config.getHeartbeatTimeoutSeconds());
+        assertEquals(1, config.getHeartbeatIntervalSeconds());
+        assertEquals(5, config.getHeartbeatTimeoutSeconds());
         assertEquals(Level.INFO, config.getLogLevel());
     }
 

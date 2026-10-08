@@ -113,6 +113,7 @@ public class ClientConnectionHandler implements Runnable {
 
                 BoeMessage message = serializer.deserialize(inputStream);
                 session.incrementMessagesReceived();
+                session.markInbound();
 
                 if (gate.onRead()) {
                     LOGGER.log(Level.WARNING, "[Session {0}] {1} unacknowledged messages - pausing socket reads",
@@ -333,6 +334,7 @@ public class ClientConnectionHandler implements Runnable {
             replayInProgress = false;
         }
 
+        disableReadTimeout();
         heartbeatMonitor.start();
         sessionManager.getStatistics().incrementSuccessfulLogins();
     }
@@ -395,6 +397,10 @@ public class ClientConnectionHandler implements Runnable {
         LOGGER.log(Level.INFO, "[Session {0}] Processing logout request", session.getConnectionId());
 
         sendLogout(LogoutResponseMessage.REASON_USER_REQUESTED, "Logout successful");
+    }
+
+    public void logoutForHeartbeatTimeout() {
+        sendLogout(LogoutResponseMessage.REASON_PROTOCOL_VIOLATION, "Heartbeat timeout");
     }
 
     private void logoutForProtocolViolation(String text) {
@@ -550,6 +556,7 @@ public class ClientConnectionHandler implements Runnable {
             outputStream.write(messageBytes);
             outputStream.flush();
             session.incrementMessagesSent();
+            session.markOutbound();
 
             LOGGER.log(Level.FINE, "[Session {0}] → Sent message ({1} bytes)", new Object[]{
                     session.getConnectionId(),
@@ -681,6 +688,14 @@ public class ClientConnectionHandler implements Runnable {
 
         session.setState(SessionState.DISCONNECTED);
         LOGGER.log(Level.INFO, "[Session {0}] Connection closed", session.getConnectionId());
+    }
+
+    private void disableReadTimeout() {
+        try {
+            socket.setSoTimeout(0);
+        } catch (IOException e) {
+            LOGGER.log(Level.FINE, "Could not clear socket read timeout", e);
+        }
     }
 
     private void shutdownInputQuietly() {

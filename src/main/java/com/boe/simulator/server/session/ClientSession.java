@@ -26,9 +26,27 @@ public class ClientSession {
     private final AtomicInteger sentSequenceNumber;
     private final AtomicInteger receivedSequenceNumber;
 
+    public void markInbound() {
+        this.lastInboundNanos = System.nanoTime();
+    }
+
+    public void markOutbound() {
+        this.lastOutboundNanos = System.nanoTime();
+    }
+
+    public long nanosSinceInbound() {
+        return System.nanoTime() - lastInboundNanos;
+    }
+
+    public long nanosSinceOutbound() {
+        return System.nanoTime() - lastOutboundNanos;
+    }
+
     // Heartbeat tracking
     private volatile Instant lastHeartbeatSent;
     private volatile Instant lastHeartbeatReceived;
+    private volatile long lastInboundNanos = System.nanoTime();
+    private volatile long lastOutboundNanos = System.nanoTime();
 
     // Statistics
     private final AtomicInteger messagesReceived;

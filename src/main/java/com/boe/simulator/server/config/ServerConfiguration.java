@@ -92,8 +92,8 @@ public class ServerConfiguration {
         private int port = 8080;
         private int maxConnections = 100;
         private int connectionTimeout = 30000; // 30 seconds
-        private long heartbeatIntervalSeconds = 10;
-        private long heartbeatTimeoutSeconds = 30;
+        private long heartbeatIntervalSeconds = 1;
+        private long heartbeatTimeoutSeconds = 5;
         private int rateLimitPerSecond = 1_000;
         private int maxUnacknowledgedMessages = 1_024;
         private int resumeReadingBelow = 960;

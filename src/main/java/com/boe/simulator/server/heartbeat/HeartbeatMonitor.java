@@ -1,8 +1,6 @@
 package com.boe.simulator.server.heartbeat;
 
 import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -13,6 +11,7 @@ import java.util.logging.Logger;
 import com.boe.simulator.protocol.message.ServerHeartbeatMessage;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
+import com.boe.simulator.server.session.ClientSession;
 
 public class HeartbeatMonitor {
     private static final Logger LOGGER = Logger.getLogger(HeartbeatMonitor.class.getName());
@@ -21,11 +20,12 @@ public class HeartbeatMonitor {
     private static final ScheduledExecutorService SHARED_SCHEDULER =
             Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
 
+    private static final long TICK_MILLIS = 200;
+
     private final ClientConnectionHandler handler;
     private final ServerConfiguration config;
 
-    private ScheduledFuture<?> sendTask;
-    private ScheduledFuture<?> checkTask;
+    private ScheduledFuture<?> tickTask;
     private volatile boolean active;
 
     public HeartbeatMonitor(ClientConnectionHandler handler, ServerConfiguration config) {
@@ -41,33 +41,34 @@ public class HeartbeatMonitor {
         }
 
         active = true;
+        handler.getSession().markInbound();
 
-        long sendInterval = config.getHeartbeatIntervalSeconds();
-        sendTask = SHARED_SCHEDULER.scheduleAtFixedRate(
-                this::sendHeartbeat,
-                sendInterval,
-                sendInterval,
-                TimeUnit.SECONDS
-        );
+        tickTask = SHARED_SCHEDULER.scheduleAtFixedRate(this::tick, TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
 
-        long checkInterval = 5;
-        checkTask = SHARED_SCHEDULER.scheduleAtFixedRate(
-                this::checkTimeout,
-                checkInterval,
-                checkInterval,
-                TimeUnit.SECONDS
-        );
+        LOGGER.log(Level.INFO, "[Session {0}] Heartbeat monitor started (send after {1}s idle, timeout {2}s)", new Object[]{handler.getSession().getConnectionId(), config.getHeartbeatIntervalSeconds(), config.getHeartbeatTimeoutSeconds()});
+    }
 
-        LOGGER.log(Level.INFO, "[Session {0}] Heartbeat monitor started (send every {1}s, timeout {2}s)", new Object[]{handler.getSession().getConnectionId(), sendInterval, config.getHeartbeatTimeoutSeconds()});
+    private void tick() {
+        if (!active) return;
+
+        ClientSession session = handler.getSession();
+        long timeoutNanos = TimeUnit.SECONDS.toNanos(config.getHeartbeatTimeoutSeconds());
+        if (session.nanosSinceInbound() >= timeoutNanos) {
+            LOGGER.log(Level.WARNING, "[Session {0}] No inbound data for {1}s - logging out",
+                    new Object[]{session.getConnectionId(), config.getHeartbeatTimeoutSeconds()});
+            stop();
+            handler.logoutForHeartbeatTimeout();
+            return;
+        }
+
+        if (session.nanosSinceOutbound() >= TimeUnit.SECONDS.toNanos(config.getHeartbeatIntervalSeconds())) {
+            sendHeartbeat();
+        }
     }
 
     private void sendHeartbeat() {
-        if (!active) return;
-
         try {
-            ServerHeartbeatMessage heartbeat = new ServerHeartbeatMessage();
-            handler.sendMessage(heartbeat.toBytes());
-
+            handler.sendMessage(new ServerHeartbeatMessage().toBytes());
             handler.getSession().updateHeartbeatSent();
 
             LOGGER.log(Level.FINE, "[Session {0}] → Sent ServerHeartbeat", handler.getSession().getConnectionId());
@@ -78,33 +79,12 @@ public class HeartbeatMonitor {
         }
     }
 
-    private void checkTimeout() {
-        if (!active) return;
-
-        Instant lastReceived = handler.getSession().getLastHeartbeatReceived();
-
-        // If never received a heartbeat yet, don't check (client might be just connecting)
-        if (lastReceived == null) return;
-
-        Duration timeSinceLastHeartbeat = Duration.between(lastReceived, Instant.now());
-        long timeoutSeconds = config.getHeartbeatTimeoutSeconds();
-
-        if (timeSinceLastHeartbeat.getSeconds() > timeoutSeconds) {
-            LOGGER.log(Level.WARNING, "[Session {0}] Client heartbeat timeout! Last received {1}s ago (timeout={2}s)", new Object[]{handler.getSession().getConnectionId(), timeSinceLastHeartbeat.getSeconds(), timeoutSeconds});
-
-            // Disconnect client
-            handler.stop();
-            stop();
-        }
-    }
-
     public void stop() {
         if (!active) return;
 
         active = false;
 
-        if (sendTask != null) sendTask.cancel(false);
-        if (checkTask != null) checkTask.cancel(false);
+        if (tickTask != null) tickTask.cancel(false);
         LOGGER.log(Level.INFO, "[Session {0}] Heartbeat monitor stopped", handler.getSession().getConnectionId());
     }
 
