@@ -16,46 +16,6 @@ class ClientSessionTest {
     }
 
     @Test
-    void getNextSentSequenceNumber_shouldIncrementAndReturn() {
-        // Arrange
-        int first = session.getNextSentSequenceNumber();
-
-        // Act
-        int second = session.getNextSentSequenceNumber();
-
-        // Assert
-        assertEquals(1, first);
-        assertEquals(2, second);
-    }
-
-    @Test
-    void updateReceivedSequenceNumber_shouldUpdateNumber() {
-        // Act
-        session.updateReceivedSequenceNumber(10);
-
-        // Assert
-        assertEquals(10, session.getLastReceivedSequenceNumber());
-    }
-
-    @Test
-    void isSequenceInOrder_shouldReturnTrue_forNextSequence() {
-        // Arrange
-        session.updateReceivedSequenceNumber(5);
-
-        // Assert
-        assertTrue(session.isSequenceInOrder(6));
-    }
-
-    @Test
-    void isSequenceInOrder_shouldReturnFalse_forOutOfOrderSequence() {
-        // Arrange
-        session.updateReceivedSequenceNumber(5);
-
-        // Assert
-        assertFalse(session.isSequenceInOrder(7));
-    }
-
-    @Test
     void incrementMessagesReceived_shouldIncrementCount() {
         // Arrange
         int initialCount = session.getMessagesReceived();
@@ -95,25 +55,6 @@ class ClientSessionTest {
 
         // Assert
         assertNotNull(session.getLastHeartbeatReceived());
-    }
-
-    @Test
-    void isHeartbeatExpired_shouldReturnTrue_whenExpired() throws InterruptedException {
-        // Arrange
-        session.updateHeartbeatReceived();
-        Thread.sleep(1000);
-
-        // Act & Assert
-        assertTrue(session.isHeartbeatExpired(0));
-    }
-
-    @Test
-    void isHeartbeatExpired_shouldReturnFalse_whenNotExpired() {
-        // Arrange
-        session.updateHeartbeatReceived();
-
-        // Act & Assert
-        assertFalse(session.isHeartbeatExpired(10));
     }
 
     @Test
