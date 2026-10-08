@@ -273,6 +273,40 @@ Java 21 Virtual Threads permiten el modelo de programación más simple (blockin
 - Heartbeat: si no llega ningún dato en **1 segundo**, el servidor envía `ServerHeartbeat`
 - Timeout: **5 segundos** sin dato → el servidor envía `Logout` y cierra conexión
 
+### 5.4 Control de Flujo y Límites por Puerto
+
+Cada conexión tiene **dos hilos virtuales**: uno lee el socket y otro procesa, unidos por una cola.
+Sigue habiendo un único procesador por conexión, así que el orden por sesión, el login-primero y el
+chequeo de ClOrdID no cambian.
+
+```
+socket ──► lector ──► cola ──► procesador ──► RateLimiter ──► OrderManager ──► respuesta
+             │                     │
+             └── pausa si hay       └── cada mensaje procesado = 1 confirmado
+                 > 1.024 sin confirmar; reanuda con < 960
+```
+
+Cuando el lector se pausa nadie vacía el buffer TCP: el buffer de envío del cliente se llena y el
+cliente se frena. Ningún mensaje se descarta.
+
+| Límite | Spec v2.11.90 | Simulador (defecto) | Escala | Configuración |
+|--------|---------------|---------------------|--------|---------------|
+| Mensajes sin confirmar → pausar lectura | > 1.024 | > 1.024 | 1:1 | `flowControl(1024, 960)` |
+| Reanudar lectura | < 960 | < 960 | 1:1 | `flowControl(1024, 960)` |
+| Órdenes abiertas por puerto BOE | 200.000 | **2.000** | **÷100** | `maxOpenOrdersPerSession(2000)` |
+| Mensajes de aplicación por conexión | — | 1.000/s | propio del simulador | `rateLimitPerSecond(1000)` |
+
+**Por qué se escala el límite de órdenes abiertas.** El valor de la spec está pensado para la
+infraestructura de un exchange real; en un simulador que corre en un PC nunca se alcanzaría y el
+comportamiento no se podría observar. Se divide entre 100 para reflejar cómo funciona en un
+escenario **práctico, no real**: al llegar a 2.000 órdenes abiertas en una sesión BOE, los New Order
+se rechazan con `OrderRejected` y motivo `o` (*Max open orders count exceeded*, Order Reason Codes
+p.213) hasta que alguna se llena o se cancela. Solo cuentan las órdenes enviadas por sesiones BOE;
+las de la API REST y los bots no consumen el cupo.
+
+Los umbrales 1.024/960 **no se escalan**: son por conexión y no dependen de la potencia del
+servidor.
+
 ---
 
 ## 6. Motor de Matching
@@ -712,13 +746,13 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-360 tests distribuidos en 36 clases (cifras de `mvn test`, no estimadas):
+369 tests distribuidos en 38 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
 | Wire format (`protocol/message/`) | 176 | Parseo y serialización byte a byte contra la spec |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas de sesión |
-| Order management (`server/order/`) | 31 | Validación, ciclo de vida, estados |
+| Order management (`server/order/`) | 34 | Validación, ciclo de vida, estados, límite de órdenes abiertas |
 | **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
@@ -726,7 +760,7 @@ Detalle completo y limitación conocida en §6.3.
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
-| Conexión (`server/connection/`) | 1 | Orden de `SequenceNumber` con escritores concurrentes |
+| Conexión (`server/connection/`) | 7 | Orden de `SequenceNumber`, umbrales 1.024/960, pausa real del socket |
 | Validación de mensajes (`server/validation/`) | 5 | Campos obligatorios y rangos |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
 | Métricas (`server/metrics/`) | 5 | Contadores de salud |
@@ -777,7 +811,7 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
 | 2 — BOE Login | Login rate | ≥ 200 logins/seg |
 | 3 — REST API | Throughput | ≥ 800 req/seg |
 | 4 — Order Ack Latency | P99 | < 5ms (usando `NewOrderMessage` spec-compliant) |
-| 5 — Memory Stability | Heap growth | < 200 MB por 10,000 órdenes |
+| 5 — Memory Stability | Heap growth | < 200 MB por 10,000 órdenes (repartidas en sesiones de ≤ `--max-open`, 2.000 por defecto) |
 
 ---
 

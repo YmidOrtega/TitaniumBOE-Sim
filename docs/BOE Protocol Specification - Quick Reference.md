@@ -599,7 +599,8 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 | String padding | NUL (`0x00`) for Alpha, Alphanumeric and Text | NUL in every encoder; inbound decoders also tolerate trailing spaces | ✅ Fixed |
 | `DateTime` | nanoseconds past the UNIX epoch (UTC) | `BoeTime.nowEpochNanos()` (previously `System.nanoTime()`, which has an arbitrary origin) | ✅ Fixed |
 | `Date` (MaturityDate) | YYYYMMDD as a 4-byte integer | `BoeTime.toYyyymmdd()` in New Order and Order Acknowledgment (New Order previously sent days since 1970) | ✅ Fixed |
-| Load handling | never drop member messages; stop reading the socket instead (1,024 / 960 unacknowledged) | synchronous per-connection processing plus a 1,000 msg/s token bucket that pauses reads; session messages are not counted (previously excess messages were silently dropped at 100/min) | ✅ Fixed |
+| Load handling | never drop member messages; stop reading the socket above 1,024 unacknowledged, resume below 960 | per-connection reader + single processor; the reader pauses above 1,024 and resumes below 960 (same values as the spec). A 1,000 msg/s token bucket slows the processor; session messages are not counted (previously excess messages were silently dropped at 100/min) | ✅ Fixed |
+| Max open orders | 200,000 per BOE port; reject reason `o` | **2,000 per BOE session (scaled ÷100** so the limit is reachable on a PC); reject reason `o`. REST and bot orders are not counted | ✅ Fixed (scaled) |
 | Outbound sequencing | strictly increasing on the wire | sequence assigned and written under one lock (`sendSequenced`); before, executions and heartbeats from other threads could reorder it | ✅ Fixed |
 
 ---

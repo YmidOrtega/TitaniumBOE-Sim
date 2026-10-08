@@ -36,6 +36,7 @@
 - 🗄️ **RocksDB Persistence** — All data persisted and recoverable
 - 🔐 **Production-grade Security** — BCrypt hashing, rate limiting, validation
 - ⚡ **Low-latency Engine** — StampedLock, async write-behind queue, hot-path optimizations
+- 🚦 **Spec Flow Control** — TCP backpressure at 1,024 / 960 unacknowledged messages and a per-session open-order limit (2,000, the spec's 200,000 scaled ÷100 so it is reachable on a PC)
 
 ---
 
