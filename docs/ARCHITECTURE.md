@@ -268,7 +268,7 @@ Java 21 Virtual Threads permiten el modelo de programación más simple (blockin
 ### 5.3 Secuencias, Reconexión y Replay
 
 El estado de secuencia pertenece a la **sesión BOE** (usuario + SessionSubID), no a la conexión
-TCP: vive en `BoeSessionRegistry` y sobrevive a desconexiones. Se borra con el reset diario o al
+TCP: vive en `BoeSessionRegistry` y sobrevive a desconexiones. Se borra con el cierre del día o al
 reiniciar el servidor (equivale a empezar un día nuevo).
 
 | Tráfico | MatchingUnit | SequenceNumber | ¿Replay? |
@@ -313,6 +313,11 @@ Request en la misma conexión → `Logout` `!` y cierre.
 | Login Request (también con secuencia ≠ 0) | LoginResponse `M` y cierre |
 | New Order / Modify / Cancel | Order Rejected / User Modify Rejected / Cancel Rejected con `Z` + texto, y aviso en el log |
 | Client Heartbeat / Logout Request | solo aviso en el log |
+
+**Cierre del día y apagado.** A las **17:30 America/New_York** (horario de verano incluido; la tarea se
+reprograma cada día) todas las sesiones conectadas reciben `Logout` `E` *End of day* y, después,
+el reset diario borra órdenes, trades y estado de secuencia. Al apagar el servidor cada sesión
+recibe `Logout` `A` *Server shutting down* antes del cierre.
 
 **Heartbeats** (por defecto 1 s / 5 s, como la spec; configurables). `HeartbeatMonitor` revisa cada
 200 ms dos marcas de tiempo de `ClientSession`:
@@ -799,7 +804,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-416 tests distribuidos en 47 clases (cifras de `mvn test`, no estimadas):
+422 tests distribuidos en 48 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
@@ -813,8 +818,9 @@ Detalle completo y limitación conocida en §6.3.
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
-| Conexión (`server/connection/`) | 28 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje) y métricas con sockets reales |
+| Conexión (`server/connection/`) | 29 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje) y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
+| Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
 | Métricas (`server/metrics/`) | 5 | Contadores de salud |
