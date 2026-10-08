@@ -38,6 +38,7 @@ class ClientConnectionHandlerLoginTest {
     private DataInputStream in;
     private OutputStream out;
     private AuthenticationService auth;
+    private ClientConnectionHandler handler;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -47,8 +48,9 @@ class ClientConnectionHandlerLoginTest {
 
         client = new Socket(InetAddress.getLoopbackAddress(), listener.getLocalPort());
         Socket server = listener.accept();
-        Thread.ofVirtual().start(new ClientConnectionHandler(server, 1, ServerConfiguration.builder().build(),
-                auth, new ClientSessionManager(), new ErrorHandler(), new RateLimiter(1_000), null));
+        handler = new ClientConnectionHandler(server, 1, ServerConfiguration.builder().build(),
+                auth, new ClientSessionManager(), new ErrorHandler(), new RateLimiter(1_000), null);
+        Thread.ofVirtual().start(handler);
         in = new DataInputStream(client.getInputStream());
         out = client.getOutputStream();
     }
@@ -120,6 +122,22 @@ class ClientConnectionHandlerLoginTest {
         assertEquals(-1, in.read());
         verify(auth, times(1)).authenticate(anyString(), anyString(), anyString());
         verify(auth, timeout(1_000).times(1)).endSession("U1");
+    }
+
+    @Test
+    void endOfDay_sendsLogoutEWithUnitSequencesAndCloses() throws Exception {
+        send(new LoginRequestMessage("U1", "pass", "S1").toBytes());
+        read(); // Login Response
+        read(); // Replay Complete
+
+        handler.logoutAndClose(LogoutResponseMessage.REASON_END_OF_DAY, "End of day");
+
+        LogoutResponseMessage logout = new LogoutResponseMessage(readSkippingHeartbeats());
+        assertEquals(LogoutResponseMessage.REASON_END_OF_DAY, logout.getLogoutReason());
+        assertEquals("End of day", logout.getLogoutReasonText());
+        assertEquals(java.util.Map.of(1, 0), logout.getUnitSequences(), "Last transmitted sequence per unit");
+        assertEquals(-1, in.read());
+        verify(auth, timeout(1_000)).endSession("U1");
     }
 
     private byte[] readSkippingHeartbeats() throws IOException {

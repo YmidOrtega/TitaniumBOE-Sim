@@ -448,6 +448,11 @@ public class ClientConnectionHandler implements Runnable {
         sendLogout(LogoutResponseMessage.REASON_PROTOCOL_VIOLATION, "Heartbeat timeout");
     }
 
+    public void logoutAndClose(byte reason, String text) {
+        sendLogout(reason, text);
+        shutdownInputQuietly();
+    }
+
     private void logoutForProtocolViolation(String text) {
         LOGGER.log(Level.WARNING, "[Session {0}] Protocol violation - logging out: {1}",
                 new Object[]{session.getConnectionId(), text});

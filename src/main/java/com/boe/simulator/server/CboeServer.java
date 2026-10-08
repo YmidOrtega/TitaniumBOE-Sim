@@ -24,6 +24,7 @@ import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.matching.TradeRepositoryService;
+import com.boe.simulator.protocol.message.LogoutResponseMessage;
 import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.order.OrderRepository;
@@ -37,6 +38,10 @@ import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.ClientSessionManager;
 
 public class CboeServer {
+    // Exchange close, 17:30 ET (spec: Logout Message Fields)
+    static final ZoneId MARKET_ZONE = ZoneId.of("America/New_York");
+    static final LocalTime MARKET_CLOSE = LocalTime.of(17, 30);
+
     private static final Logger LOGGER = Logger.getLogger(CboeServer.class.getName());
 
     public static final int DEFAULT_API_PORT = 9091;
@@ -313,9 +318,9 @@ public class CboeServer {
             // Shutdown market simulator
             marketSimulator.shutdown();
 
-            // Disconnect all sessions
+            // Log out all sessions
             try {
-                sessionManager.disconnectAll();
+                sessionManager.logoutAll(LogoutResponseMessage.REASON_ADMIN_LOGOUT, "Server shutting down");
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error disconnecting sessions", e);
             }
@@ -362,6 +367,7 @@ public class CboeServer {
     public void performDailyReset() {
         LOGGER.info("======= DAILY RESET STARTED =======");
         try {
+            sessionManager.logoutAll(LogoutResponseMessage.REASON_END_OF_DAY, "End of day");
             orderManager.reset();
 
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_MESSAGES);
@@ -422,10 +428,20 @@ public class CboeServer {
         return marketSimulator;
     }
 
-    private static long secondsUntilMidnight() {
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
-        ZonedDateTime midnight = now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.of("UTC"));
-        return Duration.between(now, midnight).getSeconds();
+    static long secondsUntilNextClose(ZonedDateTime now) {
+        ZonedDateTime local = now.withZoneSameInstant(MARKET_ZONE);
+        ZonedDateTime close = local.with(MARKET_CLOSE);
+        if (!close.isAfter(local)) close = local.toLocalDate().plusDays(1).atTime(MARKET_CLOSE).atZone(MARKET_ZONE);
+        return Duration.between(now, close).getSeconds();
+    }
+
+    private static void scheduleNextClose(ScheduledExecutorService scheduler, CboeServer server) {
+        long delay = secondsUntilNextClose(ZonedDateTime.now());
+        scheduler.schedule(() -> {
+            server.performDailyReset();
+            scheduleNextClose(scheduler, server);
+        }, delay, TimeUnit.SECONDS);
+        LOGGER.log(Level.INFO, "End of day scheduled in {0}s (17:30 America/New_York)", delay);
     }
 
     public static void main(String[] args) {
@@ -485,13 +501,7 @@ public class CboeServer {
 
             ScheduledExecutorService dailyResetScheduler = Executors.newSingleThreadScheduledExecutor(
                     r -> Thread.ofVirtual().name("daily-reset").unstarted(r));
-            long secondsUntilMidnight = secondsUntilMidnight();
-            dailyResetScheduler.scheduleAtFixedRate(
-                    server::performDailyReset,
-                    secondsUntilMidnight,
-                    TimeUnit.DAYS.toSeconds(1),
-                    TimeUnit.SECONDS);
-            LOGGER.log(Level.INFO, "Daily reset scheduled: first run in {0}s (at midnight UTC)", secondsUntilMidnight);
+            scheduleNextClose(dailyResetScheduler, server);
 
             // Keep the main thread alive
             try {

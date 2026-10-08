@@ -224,12 +224,12 @@ public class ClientSessionManager {
         return false;
     }
 
-    public void disconnectAll() {
-        LOGGER.log(Level.INFO, "Disconnecting all sessions ({0} active)", handlers.size());
-        
+    public void logoutAll(byte reason, String text) {
+        LOGGER.log(Level.INFO, "Logging out all sessions ({0} active): {1}", new Object[]{handlers.size(), text});
+
         for (ClientConnectionHandler handler : handlers.values()) {
             try {
-                handler.stop();
+                handler.logoutAndClose(reason, text);
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error disconnecting connection {0}: {1}", new Object[]{handler.getSession().getConnectionId(), e.getMessage()});
             }
