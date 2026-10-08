@@ -168,6 +168,38 @@ class OrderManagerRiskTest {
         assertEquals("Invalid MatchingUnit 2", orderManager.processPurgeOrders(PurgeOrdersMessage.parse(purge.toBytes()), session).getRejectText());
     }
 
+    private PurgeOrdersMessage purgeByFirm(String clearingFirm, String inst) {
+        PurgeOrdersMessage purge = new PurgeOrdersMessage();
+        purge.setClearingFirm(clearingFirm);
+        purge.setMassCancelInst(inst);
+        purge.setSendTime(1L);
+        return PurgeOrdersMessage.parse(purge.toBytes());
+    }
+
+    @Test
+    void purgeClearingFirm_mustBeAllowed_andIsRequiredWithoutAnAllowedList() {
+        assertEquals("ClearingFirm is required when the port has no allowed EFIDs",
+                orderManager.processPurgeOrders(purgeByFirm("", "FM"), session).getRejectText());
+
+        orderManager.setPortAttributes(orderManager.getPortAttributes().withAllowedClearingFirms(java.util.Set.of("TEST")));
+        assertEquals("ClearingFirm OTHR is not allowed on this port",
+                orderManager.processPurgeOrders(purgeByFirm("OTHR", "FM"), session).getRejectText());
+    }
+
+    @Test
+    void blankPurgeClearingFirm_appliesToEveryAllowedEfid() {
+        orderManager.setPortAttributes(orderManager.getPortAttributes().withAllowedClearingFirms(java.util.Set.of("TEST", "OTHR")));
+        submit("A1", "AAPL");
+
+        OrderManager.CancelResponse response = orderManager.processPurgeOrders(purgeByFirm("", "FML"), session);
+
+        assertEquals(1, response.getMassCancelCount());
+        assertEquals('f', submit("A2", "AAPL").getRejectReason(), "TEST is locked out");
+        NewOrderMessage other = order("A3", "AAPL", null, 0);
+        other.setClearingFirm("OTHR");
+        assertEquals('f', orderManager.processNewOrder(NewOrderMessage.parse(other.toBytes()), session).getRejectReason(), "OTHR is locked out");
+    }
+
     @Test
     void resetRiskResults() {
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET, orderManager.processResetRisk(resetRisk("", "TEST", "", 0), "u1"));

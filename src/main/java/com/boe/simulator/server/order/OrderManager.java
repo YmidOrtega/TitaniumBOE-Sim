@@ -740,6 +740,7 @@ public class OrderManager {
             invalid = "MatchingUnit cannot be combined with a symbol-level purge";
         }
         if (invalid == null) invalid = validateMassCancel(request);
+        if (invalid == null) invalid = validatePurgeClearingFirm(request);
         if (invalid != null) {
             LOGGER.log(Level.WARNING, "[{0}] Purge Orders rejected: {1}", new Object[]{context.getSessionIdentifier(), invalid});
             return CancelResponse.rejected(null, CancelRejectedMessage.REASON_UNFORESEEN, invalid);
@@ -747,8 +748,23 @@ public class OrderManager {
         return executeMassCancel(request, context);
     }
 
+    private String validatePurgeClearingFirm(MassCancelRequest request) {
+        if (request.instChar(1) != 'F') return null;
+        String firm = blankToNull(request.clearingFirm());
+        if (firm == null) return portAttributes.allowedClearingFirms().isEmpty() ? "ClearingFirm is required when the port has no allowed EFIDs" : null;
+        return portAttributes.allowsClearingFirm(firm) ? null : "ClearingFirm " + firm + " is not allowed on this port";
+    }
+
+    // A blank ClearingFirm on a Purge Orders with filter F applies to every allowed EFID of the port (p.95)
+    private boolean appliesToAllowedEfids(MassCancelRequest request) {
+        return request.purge() && Character.valueOf('F').equals(request.instChar(1)) && blankToNull(request.clearingFirm()) == null
+                && !portAttributes.allowedClearingFirms().isEmpty();
+    }
+
     private CancelResponse executeMassCancel(MassCancelRequest request, OrderExecutionContext context) {
         String clearingFirm = request.effectiveClearingFirm();
+        Set<String> clearingFirms = clearingFirm != null ? Set.of(clearingFirm)
+                : appliesToAllowedEfids(request) ? portAttributes.allowedClearingFirms() : null;
         String riskRoot = request.riskRoot();
         List<Integer> groups = request.customGroupIds();
         boolean complexOnly = Character.valueOf('C').equals(request.instChar(4));
@@ -756,7 +772,7 @@ public class OrderManager {
 
         List<Order> ordersToCancel = complexOnly ? List.of() : activeOrdersByClOrdID.values().stream()
                 .filter(o -> o.getUsername().equals(context.getUsername()))
-                .filter(o -> clearingFirm == null || clearingFirm.equals(o.getClearingFirm()))
+                .filter(o -> clearingFirms == null || clearingFirms.contains(o.getClearingFirm()))
                 .filter(o -> riskRoot == null || riskRoot.equals(o.getSymbol()))
                 .filter(o -> groups.isEmpty() || groups.contains(o.getCustomGroupId()))
                 .filter(o -> !preserveGtc || !o.persistsOvernight())
@@ -781,9 +797,11 @@ public class OrderManager {
         totalOrdersCancelled.addAndGet(cancelled.size());
 
         if (request.lockout()) {
-            if (riskRoot != null) riskLockouts.lockRiskRoot(context.getUsername(), clearingFirm, riskRoot);
-            else if (!groups.isEmpty()) groups.forEach(g -> riskLockouts.lockCustomGroup(context.getUsername(), clearingFirm, g));
-            else riskLockouts.lockEfid(context.getUsername(), clearingFirm);
+            for (String firm : clearingFirms) {
+                if (riskRoot != null) riskLockouts.lockRiskRoot(context.getUsername(), firm, riskRoot);
+                else if (!groups.isEmpty()) groups.forEach(g -> riskLockouts.lockCustomGroup(context.getUsername(), firm, g));
+                else riskLockouts.lockEfid(context.getUsername(), firm);
+            }
         }
 
         LOGGER.log(Level.INFO, "[{0}] Mass Cancel completed: {1} orders cancelled{2}",
@@ -818,7 +836,7 @@ public class OrderManager {
 
         Character lockout = request.instChar(3);
         if (lockout != null && lockout != 'N' && lockout != 'L') return "Invalid Lockout Instruction '" + lockout + "' in MassCancelInst";
-        if (request.lockout() && request.effectiveClearingFirm() == null) return "Lockout requires Clearing Firm Filter F and a ClearingFirm";
+        if (request.lockout() && request.effectiveClearingFirm() == null && !appliesToAllowedEfids(request)) return "Lockout requires Clearing Firm Filter F and a ClearingFirm";
 
         Character instrument = request.instChar(4);
         if (instrument != null && instrument != 'B' && instrument != 'S' && instrument != 'C') return "Invalid Instrument Type Filter '" + instrument + "' in MassCancelInst";
