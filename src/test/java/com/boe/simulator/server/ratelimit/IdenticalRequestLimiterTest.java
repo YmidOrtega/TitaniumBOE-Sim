@@ -1,6 +1,7 @@
 package com.boe.simulator.server.ratelimit;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -41,5 +42,15 @@ class IdenticalRequestLimiterTest {
 
         now.addAndGet(Duration.ofMillis(500).toNanos());
         assertTrue(limiter.tryAcquire("K"));
+    }
+
+    @Test
+    void tryAcquireAll_takesEveryKeyOrNone() {
+        IdenticalRequestLimiter once = new IdenticalRequestLimiter(1, Duration.ofMillis(100), now::get);
+        assertTrue(once.tryAcquire("F"));
+
+        assertFalse(once.tryAcquireAll(List.of("C", "F")));
+        assertTrue(once.tryAcquire("C"), "C was not taken by the refused request");
+        assertTrue(once.tryAcquireAll(List.of("S", "S")), "Repeated keys count once");
     }
 }

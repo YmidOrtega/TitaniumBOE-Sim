@@ -212,6 +212,10 @@ class OrderManagerRiskTest {
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_INVALID_MATCHING_UNIT,
                 orderManager.processResetRisk(ResetRiskMessage.parse(badUnit.toBytes()), "u1"));
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(resetRisk("SE", "TEST", "AAPL", 0), "u1"));
+        ResetRiskMessage rootOnUnit = resetRisk("S", "TEST", "AAPL", 0);
+        rootOnUnit.setTargetMatchingUnit(26);
+        assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(ResetRiskMessage.parse(rootOnUnit.toBytes()), "u1"),
+                "TargetMatchingUnit is ignored for risk root resets");
 
         orderManager.setPortAttributes(orderManager.getPortAttributes().withEfidRiskReset(true));
         assertEquals(RiskResetAcknowledgmentMessage.RESULT_SUCCESS, orderManager.processResetRisk(resetRisk("F", "TEST", "", 0), "u1"),

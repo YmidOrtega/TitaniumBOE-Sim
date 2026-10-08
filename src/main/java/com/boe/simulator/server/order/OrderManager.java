@@ -858,7 +858,6 @@ public class OrderManager {
         }
         String reset = message.getRiskReset();
         if (reset.isEmpty() || !reset.chars().allMatch(c -> RISK_RESET_VALUES.indexOf(c) >= 0)) return RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET;
-        if (message.getTargetMatchingUnit() > BoeSessionState.MATCHING_UNIT) return RiskResetAcknowledgmentMessage.RESULT_INVALID_MATCHING_UNIT;
         if (!portAttributes.efidRiskReset() && (reset.indexOf('F') >= 0 || reset.indexOf('G') >= 0)) {
             return RiskResetAcknowledgmentMessage.RESULT_AUTOMATIC_RESETS_DISABLED;
         }
@@ -866,6 +865,7 @@ public class OrderManager {
         boolean root = reset.indexOf('S') >= 0 || reset.indexOf('T') >= 0;
         boolean firm = reset.indexOf('F') >= 0 || reset.indexOf('E') >= 0 || reset.indexOf('G') >= 0;
         boolean group = reset.indexOf('C') >= 0;
+        if ((firm || group) && message.getTargetMatchingUnit() > BoeSessionState.MATCHING_UNIT) return RiskResetAcknowledgmentMessage.RESULT_INVALID_MATCHING_UNIT;
         if (root && (message.getRiskRoot().isBlank() || !isValidSymbol(message.getRiskRoot()))) return RiskResetAcknowledgmentMessage.RESULT_INVALID_RISK_ROOT;
         if ((firm || group) && message.getClearingFirm().isBlank()) return RiskResetAcknowledgmentMessage.RESULT_INVALID_CLEARING_FIRM;
         if (group && message.getCustomGroupId() == 0) return RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET;

@@ -760,12 +760,20 @@ public class ClientConnectionHandler implements Runnable {
     private void handleResetRisk(ResetRiskMessage reset) {
         LOGGER.log(Level.INFO, "[Session {0}] Processing ResetRisk: {1} {2}",
                 new Object[]{session.getConnectionId(), reset.getRiskStatusID(), reset.getRiskReset()});
-        boolean allowed = true;
-        for (char type : reset.getRiskReset().toCharArray()) {
-            allowed &= riskResets.tryAcquire(type + "|" + reset.getClearingFirm() + "|" + reset.getRiskRoot() + "|" + reset.getCustomGroupId());
-        }
+        boolean allowed = riskResets.tryAcquireAll(reset.getRiskReset().chars().mapToObj(type -> riskResetKey((char) type, reset)).toList());
         byte result = allowed ? orderManager.processResetRisk(reset, session.getUsername()) : RiskResetAcknowledgmentMessage.RESULT_IGNORED;
         sendRiskResetAcknowledgment(reset.getRiskStatusID(), result);
+    }
+
+    // One reset per type (Risk Root, EFID, EFID Group, CustomGroupID) and target per 100 ms (p.98); S=T and F=E in the simulator
+    private static String riskResetKey(char type, ResetRiskMessage m) {
+        return switch (type) {
+            case 'S', 'T' -> "S|" + m.getClearingFirm() + "|" + m.getRiskRoot();
+            case 'F', 'E' -> "F|" + m.getClearingFirm();
+            case 'G' -> "G|" + m.getClearingFirm();
+            case 'C' -> "C|" + m.getClearingFirm() + "|" + m.getCustomGroupId();
+            default -> String.valueOf(type);
+        };
     }
 
     // Identical = same CustomGroupID, Symbol, Clearing Firm, MatchingUnit, Lockout, Instrument Type and GTC filters (p.95)

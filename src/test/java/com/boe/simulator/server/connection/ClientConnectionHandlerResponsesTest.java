@@ -241,12 +241,27 @@ class ClientConnectionHandlerResponsesTest {
         send(reset.toBytes());
         reset.setSequenceNumber(++sequence);
         send(reset.toBytes());
+        reset.setRiskRoot("AAPL");
+        reset.setSequenceNumber(++sequence);
+        send(reset.toBytes());
+        reset.setRiskReset("CF");
+        reset.setCustomGroupId(1);
+        reset.setSequenceNumber(++sequence);
+        send(reset.toBytes());
+        reset.setRiskReset("C");
+        reset.setSequenceNumber(++sequence);
+        send(reset.toBytes());
 
         RiskResetAcknowledgmentMessage first = RiskResetAcknowledgmentMessage.fromBytes(expect(RISK_RESET_ACK));
         RiskResetAcknowledgmentMessage second = RiskResetAcknowledgmentMessage.fromBytes(expect(RISK_RESET_ACK));
         assertEquals("R1", first.getRiskStatusID());
         assertEquals('Y', first.getRiskResetResult());
         assertEquals(' ', second.getRiskResetResult(), "Only one reset of a type per 100 ms");
+        assertEquals(' ', RiskResetAcknowledgmentMessage.fromBytes(expect(RISK_RESET_ACK)).getRiskResetResult(),
+                "The RiskRoot is not part of an EFID reset");
+        assertEquals(' ', RiskResetAcknowledgmentMessage.fromBytes(expect(RISK_RESET_ACK)).getRiskResetResult(), "F is still within 100 ms");
+        assertEquals('Y', RiskResetAcknowledgmentMessage.fromBytes(expect(RISK_RESET_ACK)).getRiskResetResult(),
+                "The ignored CF reset did not use up the CustomGroupID reset");
     }
 
     private void assertLogout(String text) throws IOException {
