@@ -27,6 +27,9 @@ public class OrderBook {
 
     // Stop and Stop Limit orders waiting for election; not part of the displayed book
     private final List<Order> stops = new ArrayList<>();
+    // Entry order of the stops: a modify that loses priority re-enters with a new number
+    private final Map<Order, Long> stopPriority = new IdentityHashMap<>();
+    private long nextStopPriority;
 
     private volatile BigDecimal lastTradePrice;
     private volatile int totalBidQuantity;
@@ -180,6 +183,7 @@ public class OrderBook {
         long stamp = lock.writeLock();
         try {
             stops.add(order);
+            stopPriority.put(order, nextStopPriority++);
         } finally {
             lock.unlockWrite(stamp);
         }
@@ -188,6 +192,7 @@ public class OrderBook {
     public boolean removeStop(Order order) {
         long stamp = lock.writeLock();
         try {
+            stopPriority.remove(order);
             return stops.remove(order);
         } finally {
             lock.unlockWrite(stamp);
@@ -212,8 +217,9 @@ public class OrderBook {
                 int cmp = lastPrice.compareTo(stop.getStopPx());
                 if (stop.getSide() == Side.BUY ? cmp >= 0 : cmp <= 0) elected.add(stop);
             }
+            elected.sort(Comparator.comparingLong(stopPriority::get));
             stops.removeAll(elected);
-            elected.sort(Comparator.comparingLong(Order::getOrderID));
+            elected.forEach(stopPriority::remove);
             return elected;
         } finally {
             lock.unlockWrite(stamp);

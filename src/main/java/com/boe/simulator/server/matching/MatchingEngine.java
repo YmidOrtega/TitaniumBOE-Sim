@@ -144,6 +144,16 @@ public class MatchingEngine {
     public List<Trade> modifyOrder(Order order, String newClOrdID, BigDecimal newPrice,
                                    com.boe.simulator.protocol.types.OrdType newOrdType,
                                    int newOrderQty) {
+        return modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty, null, null);
+    }
+
+    /**
+     * Time priority is kept when the modify only decreases OrderQty, changes StopPx on an unelected
+     * stop and/or changes MaxFloor (p.77); any other change, or no change at all, loses it.
+     */
+    public List<Trade> modifyOrder(Order order, String newClOrdID, BigDecimal newPrice,
+                                   com.boe.simulator.protocol.types.OrdType newOrdType,
+                                   int newOrderQty, Integer newMaxFloor, BigDecimal newStopPx) {
         String symbol = order.getSymbol();
         Object symbolLock = symbolLocks.computeIfAbsent(symbol, k -> new Object());
 
@@ -155,13 +165,26 @@ public class MatchingEngine {
             int delta       = newOrderQty - currentQty;
             int newLeavesQty = order.getLeavesQty() + delta;
 
-            boolean pendingStop = book.removeStop(order);
+            boolean pendingStop = book.hasStop(order);
             boolean samePrice = newPrice == null || order.getPrice() == null || newPrice.compareTo(order.getPrice()) == 0;
             boolean sameOrdType = newOrdType == null || newOrdType == order.getOrdType();
-            if (!pendingStop && delta < 0 && newLeavesQty > 0 && samePrice && sameOrdType) {
-                book.updateInPlace(order, () -> order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty));
+            boolean maxFloorChanged = newMaxFloor != null && newMaxFloor != order.getMaxFloor();
+            boolean stopPxChanged = newStopPx != null && pendingStop && newStopPx.compareTo(order.getStopPx()) != 0;
+            boolean keepsPriority = newLeavesQty > 0 && delta <= 0 && samePrice && sameOrdType
+                    && (delta < 0 || maxFloorChanged || stopPxChanged);
+
+            Runnable change = () -> {
+                order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty);
+                order.modifyReserveAndStop(newMaxFloor != null ? newMaxFloor : -1, newStopPx);
+                if (maxFloorChanged && order.isReserve()) order.reloadDisplay(nextDisplay(order));
+            };
+            if (keepsPriority) {
+                if (pendingStop) change.run();
+                else book.updateInPlace(order, change);
                 return List.of();
             }
+
+            if (pendingStop) book.removeStop(order);
 
             // Remove at the current price — must happen BEFORE updating the price on the order
             if (!pendingStop) {
@@ -177,7 +200,7 @@ public class MatchingEngine {
                 return List.of();
             }
 
-            order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty);
+            change.run();
             if (order.isPendingStop()) {
                 book.addStop(order);
                 return List.of();

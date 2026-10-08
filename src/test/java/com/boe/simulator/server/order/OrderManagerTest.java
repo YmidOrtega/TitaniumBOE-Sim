@@ -539,7 +539,7 @@ class OrderManagerTest {
     }
 
     private void engineAppliesModifications() {
-        lenient().when(matchingEngine.modifyOrder(any(Order.class), anyString(), any(), any(), anyInt())).thenAnswer(inv -> {
+        lenient().when(matchingEngine.modifyOrder(any(Order.class), anyString(), any(), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             Order o = inv.getArgument(0);
             int qty = inv.getArgument(4);
             o.modify(inv.getArgument(1), inv.getArgument(2), inv.getArgument(3), qty, o.getLeavesQty() + qty - o.getEffectiveOrderQty());
@@ -571,7 +571,7 @@ class OrderManagerTest {
         assertTrue(response.isRejected());
         assertEquals(UserModifyRejectedMessage.REASON_DUPLICATE_CLORDID, response.getRejectReason());
         assertEquals("Duplicate ClOrdID: OTHER", response.getRejectText());
-        verify(matchingEngine, never()).modifyOrder(any(Order.class), anyString(), any(), any(), anyInt());
+        verify(matchingEngine, never()).modifyOrder(any(Order.class), anyString(), any(), any(), anyInt(), any(), any());
     }
 
     @Test
@@ -609,7 +609,7 @@ class OrderManagerTest {
         assertModifyRejected(modify("B", "A", 10, "100.00", (byte) '9', (byte) 0), "Invalid OrdType: 0x39");
         assertModifyRejected(modify("B", "A", 1_000_000, "100.00"), "OrderQty must be between 0 and 999,999");
         assertModifyRejected(modify("", "A", 10, "100.00"), "ClOrdID is required in Modify Order");
-        verify(matchingEngine, never()).modifyOrder(any(Order.class), anyString(), any(), any(), anyInt());
+        verify(matchingEngine, never()).modifyOrder(any(Order.class), anyString(), any(), any(), anyInt(), any(), any());
     }
 
     private void assertModifyRejected(ModifyOrderMessage message, String text) {
@@ -737,7 +737,7 @@ class OrderManagerTest {
     @Test
     void modifyThatCrossesAndFillsTheOrder_isAnsweredAsModified_notCancelled() {
         placeOrder("A", "AAPL", "TEST");
-        when(matchingEngine.modifyOrder(any(Order.class), anyString(), any(), any(), anyInt())).thenAnswer(inv -> {
+        when(matchingEngine.modifyOrder(any(Order.class), anyString(), any(), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             Order o = inv.getArgument(0);
             o.modify(inv.getArgument(1), inv.getArgument(2), inv.getArgument(3), inv.getArgument(4), o.getLeavesQty());
             o.fill(o.getLeavesQty(), new BigDecimal("101.00"));

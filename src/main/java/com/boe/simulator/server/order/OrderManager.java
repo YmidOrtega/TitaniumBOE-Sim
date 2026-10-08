@@ -478,10 +478,10 @@ public class OrderManager {
         activeOrdersByClOrdID.remove(currentClOrdID);
 
         try {
-            order.modifyReserveAndStop(message.hasMaxFloor() ? message.getMaxFloor() : -1, message.getStopPx());
             currentRequest.set(new CurrentRequest(order.getOrderID(), order.getUsername()));
             try {
-                matchingEngine.modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty);
+                matchingEngine.modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty,
+                        message.hasMaxFloor() ? message.getMaxFloor() : null, message.getStopPx());
             } finally {
                 currentRequest.remove();
             }
@@ -1023,7 +1023,7 @@ public class OrderManager {
                 latest.merge(order.getOrderID(), order, (a, b) -> a.getLastModified().isAfter(b.getLastModified()) ? a : b);
             }
             int loaded = 0;
-            for (Order order : latest.values()) {
+            for (Order order : latest.values().stream().sorted(java.util.Comparator.comparingLong(Order::getOrderID)).toList()) {
                 if (!order.persistsOvernight() && order.getCreatedAt().isBefore(lastClose)) {
                     order.expire();
                     orderRepository.saveAsync(order);
