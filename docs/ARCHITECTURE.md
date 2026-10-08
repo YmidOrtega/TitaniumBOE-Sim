@@ -113,6 +113,7 @@ BoeProtocolMessage (sealed abstract)
     ├── UserModifyRejectedMessage (0x29) ← Cboe → Member
     ├── OrderCancelledMessage     (0x2A) ← Cboe → Member
     ├── CancelRejectedMessage     (0x2B) ← Cboe → Member
+    ├── MassCancelAcknowledgmentMessage (0x36) ← Cboe → Member
     ├── OrderExecutedMessage      (0x2C) ← Cboe → Member
     └── OrderRestatedMessage      (0x28) ← Cboe → Member
 ```
@@ -274,7 +275,7 @@ reiniciar el servidor (equivale a empezar un día nuevo).
 | Tráfico | MatchingUnit | SequenceNumber | ¿Replay? |
 |---|---|---|---|
 | Mensajes de sesión (Login Response, Logout, Server Heartbeat, Replay Complete) | 0 | 0 | No |
-| Aplicación sin secuencia (Order Rejected, User Modify Rejected, Cancel Rejected) | 0 | 0 | No |
+| Aplicación sin secuencia (Order Rejected, User Modify Rejected, Cancel Rejected, Mass Cancel Acknowledgment) | 0 | 0 | No |
 | Aplicación secuenciada (Ack, Modified, Cancelled, Execution…) | 1 | 1, 2, 3… por sesión | Sí |
 
 `BoeSessionState` guarda la secuencia saliente, el último número entrante procesado y un **journal**
@@ -324,6 +325,26 @@ que nunca lee desplazado un campo que no implementa. Cada campo tiene un tratami
 | Se consume e ignora (informativo) | RiskReset, CMTANumber, SessionEligibility, AttributedQuote, RoutStrategy, RouteDeliveryMethod, ExDestination, EchoText, RoutingFirmID, CustomGroupId, ClearingOptionalData, ClientIDAttr, FrequentTraderID, Compression, OrderOrigin, ORS, Held |
 | Rechazo `Z` (cambia la ejecución y no está implementado) | MinQty, PreventMatch, ExpireTime, TargetPartyID, DisplayRange, StopPx, AuctionId, FloorDestination; ExecInst, MaxFloor, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
 | Rechazo (en blanco o reservado en la spec) | el resto de bits, y cualquier bit más allá del bitfield 10 |
+
+**Cancel Order.** `CancelOrderMessage` solo admite los campos de la tabla *Input Bitfields Per
+Message* (ClearingFirm, RiskRoot, MassCancelID, RoutingFirmID, MassCancelInst y SendTime, este
+obligatorio); cualquier otro bit o un mensaje más corto que sus campos → Cancel Rejected `Z`.
+
+| Caso | Respuesta |
+|---|---|
+| Cancel de una orden inexistente, terminada o de otro usuario | Cancel Rejected `O` |
+| Orden en un estado que ya no se puede cancelar | Cancel Rejected `J` |
+| Mass cancel (OrigClOrdID vacío) inválido según *MassCancelInst* (p.204) | Cancel Rejected `Z` con el motivo |
+| Lockout (`L` en el carácter 3) | Cancel Rejected `Z` "Lockout is not supported by the simulator" |
+| Más de 10 mass cancels idénticos por segundo en la conexión | Cancel Rejected `K` |
+
+En un mass cancel válido el carácter 1 elige el filtro de firma (`A` todas, `F` la ClearingFirm del
+mensaje), RiskRoot filtra siempre por símbolo si viene, y el carácter 4 `C` (solo complejas) no
+cancela nada porque no hay órdenes complejas. El estilo de confirmación (carácter 2) decide la
+respuesta: `M` (por defecto) un Order Cancelled por orden, `S` un único Mass Cancel Acknowledgment
+(`0x36`, sin secuencia) con el número de órdenes, `B` ambos. `S`/`B` exigen MassCancelID y `M` lo
+exige vacío. "Idénticos" son los que coinciden en RiskRoot, ClearingFirm y los filtros de lockout,
+instrumento y GTC (`IdenticalRequestLimiter`, ventana deslizante de 1 s).
 
 **Cierre del día y apagado.** A las **17:30 America/New_York** (horario de verano incluido; la tarea se
 reprograma cada día) todas las sesiones conectadas reciben `Logout` `E` *End of day* y, después,
@@ -815,21 +836,21 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-435 tests distribuidos en 48 clases (cifras de `mvn test`, no estimadas):
+457 tests distribuidos en 51 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 205 | Parseo y serialización byte a byte contra la spec |
+| Wire format (`protocol/message/`) | 208 | Parseo y serialización byte a byte contra la spec |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
-| Order management (`server/order/`) | 39 | Validación, ciclo de vida, estados, límite de órdenes abiertas |
+| Order management (`server/order/`) | 47 | Validación, ciclo de vida, estados, límite de órdenes abiertas, cancel y mass cancel |
 | **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
-| Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
-| Conexión (`server/connection/`) | 29 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje) y métricas con sockets reales |
+| Rate limiting (`server/ratelimit/`) | 13 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
+| Conexión (`server/connection/`) | 36 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel Order y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
 | Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
