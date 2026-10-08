@@ -234,16 +234,19 @@ public class ClientConnectionHandler implements Runnable {
             return;
         }
 
+        String unsupported = unsupportedMessageType(messageType);
+        if (unsupported != null) {
+            logoutForProtocolViolation(unsupported);
+            return;
+        }
+
         try {
             // Create specific message object
             BoeProtocolMessage specificMessage = BoeMessageFactory.createMessage(message);
 
             switch (specificMessage) {
-                case null -> {
-                    LOGGER.log(Level.WARNING, "[Session {0}] Unknown message type: 0x{1}", new Object[]{
-                            session.getConnectionId(), String.format("%02X", messageType)
-                    });
-                }
+                case null -> logoutForProtocolViolation(String.format("Malformed message type 0x%02X (%s)",
+                        messageType, MessageType.fromByte(messageType)));
                 case SessionMessage sessionMessage -> handleSessionMessage(sessionMessage);
                 case ApplicationMessage applicationMessage -> {
                     rateLimiter.acquire(session.getConnectionId());
@@ -277,6 +280,10 @@ public class ClientConnectionHandler implements Runnable {
             if (state.checkInbound(sequenceNumber) == BoeSessionState.InboundCheck.BACKWARD) {
                 logoutForProtocolViolation("Sequence number " + Integer.toUnsignedString(sequenceNumber)
                         + " is not above last processed " + Integer.toUnsignedString(state.lastProcessedInbound()));
+                return;
+            }
+            if (message instanceof QuoteUpdateMessage quoteUpdate) {
+                sendQuoteUpdateRejected(quoteUpdate.getQuoteUpdateID());
                 return;
             }
             if (inboundMatchingUnitOf(message) != 0) {
@@ -529,8 +536,21 @@ public class ClientConnectionHandler implements Runnable {
             case NewOrderMessage m -> m.getSequenceNumber();
             case CancelOrderMessage m -> m.getSequenceNumber();
             case ModifyOrderMessage m -> m.getSequenceNumber();
+            case QuoteUpdateMessage m -> m.getSequenceNumber();
             default -> 0;
         };
+    }
+
+    private static String unsupportedMessageType(byte messageType) {
+        MessageType type;
+        try {
+            type = MessageType.fromByte(messageType);
+        } catch (IllegalArgumentException e) {
+            return String.format("Unknown message type 0x%02X", messageType);
+        }
+        if (!type.isMemberToCboe()) return String.format("Cboe-only message type 0x%02X (%s)", messageType, type);
+        if (!BoeMessageFactory.isRequest(messageType)) return String.format("Unsupported message type 0x%02X (%s)", messageType, type);
+        return null;
     }
 
     private void rejectReceivedDuringReplay(ApplicationMessage message) {
@@ -753,6 +773,15 @@ public class ClientConnectionHandler implements Runnable {
 
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending OrderCancelled", e);
+        }
+    }
+
+    private void sendQuoteUpdateRejected(String quoteUpdateID) {
+        try {
+            sendMessage(new QuoteUpdateRejectedMessage(quoteUpdateID, QuoteUpdateRejectedMessage.REASON_NOT_ENABLED_FOR_QUOTES).toBytes());
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent QuoteUpdateRejected: {1}", new Object[]{session.getConnectionId(), quoteUpdateID});
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending QuoteUpdateRejected", e);
         }
     }
 

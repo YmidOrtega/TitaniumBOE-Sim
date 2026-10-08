@@ -12,6 +12,8 @@ public abstract sealed class ApplicationMessage extends BoeProtocolMessage
                 OrderModifiedMessage,
                 OrderRejectedMessage,
                 OrderRestatedMessage,
+                QuoteUpdateMessage,
+                QuoteUpdateRejectedMessage,
                 TradeCancelOrCorrectMessage,
                 UserModifyRejectedMessage {
 }

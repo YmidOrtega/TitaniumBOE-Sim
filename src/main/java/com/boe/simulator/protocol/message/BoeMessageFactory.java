@@ -19,6 +19,8 @@ public class BoeMessageFactory {
     public static final byte NEW_ORDER    = 0x38;
     public static final byte CANCEL_ORDER = 0x39;
     public static final byte MODIFY_ORDER = 0x3A;
+    public static final byte QUOTE_UPDATE = QuoteUpdateMessage.MESSAGE_TYPE;
+    public static final byte QUOTE_UPDATE_SHORT = QuoteUpdateMessage.MESSAGE_TYPE_SHORT;
 
     // Message type constants - Order response messages (outbound, spec v2.11.90)
     public static final byte ORDER_ACKNOWLEDGMENT   = 0x25;
@@ -64,6 +66,7 @@ public class BoeMessageFactory {
                 case NEW_ORDER    -> NewOrderMessage.parse(data);
                 case CANCEL_ORDER -> CancelOrderMessage.parse(data);
                 case MODIFY_ORDER -> ModifyOrderMessage.parse(data);
+                case QUOTE_UPDATE, QUOTE_UPDATE_SHORT -> QuoteUpdateMessage.parse(data);
 
                 // Order response messages (outbound to client — server never receives these)
                 case ORDER_ACKNOWLEDGMENT -> rejectIfServer(context, "OrderAcknowledgment",
@@ -130,6 +133,8 @@ public class BoeMessageFactory {
             case NEW_ORDER            -> "NewOrder";
             case CANCEL_ORDER         -> "CancelOrder";
             case MODIFY_ORDER         -> "ModifyOrder";
+            case QUOTE_UPDATE         -> "QuoteUpdate";
+            case QUOTE_UPDATE_SHORT   -> "QuoteUpdateShort";
             case ORDER_ACKNOWLEDGMENT -> "OrderAcknowledgment";
             case ORDER_REJECTED       -> "OrderRejected";
             case ORDER_MODIFIED       -> "OrderModified";
@@ -150,7 +155,9 @@ public class BoeMessageFactory {
                 messageType == CLIENT_HEARTBEAT ||
                 messageType == NEW_ORDER ||
                 messageType == CANCEL_ORDER ||
-                messageType == MODIFY_ORDER;
+                messageType == MODIFY_ORDER ||
+                messageType == QUOTE_UPDATE ||
+                messageType == QUOTE_UPDATE_SHORT;
     }
 
     public static boolean isResponse(byte messageType) {

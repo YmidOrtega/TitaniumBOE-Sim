@@ -54,7 +54,8 @@ public enum MessageType {
     QUOTE_RESTATED(0x52),
     QUOTE_CANCELLED(0x53),
     QUOTE_EXECUTION(0x54),
-    RISK_RESET_ACKNOWLEDGMENT(0x57);
+    RISK_RESET_ACKNOWLEDGMENT(0x57),
+    QUOTE_UPDATE_REJECTED(0x58);
 
     private final byte wireValue;
 
@@ -72,6 +73,15 @@ public enum MessageType {
 
     public byte wireValue() {
         return wireValue;
+    }
+
+    public boolean isMemberToCboe() {
+        return switch (this) {
+            case LOGIN_REQUEST, LOGOUT_REQUEST, CLIENT_HEARTBEAT, NEW_ORDER, CANCEL_ORDER, MODIFY_ORDER,
+                 NEW_ORDER_CROSS, PURGE_ORDERS, NEW_COMPLEX_ORDER, NEW_COMPLEX_INSTRUMENT,
+                 NEW_ORDER_CROSS_MULTILEG, QUOTE_UPDATE, RESET_RISK, QUOTE_UPDATE_SHORT -> true;
+            default -> false;
+        };
     }
 
     public static MessageType fromByte(byte value) {
