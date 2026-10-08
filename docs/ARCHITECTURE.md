@@ -150,7 +150,8 @@ Offset  Len  Campo            Notas
 | `Binary` | variable | LE unsigned | `64 00 00 00` = 100 |
 | `Binary Price` | 8 bytes | LE signed, 4 decimales implícitos | `08 E2 01 00...` = 12.34 (= 123400 / 10000) |
 | `Short Binary Price` | 4 bytes | LE signed, 4 decimales implícitos | `0C 30 00 00` = 1.23 |
-| `DateTime` | 8 bytes | Nanosegundos desde Unix epoch | |
+| `DateTime` | 8 bytes | Nanosegundos desde Unix epoch (UTC) | `1294909373757324000` = 2011-01-13 09:02:53.757324 UTC |
+| `Date` | 4 bytes | LE unsigned, YYYYMMDD como entero | `EF DB 32 01` = 20110319 |
 | `Text` | variable | ASCII, relleno con NUL (0x00) | `"ABC\x00\x00"` |
 | `Alpha` | variable | ASCII, relleno con NUL (0x00) | `"MSFT\x00\x00\x00\x00"` |
 
@@ -711,16 +712,16 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-347 tests distribuidos en 33 clases (cifras de `mvn test`, no estimadas):
+356 tests distribuidos en 35 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 173 | Parseo y serialización byte a byte contra la spec |
+| Wire format (`protocol/message/`) | 176 | Parseo y serialización byte a byte contra la spec |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas de sesión |
 | Order management (`server/order/`) | 31 | Validación, ciclo de vida, estados |
 | **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
-| Tipos del protocolo (`protocol/types/`) | 15 | `BinaryPrice`, enums de dominio |
+| Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |

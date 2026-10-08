@@ -587,7 +587,6 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 | Area | Spec (v2.11.90) | Simulator (current) | Status |
 |------|----------------|---------------------|--------|
 | Cancel / Modify message codes | `0x45` = Cancel, `0x4A` = Modify | `0x39` = Cancel, `0x3A` = Modify (contiguous with `0x38` New Order) | Open — internally consistent, but a real BOE client would not interoperate on these two messages |
-| String padding | NUL (`0x00`) | Space (`0x20`) in `LoginRequestMessage` and `OrderAcknowledgmentMessage` | Open |
 | Heartbeat timing | send after 1 s idle, timeout at 5 s | defaults of 10 s / 30 s in `ServerConfiguration` (configurable via builder) | Open — deliberately relaxed so a GC pause or a debugger breakpoint does not drop the session |
 | Heartbeat sequencing | Server Heartbeat does **not** increment the outbound sequence | `HeartbeatMonitor` calls `getNextSentSequenceNumber()` | Open |
 | Session message codes | `0x37`/`0x24`/`0x09`/`0x13` | matches the spec | ✅ Fixed |
@@ -596,6 +595,9 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 | `OrdType` wire values | `'1'` = Market, `'2'` = Limit (ASCII) | `'1'`/`'2'` | ✅ Fixed |
 | `Capacity` `'C'` | Customer (`0x43`) is a valid value | present in the `Capacity` enum | ✅ Fixed |
 | `OrderAcknowledgmentMessage` | MessageType = `0x25` (1 byte) | `0x25`, encoded as 1 byte | ✅ Fixed |
+| String padding | NUL (`0x00`) for Alpha, Alphanumeric and Text | NUL in every encoder; inbound decoders also tolerate trailing spaces | ✅ Fixed |
+| `DateTime` | nanoseconds past the UNIX epoch (UTC) | `BoeTime.nowEpochNanos()` (previously `System.nanoTime()`, which has an arbitrary origin) | ✅ Fixed |
+| `Date` (MaturityDate) | YYYYMMDD as a 4-byte integer | `BoeTime.toYyyymmdd()` in New Order and Order Acknowledgment (New Order previously sent days since 1970) | ✅ Fixed |
 
 ---
 
