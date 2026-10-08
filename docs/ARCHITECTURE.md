@@ -79,7 +79,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 319 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 506 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -304,7 +304,9 @@ parámetros quepa y coincida con su contenido, un solo grupo `0x80`, un `0x81` p
 NoUnspecifiedUnitReplay `0x00`/`0x01`, ninguna unidad repetida y nada sobrante. Si falla →
 LoginResponse `M` y cierre. Luego se validan los Return Bitfields contra la tabla *Return Bitfields
 Per Message* de la spec (`ReturnBitfieldRules`, p.180+): pedir un campo marcado `-` o en blanco →
-`F` con el byte y el bit en el texto. Cualquier mensaje anterior a un login aceptado, o un segundo Login
+`F` con el byte y el bit en el texto. SessionSubID, Username y Password son Alphanumeric: cualquier
+otro carácter → `M`. Por eso las contraseñas demo y las que se registran por REST son
+alfanuméricas (6-10 caracteres). Cualquier mensaje anterior a un login aceptado, o un segundo Login
 Request en la misma conexión → `Logout` `!` y cierre.
 
 **MatchingUnit entrante** (la spec dice "always 0" pero no qué hacer si no lo es):
@@ -325,6 +327,33 @@ que nunca lee desplazado un campo que no implementa. Cada campo tiene un tratami
 | Se consume e ignora (informativo) | RiskReset, CMTANumber, SessionEligibility, AttributedQuote, RoutStrategy, RouteDeliveryMethod, ExDestination, EchoText, RoutingFirmID, CustomGroupId, ClearingOptionalData, ClientIDAttr, FrequentTraderID, Compression, OrderOrigin, ORS, Held |
 | Rechazo `Z` (cambia la ejecución y no está implementado) | MinQty, PreventMatch, ExpireTime, TargetPartyID, DisplayRange, StopPx, AuctionId, FloorDestination; ExecInst, MaxFloor, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
 | Rechazo (en blanco o reservado en la spec) | el resto de bits, y cualquier bit más allá del bitfield 10 |
+
+**New Order: TimeInForce** (p.212). El simulador no tiene subastas ni sesiones de varios días:
+
+| TimeInForce | Comportamiento |
+|---|---|
+| `0` Day (por defecto) | Lo que no cruza descansa en el libro |
+| `3` IOC | Cruza lo que puede; el resto se cancela: Order Acknowledgment y luego Order Cancelled `N` |
+| `4` FOK | Si la liquidez cruzable (sin contar órdenes propias cuando se previene el autocruce) no cubre toda la orden, se cancela sin ejecutar nada (ACK + Order Cancelled `N`); si la cubre, se ejecuta entera |
+| `1` GTC, `2` At the Open, `6` GTD, `7` At the Close | Order Rejected `Z` "TimeInForce … is not supported by the simulator" |
+| Otro valor | Order Rejected `Z` "Invalid TimeInForce" |
+
+Las órdenes a mercado son IOC implícitas para órdenes simples (la spec lo dice en el valor `3`):
+lo que no ejecuta se cancela igual, en vez de quedarse viva sin estar en el libro.
+
+**Juego de caracteres** (*Data Types*, p.5). `FieldCharset` valida los bytes en bruto de los campos
+de texto que se leen: Alpha (`A-Z`, `a-z`), Alphanumeric (más `0-9`), Text (ASCII imprimible) y
+ClOrdID (ASCII 33-126 salvo `,` `;` `|` `@` `"`). Tras el primer NUL solo puede haber NUL, así que un
+campo rellenado con espacios también se rechaza.
+
+| Mensaje | Campos validados | Respuesta |
+|---|---|---|
+| Login Request | SessionSubID, Username, Password (Alphanumeric) | LoginResponse `M` |
+| New Order | ClOrdID; ClearingFirm (Alpha); Symbol (Alphanumeric); ClearingAccount, Account, RoutingInst (Text) | Order Rejected `Z` |
+| Cancel Order | OrigClOrdID, RiskRoot, MassCancelID (Text); ClearingFirm, RoutingFirmID (Alpha) | Cancel Rejected `Z` |
+| Modify Order | ClOrdID; OrigClOrdID (Text); ClearingFirm, RoutingFirmID (Alpha) | User Modify Rejected `Z` |
+
+Un campo no soportado tiene prioridad sobre un error de caracteres en el texto del rechazo.
 
 **Cancel Order.** `CancelOrderMessage` solo admite los campos de la tabla *Input Bitfields Per
 Message* (ClearingFirm, RiskRoot, MassCancelID, RoutingFirmID, MassCancelInst y SendTime, este
@@ -418,6 +447,8 @@ Dentro de cada nivel de precio: las órdenes se mantienen en una `List<Order>` e
 ```
 processOrder(Order incoming)
     │
+    ├── FOK y la liquidez cruzable < leavesQty → cancel(), sin trades
+    │
     ├── ¿Puede cruzar? (canMatch)
     │    ├── MARKET → siempre sí
     │    ├── BUY LIMIT → sí si price >= bestAsk
@@ -428,12 +459,16 @@ processOrder(Order incoming)
     │         ├── Verifica self-trade (misma username → cancela pasiva)
     │         ├── fillQty = min(aggressiveLeavesQty, passiveLeavesQty)
     │         ├── execPrice = precio de la pasiva (price-time priority)
-    │         ├── Crea Trade, actualiza leavesQty en ambas órdenes
+    │         ├── Crea Trade (aggressorSide = lado de la orden que entra), actualiza leavesQty en ambas
     │         ├── Si pasiva completada → removeOrder(passive)
     │         └── Notifica listeners (WebSocket broadcast)
     │
-    └── Si leavesQty > 0 y order.isLive() → addOrder(book)
+    ├── IOC, FOK o MARKET con leavesQty > 0 → cancel()
+    └── Si no, leavesQty > 0 y order.isLive() → addOrder(book)
 ```
+
+En cada Order Execution, `BaseLiquidityIndicator` es `R` para el lado `aggressorSide` del trade y `A`
+para la orden que estaba en el libro, compre o venda.
 
 ### 6.3 Sincronización — dos capas con propósitos distintos
 
@@ -856,21 +891,21 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-478 tests distribuidos en 51 clases (cifras de `mvn test`, no estimadas):
+506 tests distribuidos en 53 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 215 | Parseo y serialización byte a byte contra la spec |
+| Wire format (`protocol/message/`) | 231 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
-| Order management (`server/order/`) | 56 | Validación, ciclo de vida, estados, límite de órdenes abiertas, cancel, mass cancel y modify |
-| **Matching engine (`server/matching/`)** | **33** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
+| Order management (`server/order/`) | 59 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
+| **Matching engine (`server/matching/`)** | **41** | Prioridad precio-tiempo, self-trade, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 13 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
-| Conexión (`server/connection/`) | 37 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel y Modify y métricas con sockets reales |
+| Conexión (`server/connection/`) | 38 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel, Modify e IOC y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
 | Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
@@ -880,7 +915,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.2 Cobertura del Motor de Matching
 
-Repartida en cuatro clases, cubre las invariantes que hacen correcto a un motor de órdenes:
+Repartida en cinco clases, cubre las invariantes que hacen correcto a un motor de órdenes:
 
 **`MatchingEnginePriorityTest`** — prioridad precio-tiempo:
 FIFO dentro de un nivel de precio, mejor precio primero entre niveles, precio de ejecución
@@ -897,6 +932,11 @@ cancelable después**, que es la regresión concreta que aparecería si se actua
 antes de removerla del `TreeMap`. Cubre también la lógica de delta sobre `leavesQty` en ambos
 sentidos, la auto-cancelación cuando el delta la deja en cero, el reprecio agresivo que cruza y la
 prioridad temporal: bajar solo la cantidad la conserva; aumentarla, reprecio o un modify sin cambios la pierden.
+
+**`MatchingEngineTimeInForceTest`** — TimeInForce y lado agresor:
+IOC con resto cancelado y sin contrapartida, FOK que no ejecuta nada si no hay liquidez para toda la
+orden (sin contar las propias) y que barre varios niveles si la hay, orden a mercado como IOC
+implícita, Day que descansa, y `aggressorSide` del trade igual al lado de la orden entrante.
 
 **`MatchingEngineConcurrencyTest`** — las dos capas de bloqueo (§6.3):
 símbolos distintos procesados en paralelo mantienen sus libros aislados; agresores concurrentes
