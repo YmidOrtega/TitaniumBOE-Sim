@@ -560,6 +560,7 @@ public class ClientConnectionHandler implements Runnable {
 
         if (response.isAcknowledged()) {
             sendOrderAcknowledgment(response.getOrder());
+            sendExecutions(response.getExecutions());
             if (response.getOrder().getState() == OrderState.CANCELLED) {
                 sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_NO_LIQUIDITY);
             }
@@ -581,6 +582,7 @@ public class ClientConnectionHandler implements Runnable {
 
         if (response.isModified()) {
             sendOrderModified(response.getOrder());
+            sendExecutions(response.getExecutions());
         } else if (response.isAutoCancelled()) {
             sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_USER_REQUESTED);
         } else {
@@ -649,7 +651,15 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendOrderAcknowledgment(com.boe.simulator.server.order.Order order) {
+    private void sendExecutions(List<IntFunction<byte[]>> executions) {
+        try {
+            for (IntFunction<byte[]> execution : executions) sendSequenced(execution);
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Failed to send executions (journaled for replay)", e);
+        }
+    }
+
+        private void sendOrderAcknowledgment(com.boe.simulator.server.order.Order order) {
         try {
             sendSequenced(seq -> OrderAcknowledgmentMessage.fromOrder(
                     order,

@@ -53,6 +53,7 @@ public class OrderManager {
 
     private final ConcurrentHashMap<String, Order> activeOrdersByClOrdID;
     private final ConcurrentHashMap<Long, Order> activeOrdersByOrderID;
+    private final ConcurrentHashMap<Long, List<IntFunction<byte[]>>> deferredExecutions = new ConcurrentHashMap<>();
 
     private final AtomicLong orderIDGenerator;
 
@@ -269,7 +270,7 @@ public class OrderManager {
                         });
             }
 
-            return OrderResponse.acknowledged(order);
+            return OrderResponse.acknowledged(order, takeDeferredExecutions(order));
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error processing order", e);
@@ -325,14 +326,15 @@ public class OrderManager {
 
         try {
             matchingEngine.modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty);
+            List<IntFunction<byte[]>> executions = takeDeferredExecutions(order);
 
-            if (order.getState().isActive()) {
-                activeOrdersByClOrdID.put(order.getClOrdID(), order);
+            if (order.getState() != OrderState.CANCELLED) {
+                if (order.getState().isActive()) activeOrdersByClOrdID.put(order.getClOrdID(), order);
                 orderRepository.saveAsync(order);
                 LOGGER.log(Level.INFO, "[{0}] Order modified: {1} (OrderID: {2})",
                         new Object[]{context.getSessionIdentifier(),
                                 order.getClOrdID(), order.getOrderID()});
-                return ModifyResponse.modified(order);
+                return ModifyResponse.modified(order, executions);
             } else {
                 activeOrdersByOrderID.remove(order.getOrderID());
                 orderRepository.saveAsync(order);
@@ -605,25 +607,41 @@ public class OrderManager {
     }
 
     private void sendExecutionMessages(Trade trade, Order buyOrder, Order sellOrder) {
-        if (buyOrder != null) sendExecutionMessage(buyOrder, trade, trade.getAggressorSide() == Side.BUY);
-        if (sellOrder != null) sendExecutionMessage(sellOrder, trade, trade.getAggressorSide() == Side.SELL);
+        if (buyOrder != null) dispatchExecution(buyOrder, trade, trade.getAggressorSide() == Side.BUY);
+        if (sellOrder != null) dispatchExecution(sellOrder, trade, trade.getAggressorSide() == Side.SELL);
     }
 
-    private void sendExecutionMessage(Order order, Trade trade, boolean isAggressive) {
+    private void dispatchExecution(Order order, Trade trade, boolean isAggressive) {
+        IntFunction<byte[]> encoder = executionEncoder(order, trade, isAggressive);
+        if (encoder == null) return;
+        if (isAggressive) deferredExecutions.computeIfAbsent(order.getOrderID(), k -> new ArrayList<>()).add(encoder);
+        else sendExecutionMessage(order, encoder);
+    }
+
+    private List<IntFunction<byte[]>> takeDeferredExecutions(Order order) {
+        List<IntFunction<byte[]>> executions = deferredExecutions.remove(order.getOrderID());
+        return executions != null ? executions : List.of();
+    }
+
+    private IntFunction<byte[]> executionEncoder(Order order, Trade trade, boolean isAggressive) {
         if (order.getSessionSubID() == null || !order.getSessionSubID().startsWith(TcpExecutionContext.SESSION_PREFIX)) {
             LOGGER.log(Level.FINE, "Order not from a BOE session: {0} (no execution message)", order.getClOrdID());
-            return;
+            return null;
         }
         BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
-        if (state == null) return;
+        if (state == null) return null;
 
-        ReturnBitfields returnBitfields = state.getReturnBitfields();
-        IntFunction<byte[]> encoder = seq -> {
-            OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(trade, order, isAggressive, returnBitfields);
-            execMsg.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
+        OrderExecutedMessage execMsg = OrderExecutedMessage.fromTrade(trade, order, isAggressive, state.getReturnBitfields());
+        execMsg.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
+        return seq -> {
             execMsg.setSequenceNumber(seq);
             return execMsg.toBytes();
         };
+    }
+
+    private void sendExecutionMessage(Order order, IntFunction<byte[]> encoder) {
+        BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
+        if (state == null) return;
 
         ClientConnectionHandler handler = sessionManager.getHandlerByUsername(order.getUsername());
         try {
@@ -701,31 +719,39 @@ public class OrderManager {
         private final String clOrdID;
         private final byte rejectReason;
         private final String rejectText;
+        private final List<IntFunction<byte[]>> executions;
 
         private ModifyResponse(ResponseType type, Order order, String clOrdID,
-                               byte rejectReason, String rejectText) {
+                               byte rejectReason, String rejectText, List<IntFunction<byte[]>> executions) {
             this.type         = type;
             this.order        = order;
             this.clOrdID      = clOrdID;
             this.rejectReason = rejectReason;
             this.rejectText   = rejectText;
+            this.executions   = executions;
         }
 
         public static ModifyResponse modified(Order order) {
-            return new ModifyResponse(ResponseType.MODIFIED, order, null, (byte) 0, null);
+            return modified(order, List.of());
+        }
+
+        public static ModifyResponse modified(Order order, List<IntFunction<byte[]>> executions) {
+            return new ModifyResponse(ResponseType.MODIFIED, order, null, (byte) 0, null, List.copyOf(executions));
         }
 
         public static ModifyResponse autoCancelled(Order order) {
-            return new ModifyResponse(ResponseType.AUTO_CANCELLED, order, null, (byte) 0, null);
+            return new ModifyResponse(ResponseType.AUTO_CANCELLED, order, null, (byte) 0, null, List.of());
         }
 
         public static ModifyResponse rejected(String clOrdID, byte reason, String text) {
-            return new ModifyResponse(ResponseType.REJECTED, null, clOrdID, reason, text);
+            return new ModifyResponse(ResponseType.REJECTED, null, clOrdID, reason, text, List.of());
         }
 
         public static ModifyResponse rejectedAndCancelled(String clOrdID, byte reason, String text, Order cancelled) {
-            return new ModifyResponse(ResponseType.REJECTED, cancelled, clOrdID, reason, text);
+            return new ModifyResponse(ResponseType.REJECTED, cancelled, clOrdID, reason, text, List.of());
         }
+
+        public List<IntFunction<byte[]>> getExecutions() { return executions; }
 
         public boolean isModified()       { return type == ResponseType.MODIFIED; }
         public boolean isAutoCancelled()  { return type == ResponseType.AUTO_CANCELLED; }
@@ -744,20 +770,32 @@ public class OrderManager {
         private final byte rejectReason;
         private final String rejectText;
 
-        private OrderResponse(ResponseType type, Order order, String clOrdID, byte rejectReason, String rejectText) {
+        private final List<IntFunction<byte[]>> executions;
+
+        private OrderResponse(ResponseType type, Order order, String clOrdID, byte rejectReason, String rejectText,
+                              List<IntFunction<byte[]>> executions) {
             this.type = type;
             this.order = order;
             this.clOrdID = clOrdID;
             this.rejectReason = rejectReason;
             this.rejectText = rejectText;
+            this.executions = executions;
         }
 
         public static OrderResponse acknowledged(Order order) {
-            return new OrderResponse(ResponseType.ACKNOWLEDGED, order, null, (byte)0, null);
+            return acknowledged(order, List.of());
+        }
+
+        public static OrderResponse acknowledged(Order order, List<IntFunction<byte[]>> executions) {
+            return new OrderResponse(ResponseType.ACKNOWLEDGED, order, null, (byte)0, null, List.copyOf(executions));
         }
 
         public static OrderResponse rejected(String clOrdID, byte reason, String text) {
-            return new OrderResponse(ResponseType.REJECTED, null, clOrdID, reason, text);
+            return new OrderResponse(ResponseType.REJECTED, null, clOrdID, reason, text, List.of());
+        }
+
+        public List<IntFunction<byte[]>> getExecutions() {
+            return executions;
         }
 
         public boolean isAcknowledged() {

@@ -732,4 +732,21 @@ class OrderManagerTest {
         assertEquals("OrderQty exceeds the maximum of 999,999", response.getRejectText());
         verify(matchingEngine, never()).processOrder(any(Order.class));
     }
+
+    @Test
+    void modifyThatCrossesAndFillsTheOrder_isAnsweredAsModified_notCancelled() {
+        placeOrder("A", "AAPL", "TEST");
+        when(matchingEngine.modifyOrder(any(Order.class), anyString(), any(), any(), anyInt())).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.modify(inv.getArgument(1), inv.getArgument(2), inv.getArgument(3), inv.getArgument(4), o.getLeavesQty());
+            o.fill(o.getLeavesQty(), new BigDecimal("101.00"));
+            return List.of();
+        });
+
+        OrderManager.ModifyResponse response = orderManager.processModifyOrder(modify("B", "A", 10, "101.00"), clientSession);
+
+        assertTrue(response.isModified());
+        assertEquals(OrderState.FILLED, response.getOrder().getState());
+        assertEquals(0, orderManager.getTotalOrdersCancelled());
+    }
 }
