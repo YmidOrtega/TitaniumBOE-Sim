@@ -57,6 +57,7 @@ public final class ModifyOrderMessage extends ApplicationMessage {
     private String routingFirmID;
 
     private String fieldError;
+    private String charsetError;
 
     private ModifyOrderMessage() {}
 
@@ -75,8 +76,8 @@ public final class ModifyOrderMessage extends ApplicationMessage {
         ModifyOrderMessage msg = new ModifyOrderMessage();
         msg.matchingUnit   = buf.get();
         msg.sequenceNumber = buf.getInt();
-        msg.clOrdID        = getText(buf, 20);
-        msg.origClOrdID    = getText(buf, 20);
+        msg.clOrdID        = msg.getText(buf, 20, "ClOrdID", FieldCharset.CLORDID);
+        msg.origClOrdID    = msg.getText(buf, 20, "OrigClOrdID", FieldCharset.TEXT);
 
         int numBitfields = buf.get() & 0xFF;
         if (buf.remaining() < numBitfields) {
@@ -87,6 +88,7 @@ public final class ModifyOrderMessage extends ApplicationMessage {
         buf.get(msg.bitfields);
 
         msg.parseOptionalFields(buf);
+        if (msg.fieldError == null) msg.fieldError = msg.charsetError;
         return msg;
     }
 
@@ -113,7 +115,7 @@ public final class ModifyOrderMessage extends ApplicationMessage {
     private void assign(int bitfield, int bit, ByteBuffer buf) {
         if (bitfield == 0) {
             switch (bit) {
-                case 0x01 -> clearingFirm = getAlpha(buf, 4);
+                case 0x01 -> clearingFirm = getAlpha(buf, 4, "ClearingFirm");
                 case 0x04 -> orderQty = buf.getInt();
                 case 0x08 -> price = readPrice(buf);
                 case 0x10 -> ordType = buf.get();
@@ -125,7 +127,7 @@ public final class ModifyOrderMessage extends ApplicationMessage {
             switch (bit) {
                 case 0x01 -> maxFloor = buf.getInt();
                 case 0x02 -> stopPx = buf.getLong();
-                case 0x04 -> routingFirmID = getAlpha(buf, 4);
+                case 0x04 -> routingFirmID = getAlpha(buf, 4, "RoutingFirmID");
                 default -> throw new IllegalStateException("No field for bit " + bit);
             }
         }
@@ -149,20 +151,17 @@ public final class ModifyOrderMessage extends ApplicationMessage {
         return raw != 0 ? BigDecimal.valueOf(raw, 4) : null;
     }
 
-    private static String getText(ByteBuffer buf, int len) {
+    private String getText(ByteBuffer buf, int len, String field, FieldCharset charset) {
         byte[] bytes = new byte[len];
         buf.get(bytes);
+        if (charsetError == null) charsetError = charset.check(field, bytes);
         int end = len;
         while (end > 0 && bytes[end - 1] == 0x00) end--;
         return new String(bytes, 0, end, StandardCharsets.US_ASCII).trim();
     }
 
-    private static String getAlpha(ByteBuffer buf, int len) {
-        byte[] bytes = new byte[len];
-        buf.get(bytes);
-        int end = len;
-        while (end > 0 && (bytes[end - 1] == 0x00 || bytes[end - 1] == 0x20)) end--;
-        return new String(bytes, 0, end, StandardCharsets.US_ASCII).trim();
+    private String getAlpha(ByteBuffer buf, int len, String field) {
+        return getText(buf, len, field, FieldCharset.ALPHA);
     }
 
     @Override

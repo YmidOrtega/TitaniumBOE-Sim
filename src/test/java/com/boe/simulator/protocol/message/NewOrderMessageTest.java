@@ -158,4 +158,43 @@ class NewOrderMessageTest {
         assertEquals("Bitfield 11 bit 1 cannot be specified on New Order",
                 NewOrderMessage.parse(order("0B 00 00 00 00 00 00 00 00 00 00 01")).getFieldError());
     }
+
+    @Test
+    void clOrdIDWithAForbiddenCharacter_isRejected() {
+        NewOrderMessage msg = new NewOrderMessage();
+        msg.setClOrdID("ORD@1");
+        msg.setSide((byte) '1');
+        msg.setOrderQty(1);
+
+        assertEquals("Invalid character 0x40 in ClOrdID (33-126 except ,;|@\")",
+                NewOrderMessage.parse(msg.toBytes()).getFieldError());
+    }
+
+    @Test
+    void symbolMustBeAlphanumeric() {
+        NewOrderMessage m = NewOrderMessage.parse(order("02 00 41 4D 53 2D 54 00 00 00 00 43"));
+
+        assertEquals("Invalid character 0x2D in Symbol (A-Z, a-z, 0-9)", m.getFieldError());
+    }
+
+    @Test
+    void textAfterTheNulPadding_isRejected() {
+        NewOrderMessage m = NewOrderMessage.parse(order("02 00 41 4D 53 00 54 00 00 00 00 43"));
+
+        assertEquals("Symbol must be NUL (0x00) filled on the right", m.getFieldError());
+    }
+
+    @Test
+    void clearingFirmMustBeAlpha() {
+        NewOrderMessage m = NewOrderMessage.parse(order("02 01 41 54 45 35 54 4D 53 46 54 00 00 00 00 43"));
+
+        assertEquals("Invalid character 0x35 in ClearingFirm (A-Z, a-z)", m.getFieldError());
+    }
+
+    @Test
+    void unsupportedFieldError_takesPrecedenceOverACharsetError() {
+        NewOrderMessage m = NewOrderMessage.parse(order("02 40 41 05 00 00 00 4D 53 2D 54 00 00 00 00 43"));
+
+        assertEquals("MinQty is not supported by the simulator", m.getFieldError());
+    }
 }

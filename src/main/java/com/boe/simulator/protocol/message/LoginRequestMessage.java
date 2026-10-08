@@ -166,6 +166,13 @@ public final class LoginRequestMessage extends SessionMessage {
         buffer.get(passwordBytes);
         String password = new String(passwordBytes, StandardCharsets.US_ASCII).trim();
 
+        for (String error : new String[]{
+                FieldCharset.ALPHANUMERIC.check("SessionSubID", sessionSubIDBytes),
+                FieldCharset.ALPHANUMERIC.check("Username", usernameBytes),
+                FieldCharset.ALPHANUMERIC.check("Password", passwordBytes)}) {
+            if (error != null) throw new IllegalArgumentException(error);
+        }
+
         // Create a message
         int numberOfParamGroups = 0;
         ReturnBitfields returnBitfields = ReturnBitfields.empty();

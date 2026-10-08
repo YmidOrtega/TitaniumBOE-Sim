@@ -54,7 +54,6 @@ class ModifyOrderMessageTest {
 
     private static void putAlpha(ByteBuffer buf, String s, int len) {
         byte[] b = new byte[len];
-        java.util.Arrays.fill(b, (byte) 0x20);
         if (s != null && !s.isEmpty()) {
             byte[] src = s.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
             System.arraycopy(src, 0, b, 0, Math.min(src.length, len));
@@ -233,12 +232,12 @@ class ModifyOrderMessageTest {
         ob.putInt(100);        // OrderQty
         ob.putInt(0);          // MaxFloor
         ob.putLong(0);         // StopPx
-        putAlpha(ob, "RT01", 4);
+        putAlpha(ob, "RTFM", 4);
 
         ModifyOrderMessage msg = ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x07}, ob.array()));
 
         assertEquals(100, msg.getOrderQty());
-        assertEquals("RT01", msg.getRoutingFirmID());
+        assertEquals("RTFM", msg.getRoutingFirmID());
         assertNull(msg.getFieldError());
     }
 
@@ -334,5 +333,29 @@ class ModifyOrderMessageTest {
         ModifyOrderMessage msg = ModifyOrderMessage.parse(raw);
         assertInstanceOf(ApplicationMessage.class, msg);
         assertInstanceOf(BoeProtocolMessage.class, msg);
+    }
+
+    // ── Character sets ────────────────────────────────────────────────────────
+
+    @Test
+    void clOrdIDWithAComma_isRejected() {
+        ByteBuffer ob = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN);
+        ob.putInt(10);
+        ob.putLong(1_000_000L);
+        byte[] raw = buildRaw("NEW,1", "ORIG1", 1, new byte[]{0x0C}, ob.array());
+
+        assertEquals("Invalid character 0x2C in ClOrdID (33-126 except ,;|@\")",
+                ModifyOrderMessage.parse(raw).getFieldError());
+    }
+
+    @Test
+    void spacePaddedClearingFirm_isRejected() {
+        ByteBuffer ob = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN);
+        ob.put(new byte[]{'A', 'B', ' ', ' '});
+        ob.putInt(10);
+        ob.putLong(1_000_000L);
+        byte[] raw = buildRaw("NEW1", "ORIG1", 1, new byte[]{0x0D}, ob.array());
+
+        assertEquals("Invalid character 0x20 in ClearingFirm (A-Z, a-z)", ModifyOrderMessage.parse(raw).getFieldError());
     }
 }

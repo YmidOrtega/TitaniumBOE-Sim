@@ -125,4 +125,18 @@ class LoginRequestStructureTest {
         assertArrayEquals(new byte[]{0x00, 0x41, 0x05}, parsed.maskFor((byte) 0x25));
         assertArrayEquals(new byte[]{0x00, 0x41, 0x07}, parsed.maskFor((byte) 0x2C), "The group after an over-long one is not lost");
     }
+
+    @Test
+    void credentialsMustBeAlphanumeric() {
+        byte[] badPassword = login(0, "");
+        badPassword[24] = '!';
+        byte[] badUser = login(0, "");
+        badUser[15] = '_';
+        byte[] badSubId = login(0, "");
+        badSubId[10] = ' ';
+
+        assertEquals("Invalid character 0x21 in Password (A-Z, a-z, 0-9)", rejection(badPassword));
+        assertEquals("Invalid character 0x5F in Username (A-Z, a-z, 0-9)", rejection(badUser));
+        assertEquals("Invalid character 0x20 in SessionSubID (A-Z, a-z, 0-9)", rejection(badSubId));
+    }
 }

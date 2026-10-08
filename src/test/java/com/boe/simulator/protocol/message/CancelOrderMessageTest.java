@@ -201,11 +201,11 @@ class CancelOrderMessageTest {
     void testBf1RoutingFirmId_NulPadded() {
         // BF1 = 0x20 → RoutingFirmID 4B Alpha (NUL-padded per spec p.10)
         ByteBuffer opt = ByteBuffer.allocate(4);
-        putAlpha(opt, "RT01", 4);
+        putAlpha(opt, "RTFM", 4);
         byte[] raw = buildRaw("ORD1", 1, new byte[]{0x20}, opt.array());
 
         CancelOrderMessage msg = CancelOrderMessage.parse(raw);
-        assertEquals("RT01", msg.getRoutingFirmID());
+        assertEquals("RTFM", msg.getRoutingFirmID());
         assertArrayEquals(raw, msg.toBytes());
     }
 
@@ -329,7 +329,7 @@ class CancelOrderMessageTest {
         putAlpha(opt, "ABCD", 4);
         putText(opt, "SPX", 6);
         putText(opt, "MCID-XYZ-001-ABCD", 20);
-        putAlpha(opt, "RT01", 4);
+        putAlpha(opt, "RTFM", 4);
         putText(opt, "ASL", 16);
         opt.order(ByteOrder.LITTLE_ENDIAN).putLong(999_999_000_000_000L);
 
@@ -340,7 +340,7 @@ class CancelOrderMessageTest {
         assertEquals("ABCD", msg.getClearingFirm());
         assertEquals("SPX", msg.getRiskRoot());
         assertEquals("MCID-XYZ-001-ABCD", msg.getMassCancelId());
-        assertEquals("RT01", msg.getRoutingFirmID());
+        assertEquals("RTFM", msg.getRoutingFirmID());
         assertEquals("ASL", msg.getMassCancelInst());
         assertEquals(999_999_000_000_000L, msg.getSendTime());
         assertNull(msg.getFieldError());
@@ -392,5 +392,24 @@ class CancelOrderMessageTest {
         assertEquals("CFXX", msg.getClearingFirm());
         assertEquals("NDX", msg.getRiskRoot());
         assertArrayEquals(raw, msg.toBytes());
+    }
+
+    // ── Character sets ────────────────────────────────────────────────────────
+
+    @Test
+    void origClOrdIDMustBeText() {
+        byte[] raw = buildRaw("ORD\t1", 2, new byte[]{0x00, 0x08}, new byte[8]);
+
+        assertEquals("Invalid character 0x09 in OrigClOrdID (printable ASCII)", CancelOrderMessage.parse(raw).getFieldError());
+    }
+
+    @Test
+    void clearingFirmMustBeAlpha() {
+        ByteBuffer opt = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN);
+        putAlpha(opt, "TE5T", 4);
+        opt.putLong(1L);
+        byte[] raw = buildRaw("ORD1", 2, new byte[]{0x01, 0x08}, opt.array());
+
+        assertEquals("Invalid character 0x35 in ClearingFirm (A-Z, a-z)", CancelOrderMessage.parse(raw).getFieldError());
     }
 }

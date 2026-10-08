@@ -58,6 +58,7 @@ public final class CancelOrderMessage extends ApplicationMessage {
     private long sendTime;               // 8B DateTime
 
     private String fieldError;
+    private String charsetError;
 
     public CancelOrderMessage() {
         this.numberOfBitfields = 0;
@@ -89,12 +90,14 @@ public final class CancelOrderMessage extends ApplicationMessage {
         byte[] origBytes = new byte[20];
         buf.get(origBytes);
         msg.origClOrdID = stripNul(origBytes);
+        msg.charsetError = FieldCharset.TEXT.check("OrigClOrdID", origBytes);
 
         msg.numberOfBitfields = buf.get() & 0xFF;
         msg.bitfields = new byte[msg.numberOfBitfields];
         if (msg.numberOfBitfields > 0) buf.get(msg.bitfields);
 
         msg.parseOptionalFields(buf);
+        if (msg.fieldError == null) msg.fieldError = msg.charsetError;
         return msg;
     }
 
@@ -121,6 +124,15 @@ public final class CancelOrderMessage extends ApplicationMessage {
     }
 
     private void assign(int bitfield, int bit, byte[] value) {
+        if (bitfield == 0 && charsetError == null) {
+            charsetError = switch (bit) {
+                case 0x01 -> FieldCharset.ALPHA.check("ClearingFirm", value);
+                case 0x08 -> FieldCharset.TEXT.check("RiskRoot", value);
+                case 0x10 -> FieldCharset.TEXT.check("MassCancelID", value);
+                case 0x20 -> FieldCharset.ALPHA.check("RoutingFirmID", value);
+                default -> null;
+            };
+        }
         if (bitfield == 0) {
             switch (bit) {
                 case 0x01 -> clearingFirm = stripNul(value);

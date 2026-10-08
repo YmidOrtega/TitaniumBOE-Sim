@@ -108,6 +108,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     private byte openClose;         // 'O', 'C', 'N'
 
     private String fieldError;      // first unsupported or invalid optional field, if any
+    private String charsetError;
 
     public NewOrderMessage() {
     }
@@ -132,6 +133,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         byte[] clOrdIDBytes = new byte[20];
         buffer.get(clOrdIDBytes);
         msg.clOrdID = new String(clOrdIDBytes, StandardCharsets.US_ASCII).trim();
+        msg.charsetError = FieldCharset.CLORDID.check("ClOrdID", clOrdIDBytes);
 
         msg.side = buffer.get();
         msg.orderQty = buffer.getInt();
@@ -141,6 +143,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         buffer.get(msg.bitfields);
 
         msg.parseOptionalFields(buffer);
+        if (msg.fieldError == null) msg.fieldError = msg.charsetError;
         return msg;
     }
 
@@ -185,6 +188,14 @@ public final class NewOrderMessage extends ApplicationMessage {
     }
 
     private void assign(String name, byte[] value) {
+        FieldCharset charset = switch (name) {
+            case "ClearingFirm" -> FieldCharset.ALPHA;
+            case "Symbol" -> FieldCharset.ALPHANUMERIC;
+            case "ClearingAccount", "Account", "RoutingInst" -> FieldCharset.TEXT;
+            default -> null;
+        };
+        if (charset != null && charsetError == null) charsetError = charset.check(name, value);
+
         ByteBuffer v = ByteBuffer.wrap(value).order(ByteOrder.LITTLE_ENDIAN);
         switch (name) {
             case "ClearingFirm" -> clearingFirm = text(value);
