@@ -66,7 +66,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         { OptionalField.read("Symbol", 8), null, null, null, null, null,
           OptionalField.read("Capacity", 1), OptionalField.read("RoutingInst", 4) },
         { OptionalField.read("Account", 16), OptionalField.rejectUnless("DisplayIndicator", 1, "56"), null, null, null,
-          OptionalField.reject("PreventMatch", 3), null, OptionalField.reject("ExpireTime", 8) },
+          OptionalField.read("PreventMatch", 3), null, OptionalField.reject("ExpireTime", 8) },
         { OptionalField.read("MaturityDate", 4), OptionalField.read("StrikePrice", 8), OptionalField.read("PutOrCall", 1),
           OptionalField.ignore("RiskReset", 8), OptionalField.read("OpenClose", 1), OptionalField.ignore("CMTANumber", 4),
           OptionalField.reject("TargetPartyID", 4), null },
@@ -108,6 +108,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     private BigDecimal strikePrice; // 8 bytes Binary Price
     private byte putOrCall;         // '0'=Put, '1'=Call
     private byte openClose;         // 'O', 'C', 'N'
+    private byte[] preventMatch;
 
     private String fieldError;      // first unsupported or invalid optional field, if any
     private final Map<String, byte[]> rawFields = new LinkedHashMap<>();
@@ -215,6 +216,7 @@ public final class NewOrderMessage extends ApplicationMessage {
             case "StrikePrice" -> strikePrice = BinaryPrice.fromBytes(value).toPrice();
             case "PutOrCall" -> putOrCall = value[0];
             case "OpenClose" -> openClose = value[0];
+            case "PreventMatch" -> preventMatch = value;
             default -> throw new IllegalStateException("No field mapping for " + name);
         }
     }
@@ -463,6 +465,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     public byte getOrdType() { return ordType; }
     public byte getTimeInForce() { return timeInForce; }
     public String getFieldError() { return fieldError; }
+    public byte[] getPreventMatch() { return preventMatch != null ? preventMatch.clone() : null; }
     public Map<String, byte[]> getRawFields() { return Map.copyOf(rawFields); }
 
     @Override

@@ -582,7 +582,7 @@ public class ClientConnectionHandler implements Runnable {
             sendOrderAcknowledgment(response.getOrder());
             sendExecutions(response.getExecutions());
             if (response.getOrder().getState() == OrderState.CANCELLED) {
-                sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_NO_LIQUIDITY);
+                sendOrderCancelled(response.getOrder(), cancelReasonOf(response.getOrder(), OrderCancelledMessage.REASON_NO_LIQUIDITY));
             }
         } else {
             sendOrderRejected(
@@ -605,7 +605,8 @@ public class ClientConnectionHandler implements Runnable {
             sendOrderModified(response.getOrder(), modifyOrder.getOrigClOrdID());
             sendExecutions(response.getExecutions());
         } else if (response.isAutoCancelled()) {
-            sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_USER_REQUESTED);
+            sendExecutions(response.getExecutions());
+            sendOrderCancelled(response.getOrder(), cancelReasonOf(response.getOrder(), OrderCancelledMessage.REASON_USER_REQUESTED));
         } else {
             sendUserModifyRejected(response.getClOrdID(),
                     response.getRejectReason(), response.getRejectText(), modifyReturnFields(modifyOrder));
@@ -761,6 +762,10 @@ public class ClientConnectionHandler implements Runnable {
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending CancelRejected", e);
         }
+    }
+
+    private static byte cancelReasonOf(com.boe.simulator.server.order.Order order, byte fallback) {
+        return order.getCancelReason() != 0 ? order.getCancelReason() : fallback;
     }
 
     private static ReturnFields modifyReturnFields(ModifyOrderMessage m) {

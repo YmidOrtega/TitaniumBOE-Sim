@@ -23,10 +23,13 @@ import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.PutOrCall;
 import com.boe.simulator.protocol.types.RoutingInst;
 import com.boe.simulator.protocol.types.Side;
+import com.boe.simulator.protocol.types.PreventMatch;
 import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
+import com.boe.simulator.protocol.message.OrderRestatedMessage;
+import com.boe.simulator.protocol.message.OrderReturnFields;
 import com.boe.simulator.protocol.message.ReturnBitfields;
 import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.server.config.ServerConfiguration;
@@ -114,6 +117,16 @@ public class OrderManager {
             }
 
             @Override
+            public void onOrderCancelled(Order order, byte reason, OrderBook book) {
+                handleUnsolicitedCancel(order, reason);
+            }
+
+            @Override
+            public void onOrderRestated(Order order, byte reason, boolean incoming, OrderBook book) {
+                handleRestatement(order, reason, incoming);
+            }
+
+            @Override
             public void onOrderRemoved(Order order, OrderBook book) {
                 LOGGER.log(Level.FINE, "Order removed from book: {0}", order.getClOrdID());
             }
@@ -145,6 +158,14 @@ public class OrderManager {
             LOGGER.log(Level.WARNING, "[{0}] Order rejected - {1}", new Object[]{context.getSessionIdentifier(), message.getFieldError()});
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, message.getFieldError());
+        }
+
+        PreventMatch preventMatch;
+        try {
+            preventMatch = PreventMatch.fromBytes(message.getPreventMatch());
+        } catch (IllegalArgumentException e) {
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, e.getMessage());
         }
 
         String timeInForceError = timeInForceError(message.getTimeInForce());
@@ -229,6 +250,7 @@ public class OrderManager {
                     .ordType(message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : OrdType.LIMIT)
                     .timeInForce(TimeInForce.fromByte(message.getTimeInForce()))
                     .echoFields(message.getRawFields())
+                    .preventMatch(preventMatch)
                     .symbol(message.getSymbol())
                     .capacity(message.getCapacity() != 0 ? Capacity.fromByte(message.getCapacity()) : Capacity.AGENCY)
                     .openClose(message.getOpenClose() != 0 ? OpenClose.fromByte(message.getOpenClose()) : OpenClose.NONE)
@@ -342,7 +364,7 @@ public class OrderManager {
                 totalOrdersCancelled.incrementAndGet();
                 LOGGER.log(Level.INFO, "[{0}] Order auto-cancelled by modify: {1}",
                         new Object[]{context.getSessionIdentifier(), order.getClOrdID()});
-                return ModifyResponse.autoCancelled(order);
+                return ModifyResponse.autoCancelled(order, executions);
             }
 
         } catch (Exception e) {
@@ -613,6 +635,41 @@ public class OrderManager {
         }
     }
 
+    private void handleUnsolicitedCancel(Order order, byte reason) {
+        activeOrdersByClOrdID.remove(order.getClOrdID());
+        activeOrdersByOrderID.remove(order.getOrderID());
+        totalOrdersCancelled.incrementAndGet();
+        LOGGER.log(Level.INFO, "Order {0} cancelled by the exchange (reason {1})", new Object[]{order.getClOrdID(), (char) reason});
+        if (sessionManager == null || !isBoeOrder(order)) return;
+        BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
+        if (state == null) return;
+        OrderCancelledMessage msg = OrderCancelledMessage.fromOrder(order, reason,
+                OrderReturnFields.forOrder(order).select(state.getReturnBitfields(), OrderCancelledMessage.MESSAGE_TYPE));
+        msg.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
+        sendToOwner(order, seq -> {
+            msg.setSequenceNumber(seq);
+            return msg.toBytes();
+        });
+    }
+
+    private void handleRestatement(Order order, byte reason, boolean incoming) {
+        if (sessionManager == null || !isBoeOrder(order)) return;
+        BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
+        if (state == null) return;
+        OrderRestatedMessage msg = OrderRestatedMessage.fromOrder(order, reason, state.getReturnBitfields());
+        msg.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
+        IntFunction<byte[]> encoder = seq -> {
+            msg.setSequenceNumber(seq);
+            return msg.toBytes();
+        };
+        if (incoming) deferredExecutions.computeIfAbsent(order.getOrderID(), k -> new ArrayList<>()).add(encoder);
+        else sendToOwner(order, encoder);
+    }
+
+    private static boolean isBoeOrder(Order order) {
+        return order.getSessionSubID() != null && order.getSessionSubID().startsWith(TcpExecutionContext.SESSION_PREFIX);
+    }
+
     private void sendExecutionMessages(Trade trade, Order buyOrder, Order sellOrder) {
         if (buyOrder != null) dispatchExecution(buyOrder, trade, trade.getAggressorSide() == Side.BUY);
         if (sellOrder != null) dispatchExecution(sellOrder, trade, trade.getAggressorSide() == Side.SELL);
@@ -622,7 +679,7 @@ public class OrderManager {
         IntFunction<byte[]> encoder = executionEncoder(order, trade, isAggressive);
         if (encoder == null) return;
         if (isAggressive) deferredExecutions.computeIfAbsent(order.getOrderID(), k -> new ArrayList<>()).add(encoder);
-        else sendExecutionMessage(order, encoder);
+        else sendToOwner(order, encoder);
     }
 
     private List<IntFunction<byte[]>> takeDeferredExecutions(Order order) {
@@ -631,7 +688,7 @@ public class OrderManager {
     }
 
     private IntFunction<byte[]> executionEncoder(Order order, Trade trade, boolean isAggressive) {
-        if (order.getSessionSubID() == null || !order.getSessionSubID().startsWith(TcpExecutionContext.SESSION_PREFIX)) {
+        if (!isBoeOrder(order)) {
             LOGGER.log(Level.FINE, "Order not from a BOE session: {0} (no execution message)", order.getClOrdID());
             return null;
         }
@@ -646,7 +703,7 @@ public class OrderManager {
         };
     }
 
-    private void sendExecutionMessage(Order order, IntFunction<byte[]> encoder) {
+    private void sendToOwner(Order order, IntFunction<byte[]> encoder) {
         BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
         if (state == null) return;
 
@@ -747,7 +804,11 @@ public class OrderManager {
         }
 
         public static ModifyResponse autoCancelled(Order order) {
-            return new ModifyResponse(ResponseType.AUTO_CANCELLED, order, null, (byte) 0, null, List.of());
+            return autoCancelled(order, List.of());
+        }
+
+        public static ModifyResponse autoCancelled(Order order, List<IntFunction<byte[]>> executions) {
+            return new ModifyResponse(ResponseType.AUTO_CANCELLED, order, null, (byte) 0, null, List.copyOf(executions));
         }
 
         public static ModifyResponse rejected(String clOrdID, byte reason, String text) {

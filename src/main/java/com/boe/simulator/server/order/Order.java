@@ -9,6 +9,7 @@ import java.util.Map;
 import com.boe.simulator.protocol.types.Capacity;
 import com.boe.simulator.protocol.types.OpenClose;
 import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.PreventMatch;
 import com.boe.simulator.protocol.types.PutOrCall;
 import com.boe.simulator.protocol.types.RoutingInst;
 import com.boe.simulator.protocol.types.Side;
@@ -31,6 +32,7 @@ public class Order {
     private final BigDecimal price;
     private final OrdType ordType;
     private final TimeInForce timeInForce;
+    private final PreventMatch preventMatch;
 
     // Symbology
     private final String symbol;
@@ -49,6 +51,7 @@ public class Order {
 
     // Estado y timestamps
     private OrderState state;
+    private volatile byte cancelReason;
     private final Instant createdAt;
     private Instant lastModified;
 
@@ -82,6 +85,7 @@ public class Order {
         this.price = builder.price;
         this.ordType = builder.ordType;
         this.timeInForce = builder.timeInForce;
+        this.preventMatch = builder.preventMatch;
         this.symbol = builder.symbol;
         this.maturityDate = builder.maturityDate;
         this.strikePrice = builder.strikePrice;
@@ -116,6 +120,11 @@ public class Order {
         this.optionalFields.put("rejectReason", reason);
     }
 
+    public void cancel(byte reason) {
+        cancel();
+        this.cancelReason = reason;
+    }
+
     public void cancel() {
         if (!state.isCancellable()) throw new IllegalStateException("Cannot cancel order in state: " + state);
 
@@ -133,6 +142,13 @@ public class Order {
         if (this.leavesQty == 0) this.state = OrderState.FILLED;
         else this.state = OrderState.PARTIALLY_FILLED;
 
+        this.lastModified = Instant.now();
+    }
+
+    public void decrement(int qty, boolean orderQtyToo) {
+        if (qty <= 0 || qty > leavesQty) throw new IllegalArgumentException("Invalid decrement: " + qty);
+        if (orderQtyToo) this.modifiedOrderQty = getEffectiveOrderQty() - qty;
+        this.leavesQty -= qty;
         this.lastModified = Instant.now();
     }
 
@@ -174,6 +190,8 @@ public class Order {
     public BigDecimal getPrice() { return modifiedPrice != null ? modifiedPrice : price; }
     public OrdType getOrdType() { return modifiedOrdType != null ? modifiedOrdType : ordType; }
     public TimeInForce getTimeInForce() { return timeInForce; }
+    public PreventMatch getPreventMatch() { return preventMatch; }
+    public byte getCancelReason() { return cancelReason; }
     public String getSymbol() { return symbol; }
     public Instant getMaturityDate() { return maturityDate; }
     public BigDecimal getStrikePrice() { return strikePrice; }
@@ -250,6 +268,7 @@ public class Order {
         private BigDecimal price;
         private OrdType ordType = OrdType.LIMIT;
         private TimeInForce timeInForce = TimeInForce.DAY;
+        private PreventMatch preventMatch;
         private String symbol;
         private Instant maturityDate;
         private BigDecimal strikePrice;
@@ -312,6 +331,11 @@ public class Order {
 
         public Builder timeInForce(TimeInForce timeInForce) {
             this.timeInForce = timeInForce;
+            return this;
+        }
+
+        public Builder preventMatch(PreventMatch preventMatch) {
+            this.preventMatch = preventMatch;
             return this;
         }
 
