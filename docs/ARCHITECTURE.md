@@ -305,6 +305,14 @@ Per Message* de la spec (`ReturnBitfieldRules`, p.180+): pedir un campo marcado 
 `F` con el byte y el bit en el texto. Cualquier mensaje anterior a un login aceptado → `Logout` `!`
 y cierre.
 
+**MatchingUnit entrante** (la spec dice "always 0" pero no qué hacer si no lo es):
+
+| Mensaje con MatchingUnit ≠ 0 | Respuesta |
+|---|---|
+| Login Request (también con secuencia ≠ 0) | LoginResponse `M` y cierre |
+| New Order / Modify / Cancel | Order Rejected / User Modify Rejected / Cancel Rejected con `Z` + texto, y aviso en el log |
+| Client Heartbeat / Logout Request | solo aviso en el log |
+
 **Heartbeats** (por defecto 1 s / 5 s, como la spec; configurables). `HeartbeatMonitor` revisa cada
 200 ms dos marcas de tiempo de `ClientSession`:
 
@@ -790,7 +798,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-406 tests distribuidos en 46 clases (cifras de `mvn test`, no estimadas):
+412 tests distribuidos en 47 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
@@ -804,7 +812,7 @@ Detalle completo y limitación conocida en §6.3.
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
-| Conexión (`server/connection/`) | 21 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje) y métricas con sockets reales |
+| Conexión (`server/connection/`) | 27 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje) y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
