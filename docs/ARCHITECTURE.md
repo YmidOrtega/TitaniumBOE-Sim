@@ -265,13 +265,40 @@ Java 21 Virtual Threads permiten el modelo de programación más simple (blockin
               Envía Logout → cierra socket
 ```
 
-### 5.3 Secuencias y Heartbeats
+### 5.3 Secuencias, Reconexión y Replay
 
-- Mensajes de sesión (Login, Logout, Heartbeat): `SequenceNumber = 0` siempre
-- Mensajes de aplicación Member→Cboe: stream único por sesión, incrementa el cliente
-- Mensajes de aplicación Cboe→Member: por matching unit (independiente por unidad)
-- Heartbeat: si no llega ningún dato en **1 segundo**, el servidor envía `ServerHeartbeat`
-- Timeout: **5 segundos** sin dato → el servidor envía `Logout` y cierra conexión
+El estado de secuencia pertenece a la **sesión BOE** (usuario + SessionSubID), no a la conexión
+TCP: vive en `BoeSessionRegistry` y sobrevive a desconexiones. Se borra con el reset diario o al
+reiniciar el servidor (equivale a empezar un día nuevo).
+
+| Tráfico | MatchingUnit | SequenceNumber | ¿Replay? |
+|---|---|---|---|
+| Mensajes de sesión (Login Response, Logout, Server Heartbeat, Replay Complete) | 0 | 0 | No |
+| Aplicación sin secuencia (Order Rejected, User Modify Rejected, Cancel Rejected) | 0 | 0 | No |
+| Aplicación secuenciada (Ack, Modified, Cancelled, Execution…) | 1 | 1, 2, 3… por sesión | Sí |
+
+`BoeSessionState` guarda la secuencia saliente, el último número entrante procesado y un **journal**
+con los mensajes secuenciados ya codificados. Las ejecuciones que ocurren con el miembro
+desconectado también se apuntan en el journal.
+
+**Entrada.** Secuencia 0 = sin secuencia (se acepta). Salto adelante: se acepta. Atrás o repetida:
+`Logout` con motivo `!` y se cierra la conexión.
+
+**Login y replay** (todo bajo el lock de la sesión, para que ningún mensaje en vivo se intercale):
+
+```
+LoginRequest (+ grupo 0x80 opcional con el último número recibido por unidad)
+  → LoginResponse  (LastReceivedSequenceNumber, par unidad/secuencia más alta, eco de grupos)
+  → mensajes del journal posteriores al número del cliente
+  → ReplayComplete
+```
+
+- Sin grupo `0x80`: se asume que el miembro no recibió nada y se reenvía todo.
+- `NoUnspecifiedUnitReplay = 1` sin la unidad 1: no se reenvía nada.
+- Número por delante del servidor → login rechazado con `Q`; unidad inexistente con número ≠ 0 → `I`.
+- New Order / Modify recibidos antes de Replay Complete → rechazados con motivo `y`.
+
+**Heartbeats.** Intervalo y timeout configurables (por defecto 10 s / 30 s; la spec dice 1 s / 5 s).
 
 ### 5.4 Control de Flujo y Límites por Puerto
 
@@ -746,12 +773,12 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-369 tests distribuidos en 38 clases (cifras de `mvn test`, no estimadas):
+385 tests distribuidos en 40 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 176 | Parseo y serialización byte a byte contra la spec |
-| Session layer (`server/session/`) | 35 | Login, logout, estadísticas de sesión |
+| Wire format (`protocol/message/`) | 178 | Parseo y serialización byte a byte contra la spec |
+| Session layer (`server/session/`) | 41 | Login, logout, estadísticas, estado de secuencia por sesión |
 | Order management (`server/order/`) | 34 | Validación, ciclo de vida, estados, límite de órdenes abiertas |
 | **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
@@ -760,8 +787,8 @@ Detalle completo y limitación conocida en §6.3.
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
 | Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
-| Conexión (`server/connection/`) | 7 | Orden de `SequenceNumber`, umbrales 1.024/960, pausa real del socket |
-| Validación de mensajes (`server/validation/`) | 5 | Campos obligatorios y rangos |
+| Conexión (`server/connection/`) | 13 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión y replay con sockets reales |
+| Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
 | Métricas (`server/metrics/`) | 5 | Contadores de salud |
 | Load test | manual | `LoadTestRunner` (5 fases, fuera del suite de CI) |

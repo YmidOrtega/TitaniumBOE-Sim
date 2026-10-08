@@ -91,37 +91,51 @@ See *Input Bitfields Per Message* (p. 171) and *Return Bitfields Per Message* (p
 
 ### 5.2 Application Messages — Member to Cboe
 
-| Message Type | Code | Description |
-|---|---|---|
-| New Order | `0x38` | Submit a new order |
-| New Order (Short) | `0x39` | Abbreviated new order |
-| New Order Cross | `0x3A` | Cross order (C1/EDGX) |
-| New Complex Instrument | `0x3C` | Define complex instrument (C1/C2/EDGX) |
-| New Complex Order | `0x3D` | Multi-leg order (C1/EDGX/C2) |
-| New Complex Order Short | `0x3E` | Abbreviated complex order |
-| New Order Cross Multileg | `0x3F` | Cross multileg (C1/EDGX) |
-| Cancel Order | `0x45` | Cancel a live order |
-| Mass Cancel Order | `0x46` | Cancel multiple orders |
-| Modify Order | `0x4A` | Modify a live order |
-| Quote Update | `0x59` | Quote update |
-| Purge Orders | `0x62` | Purge orders by criteria |
-| Reset Risk | `0x63` | Risk reset |
+Source: spec v2.11.90, Table 134 (p.216).
+
+| Message Type | Code | Sequenced | Description |
+|---|---|---|---|
+| New Order | `0x38` | Yes | Submit a new order |
+| Cancel Order | `0x39` | Yes | Cancel a live order (mass cancel uses the same message with the MassCancel bitfield) |
+| Modify Order | `0x3A` | Yes | Modify a live order |
+| New Order Cross | `0x41` | Yes | Cross order |
+| Purge Orders | `0x47` | Yes | Purge orders by criteria |
+| New Complex Order | `0x4B` | Yes | Multi-leg order |
+| New Complex Instrument | `0x4C` | Yes | Define complex instrument |
+| Quote Update | `0x55` | Yes | Quote update |
+| Reset Risk | `0x56` | Yes | Risk reset |
+| Quote Update (Short) | `0x59` | Yes | Abbreviated quote update |
+| New Order Cross Multileg | `0x5A` | Yes | Cross multileg |
 
 ### 5.3 Application Messages — Cboe to Member
 
-| Message Type | Code | Description |
-|---|---|---|
-| Order Acknowledgment | `0x25` | Order accepted and working |
-| Order Rejected | `0x26` | Order rejected with reason |
-| Order Modified | `0x27` | Modification confirmed |
-| Order Restated | `0x28` | Order restated (e.g., done-for-day) |
-| User Modify Rejected | `0x29` | Modification rejected |
-| Order Cancelled | `0x2A` | Cancellation confirmed |
-| Cancel Rejected | `0x2B` | Cancellation rejected |
-| Order Execution | `0x2C` | Trade fill |
-| Trade Cancel or Correct | `0x2D` | Trade bust/correction |
-| Mass Cancel Acknowledgment | `0x99` | Mass cancel confirmed |
-| Purge Notification | `0x9B` | Purge confirmed |
+Source: spec v2.11.90, Table 135 (p.216). Unsequenced application messages are sent with
+MatchingUnit = 0 and SequenceNumber = 0 and are **not** included in replay.
+
+| Message Type | Code | Sequenced | Description |
+|---|---|---|---|
+| Order Acknowledgment | `0x25` | Yes | Order accepted and working |
+| Order Rejected | `0x26` | **No** | Order rejected with reason |
+| Order Modified | `0x27` | Yes | Modification confirmed |
+| Order Restated | `0x28` | Yes | Order restated |
+| User Modify Rejected | `0x29` | **No** | Modification rejected |
+| Order Cancelled | `0x2A` | Yes | Cancellation confirmed |
+| Cancel Rejected | `0x2B` | **No** | Cancellation rejected |
+| Order Execution | `0x2C` | Yes | Trade fill |
+| Trade Cancel or Correct | `0x2D` | Yes | Trade bust/correction |
+| Mass Cancel Acknowledgment | `0x36` | **No** | Mass cancel confirmed |
+| Cross Order Acknowledgment | `0x43` | Yes | Cross order accepted |
+| Cross Order Rejected | `0x44` | **No** | Cross order rejected |
+| Cross Order Cancelled | `0x46` | Yes | Cross order cancelled |
+| Purge Rejected | `0x48` | **No** | Purge rejected |
+| Complex Instrument Accepted | `0x4D` | Yes | Complex instrument accepted |
+| Complex Instrument Rejected | `0x4E` | **No** | Complex instrument rejected |
+| Quote Update Acknowledgment | `0x51` | Yes | Quote accepted |
+| Quote Restated | `0x52` | Yes | Quote restated |
+| Quote Cancelled | `0x53` | Yes | Quote cancelled |
+| Quote Execution | `0x54` | Yes | Quote fill |
+| Risk Reset Acknowledgment | `0x57` | **No** | Risk reset confirmed |
+| Quote Update Rejected | `0x58` | **No** | Quote rejected |
 
 ---
 
@@ -586,9 +600,7 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 
 | Area | Spec (v2.11.90) | Simulator (current) | Status |
 |------|----------------|---------------------|--------|
-| Cancel / Modify message codes | `0x45` = Cancel, `0x4A` = Modify | `0x39` = Cancel, `0x3A` = Modify (contiguous with `0x38` New Order) | Open — internally consistent, but a real BOE client would not interoperate on these two messages |
 | Heartbeat timing | send after 1 s idle, timeout at 5 s | defaults of 10 s / 30 s in `ServerConfiguration` (configurable via builder) | Open — deliberately relaxed so a GC pause or a debugger breakpoint does not drop the session |
-| Heartbeat sequencing | Server Heartbeat does **not** increment the outbound sequence | `HeartbeatMonitor` takes the next number through `sendSequenced` | Open |
 | Source IP filtering | unknown source IP ranges are blocked | any IP is accepted | Won't fix — out of scope for a simulator; network access control belongs to the deployment |
 | Session message codes | `0x37`/`0x24`/`0x09`/`0x13` | matches the spec | ✅ Fixed |
 | New Order code | `0x38` | `0x38` | ✅ Fixed |
@@ -600,6 +612,15 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 | `DateTime` | nanoseconds past the UNIX epoch (UTC) | `BoeTime.nowEpochNanos()` (previously `System.nanoTime()`, which has an arbitrary origin) | ✅ Fixed |
 | `Date` (MaturityDate) | YYYYMMDD as a 4-byte integer | `BoeTime.toYyyymmdd()` in New Order and Order Acknowledgment (New Order previously sent days since 1970) | ✅ Fixed |
 | Load handling | never drop member messages; stop reading the socket above 1,024 unacknowledged, resume below 960 | per-connection reader + single processor; the reader pauses above 1,024 and resumes below 960 (same values as the spec). A 1,000 msg/s token bucket slows the processor; session messages are not counted (previously excess messages were silently dropped at 100/min) | ✅ Fixed |
+| Cancel / Modify message codes | `0x39` = Cancel, `0x3A` = Modify (Table 134) | `0x39` / `0x3A` — matches. An earlier version of this document listed `0x45` / `0x4A` by mistake | ✅ Matches |
+| Session messages unsequenced | Login Response, Logout, Server Heartbeat, Replay Complete: MatchingUnit = 0, SequenceNumber = 0 | all four sent with 0 / 0 (previously they consumed outbound sequence numbers and echoed the client's MatchingUnit) | ✅ Fixed |
+| Unsequenced application messages | Order Rejected, User Modify Rejected, Cancel Rejected: SequenceNumber = 0, not replayed | sent with 0 / 0 and kept out of the replay journal | ✅ Fixed |
+| Outbound MatchingUnit | the unit that created the message; 0 only for session traffic | sequenced application messages use unit **1** (the simulator's single matching engine); the client's inbound MatchingUnit is ignored | ✅ Fixed |
+| Inbound sequencing | gap forward ignored; backward or repeated → Logout and drop; 0 = unsequenced | `BoeSessionState.checkInbound`: Logout with reason `!` and the connection is closed | ✅ Fixed |
+| Sequence state per session | outbound sequence and last processed inbound belong to username + SessionSubID, not to the TCP connection | `BoeSessionRegistry` keeps them across reconnects (in memory; cleared by the daily reset and on server restart) | ✅ Fixed |
+| Replay | Unit Sequences group (`0x80`) in Login Request; replay missed sequenced messages, then Replay Complete; orders received during replay rejected (`y`) | implemented, including executions that happened while the member was disconnected | ✅ Fixed |
+| Login Response format | unit/sequence pair for every unit, binary NoUnspecifiedUnitReplay, echoed parameter groups | implemented; Logout also carries the unit pairs | ✅ Fixed |
+| Concurrent sessions per user | one connection per username **+ SessionSubID** | one connection per **username** (stricter: executions are routed by username) | Open — deliberate |
 | Max open orders | 200,000 per BOE port; reject reason `o` | **2,000 per BOE session (scaled ÷100** so the limit is reachable on a PC); reject reason `o`. REST and bot orders are not counted | ✅ Fixed (scaled) |
 | Outbound sequencing | strictly increasing on the wire | sequence assigned and written under one lock (`sendSequenced`); before, executions and heartbeats from other threads could reorder it | ✅ Fixed |
 
