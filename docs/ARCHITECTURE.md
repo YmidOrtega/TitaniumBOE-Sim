@@ -79,7 +79,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 576 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 593 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -342,7 +342,9 @@ que nunca lee desplazado un campo que no implementa. Cada campo tiene un tratami
 | `0` Day (por defecto) | Lo que no cruza descansa en el libro |
 | `3` IOC | Cruza lo que puede; el resto se cancela: Order Acknowledgment y luego Order Cancelled `N` |
 | `4` FOK | Si la liquidez cruzable (sin contar órdenes propias cuando se previene el autocruce) no cubre toda la orden, se cancela sin ejecutar nada (ACK + Order Cancelled `N`); si la cubre, se ejecuta entera |
-| `1` GTC, `2` At the Open, `6` GTD, `7` At the Close | Order Rejected `Z` "TimeInForce … is not supported by the simulator" |
+| `1` GTC | Descansa y pasa de un día al siguiente (ver *Cierre del día*) |
+| `6` GTD | Exige ExpireTime futuro (y ExpireTime solo vale con GTD); a esa hora se cancela con Order Cancelled `X` (*Order expired*, barrido cada segundo); mientras tanto pasa de un día a otro como GTC |
+| `2` At the Open, `7` At the Close | Order Rejected `Z` "TimeInForce … is not supported by the simulator" (no hay subastas) |
 | Otro valor | Order Rejected `Z` "Invalid TimeInForce" |
 
 Las órdenes a mercado son IOC implícitas para órdenes simples (la spec lo dice en el valor `3`):
@@ -461,9 +463,16 @@ acto.
 | OrdType `3` Stop / `4` Stop Limit | Exigen StopPx (Stop sin Price, Stop Limit con Price) y TimeInForce Day/GTC/GTD. Esperan fuera del libro; un trade nuevo con última venta ≥ StopPx (compra) o ≤ StopPx (venta) los elige, por orden de entrada, y las elecciones encadenan. Elegida, una Stop actúa como orden a mercado y una Stop Limit como limitada a Price. Se pueden cancelar y modificar (StopPx, MaxFloor) antes de elegirse |
 
 **Cierre del día y apagado.** A las **17:30 America/New_York** (horario de verano incluido; la tarea se
-reprograma cada día) todas las sesiones conectadas reciben `Logout` `E` *End of day* y, después,
-el reset diario borra órdenes, trades y estado de secuencia. Al apagar el servidor cada sesión
-recibe `Logout` `A` *Server shutting down* antes del cierre.
+reprograma cada día): con Done For Day Restatements activo, cada sesión conectada recibe un Order
+Acknowledgment no solicitado (`A` + `D`) por cada GTC/GTD suya que pasa al día siguiente; después
+todas reciben `Logout` `E` *End of day*, las Day caducan (sin mensaje), las GTC/GTD siguen en el libro
+marcadas como *carried*, los lockouts se levantan y se borran trades y estado de secuencia. Con
+Carried Order Restatements activo, el primer login del día recibe, tras el Login Response, un Order
+Acknowledgment (`A` + `C`) por cada orden arrastrada. Con cualquiera de los dos activo, un login que
+no pida BaseLiquidityIndicator y SubLiquidityIndicator del Order Acknowledgment se rechaza con `F`. Al
+apagar el servidor cada sesión recibe `Logout` `A` *Server shutting down* antes del cierre. Al
+arrancar, las GTC/GTD de la base de datos vuelven al libro (o a la lista de stops) como carried, las
+Day de un día anterior caducan y el generador de OrderID sigue tras el mayor recuperado.
 
 **Heartbeats** (por defecto 1 s / 5 s, como la spec; configurables). `HeartbeatMonitor` revisa cada
 200 ms dos marcas de tiempo de `ClientSession`:
@@ -498,7 +507,8 @@ cliente se frena. Ningún mensaje se descarta.
 | Mensajes sin confirmar → pausar lectura | > 1.024 | > 1.024 | 1:1 | `flowControl(1024, 960)` |
 | Reanudar lectura | < 960 | < 960 | 1:1 | `flowControl(1024, 960)` |
 | Órdenes abiertas por puerto BOE | 200.000 | **2.000** | **÷100** | `maxOpenOrdersPerSession(2000)` |
-| Mensajes de aplicación por conexión | — | 1.000/s | propio del simulador | `rateLimitPerSecond(1000)` |
+| Port / Symbol Order Rate Threshold | 5.000 msg/s | 5.000 msg/s | 1:1 | `PortAttributes.withOrderRateThresholds` |
+| Mensajes de aplicación por conexión (contrapresión) | — | desactivado (0) | propio del simulador | `rateLimitPerSecond(n)` |
 
 **Por qué se escala el límite de órdenes abiertas.** El valor de la spec está pensado para la
 infraestructura de un exchange real; en un simulador que corre en un PC nunca se alcanzaría y el
@@ -510,6 +520,25 @@ las de la API REST y los bots no consumen el cupo.
 
 Los umbrales 1.024/960 **no se escalan**: son por conexión y no dependen de la potencia del
 servidor.
+
+**Atributos de puerto** (*BOE Port Attributes*, p.218-221). `PortAttributes` (en `ServerConfiguration`)
+lleva los que el simulador modela, con los valores por defecto de la spec:
+
+| Atributo | Defecto | Efecto |
+|---|---|---|
+| Cancel on Disconnect | All | Al cerrarse una sesión con login se cancelan sus órdenes BOE (`Day` = solo las Day, `None` = ninguna) con Order Cancelled `U` + Subreason `J`, que queda en el journal para el replay. No aplica al cierre del día ni al apagado |
+| Maximum Order Size | 25.000 | OrderQty mayor en New Order o Modify → `M` |
+| Port / Symbol Order Rate Threshold | 5.000/s | Ventana de 1 s desde el primer mensaje no de sesión; por encima: New Order → `K`, Modify → se procesa como Cancel, Cancel → se procesa |
+| Default MTP Value | ninguno | Sin él solo hay autocruce si las dos órdenes traen PreventMatch |
+| Done For Day / Carried Order Restatements | No | Ver *Cierre del día* |
+| Cancel on Reject | No | Si se activa, un Modify rechazado sin CancelOrigOnReject cancela la original |
+| EFID Risk Reset | Disabled | Reset Risk `F`/`G` → `D`; `E` sigue levantando lockouts autoimpuestos |
+| Allowed Clearing Executing Firm IDs | todos | ClearingFirm fuera de la lista → `Z` |
+| Default Account / Executing Firm ID / ClearingOptionalData | ninguno | Valor que se aplica si el New Order no lo trae |
+
+Solo afectan a las sesiones BOE: las órdenes de la API REST y de los bots no pasan por un puerto. El
+token bucket de 1.000 msg/s ya no está activo por defecto, porque el límite de la spec es el
+threshold.
 
 ---
 
@@ -1000,21 +1029,21 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-576 tests distribuidos en 61 clases (cifras de `mvn test`, no estimadas):
+593 tests distribuidos en 65 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
 | Wire format (`protocol/message/`) | 253 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
-| Order management (`server/order/`) | 71 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
+| Order management (`server/order/`) | 81 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
 | **Matching engine (`server/matching/`)** | **64** | Prioridad precio-tiempo, self-trade y PreventMatch, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
-| Rate limiting (`server/ratelimit/`) | 13 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
-| Conexión (`server/connection/`) | 51 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel, Modify e IOC, orden ACK → ejecuciones, Quote Update Rejected y Logout `!` por mensajes no soportados, y métricas con sockets reales |
+| Rate limiting (`server/ratelimit/`) | 15 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
+| Conexión (`server/connection/`) | 56 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel, Modify e IOC, orden ACK → ejecuciones, Quote Update Rejected y Logout `!` por mensajes no soportados, y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
 | Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
