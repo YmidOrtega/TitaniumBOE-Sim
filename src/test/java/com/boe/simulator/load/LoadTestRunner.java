@@ -1,5 +1,6 @@
 package com.boe.simulator.load;
 
+import com.boe.simulator.protocol.message.ClientHeartbeatMessage;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
 import com.boe.simulator.server.CboeServer;
@@ -272,7 +273,7 @@ public class LoadTestRunner {
         int peak    = openSessions.size();
 
         System.out.printf("│%n│  Peak concurrent sessions: %,d  —  holding for %ds...%n", peak, holdSecs);
-        Thread.sleep(holdSecs * 1_000L);
+        holdWithHeartbeats(openSessions, holdSecs);
 
         for (Socket s : openSessions) closeQuietly(s);
         loginExec.shutdownNow();
@@ -447,21 +448,15 @@ public class LoadTestRunner {
         int ackOk     = 0;
         int ackFailed = 0;
 
+        for (int k = 0; k < sessions; k++) registerUser(http, String.format("M%03d", k), "MemTest1!"); // usernames are at most 4 chars
+        System.out.printf("│  %d users registered%n", sessions);
+
         try {
-            for (int k = 0; k < sessions; k++) {
-                String user = String.format("M%03d", k); // usernames are at most 4 chars
-                registerUser(http, user, "MemTest1!");
-                Socket s = loginBoe(user, "MemTest1!", String.format("M%03d", k));
-                if (s == null) throw new IOException("Login failed for " + user);
-                s.setSoTimeout(10_000);
-                sockets.add(s);
-            }
-            System.out.printf("│  %d sessions logged in%n", sessions);
 
             // Warm-up: 100 orders to let JIT settle
             System.out.println("│  Warm-up (100 orders)...");
             for (int i = 0; i < warmUp; i++) {
-                if (sendRestingOrder(sockets.get(i / maxOpenPerSession), String.format("WU%07d", i),
+                if (sendRestingOrder(sessionFor(sockets, i / maxOpenPerSession), String.format("WU%07d", i),
                         i % maxOpenPerSession + 1)) ackOk++;
                 else ackFailed++;
             }
@@ -477,7 +472,7 @@ public class LoadTestRunner {
 
             for (int i = 0; i < totalOrders; i++) {
                 int n = warmUp + i;
-                if (sendRestingOrder(sockets.get(n / maxOpenPerSession), String.format("MS%07d", i),
+                if (sendRestingOrder(sessionFor(sockets, n / maxOpenPerSession), String.format("MS%07d", i),
                         n % maxOpenPerSession + 1)) ackOk++;
                 else ackFailed++;
 
@@ -496,6 +491,31 @@ public class LoadTestRunner {
                     heapBefore, heapAfter, elapsedMs);
         } finally {
             for (Socket s : sockets) s.close();
+        }
+    }
+
+    static Socket sessionFor(List<Socket> sockets, int k) throws Exception {
+        while (sockets.size() <= k) {
+            String user = String.format("M%03d", sockets.size());
+            Socket s = loginBoe(user, "MemTest1!", user);
+            if (s == null) throw new IOException("Login failed for " + user);
+            s.setSoTimeout(10_000);
+            sockets.add(s);
+        }
+        return sockets.get(k);
+    }
+
+    static void holdWithHeartbeats(List<Socket> sessions, int holdSecs) throws InterruptedException {
+        byte[] heartbeat = new ClientHeartbeatMessage().toBytes();
+        for (int sec = 0; sec < holdSecs; sec++) {
+            for (Socket s : sessions) {
+                try {
+                    s.getOutputStream().write(heartbeat);
+                    s.getOutputStream().flush();
+                } catch (IOException ignored) {
+                }
+            }
+            Thread.sleep(1_000);
         }
     }
 
