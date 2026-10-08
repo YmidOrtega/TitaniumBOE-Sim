@@ -79,7 +79,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 520 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 544 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -168,14 +168,21 @@ Los mensajes como New Order y Modify Order incluyen campos opcionales controlado
 
 **Negociación en login:** el cliente declara via el *Return Bitfields Parameter Group* (`0x81`) qué campos quiere recibir en cada tipo de mensaje de respuesta. El servidor respeta esa negociación durante toda la sesión y cada mensaje de respuesta es auto-descriptivo (incluye sus propios bitfield bytes).
 
-```java
-// Clase ReturnBitfields encapsula la negociación por tipo de mensaje
-public class ReturnBitfields {
-    private final Map<Byte, byte[]> masksByMessageType;
+Todos los mensajes de respuesta (Order Acknowledgment, Rejected, Modified, Restated, User Modify
+Rejected, Cancelled, Cancel Rejected, Execution) usan el mismo codificador:
 
-    public byte[] maskFor(byte messageType) { ... }
-}
-```
+| Pieza | Papel |
+|---|---|
+| `ReturnField` | Catálogo de los 84 campos que la spec permite pedir: byte, bit, longitud y tipo (Tabla 133 y *List of Optional Fields*, p.196) |
+| `ReturnBitfieldRules` | Qué bits permite cada mensaje (*Return Bitfields Per Message*, p.180) |
+| `ReturnFields` | Valores de un mensaje; `select` cruza lo negociado con lo permitido y `writeTo` escribe NumberOfReturnBitfields, los bitfields y los campos en orden byte → bit |
+| `OrderReturnFields` | Rellena los valores desde la orden (o desde el New Order rechazado) |
+
+Reglas (p.111): se envía **exactamente** lo que el cliente pidió para ese tipo de mensaje; un campo
+pedido sin dato va relleno de ceros; si no pidió nada, NumberOfReturnBitfields = 0. Los campos
+informativos del New Order (EchoText, CMTANumber, ClearingOptionalData…) se guardan en bruto en la
+orden y se devuelven tal cual. Antes el ACK y la ejecución enviaban Symbol y Capacity aunque nadie los
+pidiera, Order Modified enviaba siempre su propio conjunto y el resto no enviaba ninguno.
 
 ### 4.5 Binary Price: Implementación
 
@@ -323,9 +330,9 @@ que nunca lee desplazado un campo que no implementa. Cada campo tiene un tratami
 
 | Tratamiento | Campos |
 |---|---|
-| Se lee | ClearingFirm, ClearingAccount, Price, OrdType, TimeInForce, Symbol, Capacity, RoutingInst, Account, MaturityDate, StrikePrice, PutOrCall, OpenClose |
+| Se lee | ClearingFirm, ClearingAccount, Price, OrdType, TimeInForce, Symbol, Capacity, RoutingInst, Account, MaturityDate, StrikePrice, PutOrCall, OpenClose, PreventMatch |
 | Se consume e ignora (informativo) | RiskReset, CMTANumber, SessionEligibility, AttributedQuote, RoutStrategy, RouteDeliveryMethod, ExDestination, EchoText, RoutingFirmID, CustomGroupId, ClearingOptionalData, ClientIDAttr, FrequentTraderID, Compression, OrderOrigin, ORS, Held |
-| Rechazo `Z` (cambia la ejecución y no está implementado) | MinQty, PreventMatch, ExpireTime, TargetPartyID, DisplayRange, StopPx, AuctionId, FloorDestination; ExecInst, MaxFloor, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
+| Rechazo `Z` (cambia la ejecución y no está implementado) | MinQty, ExpireTime, TargetPartyID, DisplayRange, StopPx, AuctionId, FloorDestination; ExecInst, MaxFloor, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
 | Rechazo (en blanco o reservado en la spec) | el resto de bits, y cualquier bit más allá del bitfield 10 |
 
 **New Order: TimeInForce** (p.212). El simulador no tiene subastas ni sesiones de varios días:
@@ -487,7 +494,7 @@ processOrder(Order incoming)
     │
     ├── SÍ → executeMatching (loop):
     │         ├── Obtiene la mejor contrapartida (FIFO en ese nivel)
-    │         ├── Verifica self-trade (misma username → cancela pasiva)
+    │         ├── Match Trade Prevention (PreventMatch o defecto de puerto, ver abajo)
     │         ├── fillQty = min(aggressiveLeavesQty, passiveLeavesQty)
     │         ├── execPrice = precio de la pasiva (price-time priority)
     │         ├── Crea Trade (aggressorSide = lado de la orden que entra), actualiza leavesQty en ambas
@@ -500,6 +507,24 @@ processOrder(Order incoming)
 
 En cada Order Execution, `BaseLiquidityIndicator` es `R` para el lado `aggressorSide` del trade y `A`
 para la orden que estaba en el libro, compre o venda.
+
+**Match Trade Prevention** (PreventMatch, p.207). Dos órdenes del mismo usuario no se cruzan si las
+dos tienen instrucción MTP con el mismo nivel (`F` = usuario, `M` = usuario y ClearingFirm) y, si
+ambas lo traen, el mismo Trading Group. Una orden sin PreventMatch usa el **defecto de puerto**
+`O`+`F` (cancelar la más antigua); con `allowSelfTrade=true` no hay defecto. Manda el modificador de
+la orden que entra:
+
+| Modificador | Efecto |
+|---|---|
+| `N` | Se cancela la entrante |
+| `O` | Se cancela la que estaba en el libro y la entrante sigue |
+| `B` | Se cancelan las dos |
+| `S` | Se cancela la menor; si son iguales, las dos |
+| `D` / `d` | Se cancela la menor y la mayor baja en esa cantidad (`D` OrderQty y LeavesQty, `d` solo LeavesQty); iguales → las dos. Si la entrante pide decremento y la del libro es mayor sin pedirlo, se cancelan las dos |
+
+Cada orden cancelada recibe Order Cancelled `V` (*Would wash*) y cada decremento Order Restated `W`;
+si afecta a la orden que entra, su aviso va después de su ACK. Una FOK que choca con una propia que
+no sea `O` se cancela sin ejecutar. PreventMatch inválido → Order Rejected `Z`.
 
 ### 6.3 Sincronización — dos capas con propósitos distintos
 
@@ -925,14 +950,14 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-520 tests distribuidos en 55 clases (cifras de `mvn test`, no estimadas):
+544 tests distribuidos en 58 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 235 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
+| Wire format (`protocol/message/`) | 243 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
-| Order management (`server/order/`) | 62 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
-| **Matching engine (`server/matching/`)** | **41** | Prioridad precio-tiempo, self-trade, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
+| Order management (`server/order/`) | 65 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
+| **Matching engine (`server/matching/`)** | **54** | Prioridad precio-tiempo, self-trade y PreventMatch, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
@@ -949,7 +974,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.2 Cobertura del Motor de Matching
 
-Repartida en cinco clases, cubre las invariantes que hacen correcto a un motor de órdenes:
+Repartida en seis clases, cubre las invariantes que hacen correcto a un motor de órdenes:
 
 **`MatchingEnginePriorityTest`** — prioridad precio-tiempo:
 FIFO dentro de un nivel de precio, mejor precio primero entre niveles, precio de ejecución
@@ -959,6 +984,10 @@ fills parciales que dejan remanente en el libro, órdenes MARKET, y aislamiento 
 **`MatchingEngineSelfTradeTest`** — prevención de wash trades:
 la orden pasiva propia se cancela y la agresiva continúa contra la siguiente contrapartida
 ajena; con `allowSelfTrade=true` el cruce sí se ejecuta.
+
+**`MatchingEngineMtpTest`** — PreventMatch: defecto de puerto con aviso `V`, `N`, `B`, `S` (también
+iguales), `D` con la entrante mayor y con la del libro mayor, `D` contra una mayor sin decremento, `d`,
+nivel `M` con distinta ClearingFirm, Trading Group distinto, sin defecto de puerto y FOK.
 
 **`MatchingEngineModifyTest`** — Modify Order (§6.4):
 el reprecio mueve la orden entre niveles sin dejar fantasmas y **la orden sigue siendo
