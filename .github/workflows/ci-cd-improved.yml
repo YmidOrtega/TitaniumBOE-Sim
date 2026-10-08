@@ -14,7 +14,7 @@ env:
   MAVEN_OPTS: -Dhttp.keepAlive=false -Dmaven.wagon.http.pool=false
   # Demo credentials for integration tests only
   DEMO_USER: TRD1
-  DEMO_PASS: Pass1234!
+  DEMO_PASS: Pass1234
 
 jobs:
   build-and-test:

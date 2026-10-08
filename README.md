@@ -72,8 +72,8 @@ Once running:
 | **BOE Protocol** | localhost:8081 |
 
 **Demo Credentials:**
-- Username: `TRD1` / Password: `Pass1234!`
-- Username: `TRD2` / Password: `Pass5678!`
+- Username: `TRD1` / Password: `Pass1234`
+- Username: `TRD2` / Password: `Pass5678`
 
 ---
 
@@ -98,8 +98,8 @@ curl http://localhost:9091/api/health
 curl http://localhost:9091/api/symbols/AAPL
 
 # Authenticated endpoints
-curl -u TRD1:Pass1234! http://localhost:9091/api/positions
-curl -u TRD1:Pass1234! http://localhost:9091/api/trades/my
+curl -u TRD1:Pass1234 http://localhost:9091/api/positions
+curl -u TRD1:Pass1234 http://localhost:9091/api/trades/my
 ```
 
 ---

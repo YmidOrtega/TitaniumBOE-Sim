@@ -17,6 +17,7 @@ public class AuthController {
     private static final Pattern USERNAME_PATTERN = Pattern.compile("[A-Za-z0-9]{1,4}");
     private static final int PASSWORD_MIN = 6;
     private static final int PASSWORD_MAX = 10;
+    private static final Pattern PASSWORD_PATTERN = Pattern.compile("[A-Za-z0-9]{" + PASSWORD_MIN + "," + PASSWORD_MAX + "}");
 
     private final AuthenticationService authService;
 
@@ -56,9 +57,9 @@ public class AuthController {
             return;
         }
 
-        if (req.password() == null || req.password().length() < PASSWORD_MIN || req.password().length() > PASSWORD_MAX) {
+        if (req.password() == null || !PASSWORD_PATTERN.matcher(req.password()).matches()) {
             ctx.status(400).json(ApiResponse.error(
-                    "Password must be between %d and %d characters".formatted(PASSWORD_MIN, PASSWORD_MAX)));
+                    "Password must be %d-%d alphanumeric characters".formatted(PASSWORD_MIN, PASSWORD_MAX)));
             return;
         }
 

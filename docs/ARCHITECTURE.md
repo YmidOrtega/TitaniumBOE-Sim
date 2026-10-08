@@ -786,8 +786,8 @@ Authorization: Basic base64(username:password)
 ```
 
 Credenciales demo (modo `DEMO_MODE=true`):
-- `TRD1` / `Pass1234!`
-- `TRD2` / `Pass5678!`
+- `TRD1` / `Pass1234`
+- `TRD2` / `Pass5678`
 
 ---
 
