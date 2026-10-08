@@ -48,14 +48,14 @@ class OrderManagerTest {
 
     // Helper: builds a spec-compliant NewOrder wire message and parses it.
     // Bitfield layout per spec v2.11.90 Table 28:
-    //   bf1 bits: 2=Price, 3=OrdType
+    //   bf1 bits: 2=Price, 4=OrdType
     //   bf2 bits: 0=Symbol, 6=Capacity
     //   bf4 bits: 0=MaturityDate, 1=StrikePrice, 2=PutOrCall, 4=OpenClose
     private NewOrderMessage buildNewOrderMessage(String clOrdID, byte side, int orderQty, String symbol, byte ordType, BigDecimal price, byte capacity, byte openClose, String maturityDate, BigDecimal strikePrice, byte putOrCall) {
         byte bf1 = 0, bf2 = 0, bf3 = 0, bf4 = 0;
 
         if (price != null)                            bf1 |= 0x04;
-        if (ordType != 0)                             bf1 |= 0x08;
+        if (ordType != 0)                             bf1 |= 0x10;
         if (symbol != null && !symbol.isEmpty())      bf2 |= 0x01;
         if (capacity != 0)                            bf2 |= 0x40;
         if (maturityDate != null && !maturityDate.isEmpty()) bf4 |= 0x01;
@@ -78,7 +78,7 @@ class OrderManagerTest {
         int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1 + 4 + 1;
         int optionalSize = 0;
         if ((bf1 & 0x04) != 0) optionalSize += 8;
-        if ((bf1 & 0x08) != 0) optionalSize += 1;
+        if ((bf1 & 0x10) != 0) optionalSize += 1;
         if ((bf2 & 0x01) != 0) optionalSize += 8;
         if ((bf2 & 0x40) != 0) optionalSize += 1;
         if ((bf4 & 0x01) != 0) optionalSize += 4;
@@ -110,7 +110,7 @@ class OrderManagerTest {
         if (bitfields.length > 0) buffer.put(bitfields);
 
         if ((bf1 & 0x04) != 0) buffer.put(BinaryPrice.fromPrice(price).toBytes());
-        if ((bf1 & 0x08) != 0) buffer.put(ordType);
+        if ((bf1 & 0x10) != 0) buffer.put(ordType);
         if ((bf2 & 0x01) != 0) {
             byte[] symbolBytes = new byte[8];
             if (symbol != null) {
@@ -351,5 +351,23 @@ class OrderManagerTest {
         assertTrue(orderManager.processNewOrder(createNewOrderMessage("REST2", '1', 100.0, 10, "AAPL"), "testUser").isAcknowledged());
 
         assertTrue(orderManager.processNewOrder(createNewOrderMessage("BOE1", '1', 100.0, 10, "AAPL"), clientSession).isAcknowledged());
+    }
+
+    @Test
+    void processNewOrder_whenAnUnsupportedOptionalFieldIsSet_isRejectedWithZ() {
+        NewOrderMessage message = NewOrderMessage.parse(new byte[]{
+                (byte) 0xBA, (byte) 0xBA, 0x2A, 0x00, 0x38, 0x00, 0x01, 0x00, 0x00, 0x00,
+                'M', 'Q', '1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                '1', 0x0A, 0x00, 0x00, 0x00,
+                0x01, 0x40, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00   // Bitfield 1 = MinQty (4 bytes)
+        });
+
+        OrderManager.OrderResponse response = orderManager.processNewOrder(message, clientSession);
+
+        assertFalse(response.isAcknowledged());
+        assertEquals(OrderRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
+        assertEquals("MinQty is not supported by the simulator", response.getRejectText());
+        verifyNoInteractions(orderValidator);
+        verify(matchingEngine, never()).processOrder(any(Order.class));
     }
 }

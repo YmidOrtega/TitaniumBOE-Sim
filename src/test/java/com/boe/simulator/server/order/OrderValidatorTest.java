@@ -67,7 +67,7 @@ class OrderValidatorTest {
 
     // Helper: builds a spec-compliant NewOrder wire message and parses it.
     // Bitfield layout per spec v2.11.90 Table 28:
-    //   bf1 bits: 2=Price, 3=OrdType
+    //   bf1 bits: 2=Price, 4=OrdType
     //   bf2 bits: 0=Symbol, 6=Capacity
     //   bf4 bits: 0=MaturityDate, 1=StrikePrice, 2=PutOrCall, 4=OpenClose
     // Bitfields array always covers up to the highest non-zero bitfield index.
@@ -75,7 +75,7 @@ class OrderValidatorTest {
         byte bf1 = 0, bf2 = 0, bf3 = 0, bf4 = 0;
 
         if (price != null)                            bf1 |= 0x04;
-        if (ordType != 0)                             bf1 |= 0x08;
+        if (ordType != 0)                             bf1 |= 0x10;
         if (symbol != null && !symbol.isEmpty())      bf2 |= 0x01;
         if (capacity != 0)                            bf2 |= 0x40;
         if (maturityDate != null && !maturityDate.isEmpty()) bf4 |= 0x01;
@@ -99,7 +99,7 @@ class OrderValidatorTest {
         int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1 + 4 + 1;
         int optionalSize = 0;
         if ((bf1 & 0x04) != 0) optionalSize += 8;
-        if ((bf1 & 0x08) != 0) optionalSize += 1;
+        if ((bf1 & 0x10) != 0) optionalSize += 1;
         if ((bf2 & 0x01) != 0) optionalSize += 8;
         if ((bf2 & 0x40) != 0) optionalSize += 1;
         if ((bf4 & 0x01) != 0) optionalSize += 4;
@@ -132,7 +132,7 @@ class OrderValidatorTest {
 
         // Optional fields in spec order
         if ((bf1 & 0x04) != 0) buffer.put(BinaryPrice.fromPrice(price).toBytes());
-        if ((bf1 & 0x08) != 0) buffer.put(ordType);
+        if ((bf1 & 0x10) != 0) buffer.put(ordType);
         if ((bf2 & 0x01) != 0) {
             byte[] symbolBytes = new byte[8];
             if (symbol != null) {

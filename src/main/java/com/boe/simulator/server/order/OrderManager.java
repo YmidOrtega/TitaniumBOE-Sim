@@ -136,7 +136,14 @@ public class OrderManager {
                     new Object[]{context.getSessionIdentifier(), message.getClOrdID()});
         }
 
-        // 1. Validate message
+        // 1. Optional fields the simulator cannot honor (Input Bitfields Per Message)
+        if (message.getFieldError() != null) {
+            LOGGER.log(Level.WARNING, "[{0}] Order rejected - {1}", new Object[]{context.getSessionIdentifier(), message.getFieldError()});
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, message.getFieldError());
+        }
+
+        // 2. Validate message
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
         if (!validation.isValid()) {
             LOGGER.log(Level.WARNING, "[{0}] Order rejected - validation failed: {1}",
@@ -149,7 +156,7 @@ public class OrderManager {
             );
         }
         
-        // 2. Validate symbol
+        // 3. Validate symbol
         if (!isValidSymbol(message.getSymbol())) {
             if (LOGGER.isLoggable(Level.WARNING)) {
                 LOGGER.log(Level.WARNING, "[{0}] Order rejected - invalid symbol: {1}",
@@ -163,7 +170,7 @@ public class OrderManager {
             );
         }
 
-        // 3. Verify duplicate ClOrdID
+        // 4. Verify duplicate ClOrdID
         if (activeOrdersByClOrdID.containsKey(message.getClOrdID())) {
             if (LOGGER.isLoggable(Level.WARNING)) {
                 LOGGER.log(Level.WARNING, "[{0}] Order rejected - duplicate ClOrdID: {1}",
@@ -177,7 +184,7 @@ public class OrderManager {
             );
         }
 
-        // 4. Max open orders per BOE port
+        // 5. Max open orders per BOE port
         if (context instanceof TcpExecutionContext
                 && countOpenBoeOrders(context.getUsername()) >= maxOpenOrdersPerSession) {
             LOGGER.log(Level.WARNING, "[{0}] Order rejected - max open orders ({1}) reached: {2}",
@@ -190,7 +197,7 @@ public class OrderManager {
             );
         }
 
-        // 5. Create order
+        // 6. Create order
         try {
             long orderID = orderIDGenerator.getAndIncrement();
 
@@ -214,17 +221,17 @@ public class OrderManager {
                     .matchingUnit(BoeSessionState.MATCHING_UNIT)
                     .build();
 
-            // 4. Acknowledge order
+            // 7. Acknowledge order
             order.acknowledge();
 
-            // 5. Add to cache
+            // 8. Add to cache
             activeOrdersByClOrdID.put(order.getClOrdID(), order);
             activeOrdersByOrderID.put(order.getOrderID(), order);
 
-            // 6. Send to matching engine
+            // 9. Send to matching engine
             List<Trade> trades = matchingEngine.processOrder(order);
 
-            // 7. Enqueue for async persistence — keeps disk I/O off the NewOrder → ACK hot path
+            // 10. Enqueue for async persistence — keeps disk I/O off the NewOrder → ACK hot path
             orderRepository.saveAsync(order);
 
             totalOrdersAccepted.incrementAndGet();
