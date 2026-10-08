@@ -47,14 +47,23 @@ public class OrderValidator {
             if (symbolError != null) errors.add(symbolError);
         }
 
-        // 5. Validar Price (requerido para limit orders)
-        OrdType ordType = message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : OrdType.LIMIT;
+        // 5. Validar OrdType y Price (requerido para limit, prohibido para market)
+        OrdType ordType = null;
+        byte ordTypeByte = message.getOrdType();
+        if (ordTypeByte == 0) ordType = OrdType.LIMIT;
+        else if (ordTypeByte == '3' || ordTypeByte == '4') errors.add("Stop and Stop Limit orders are not supported by the simulator");
+        else {
+            try { ordType = OrdType.fromByte(ordTypeByte); }
+            catch (IllegalArgumentException e) { errors.add("Invalid OrdType: " + e.getMessage()); }
+        }
         if (ordType == OrdType.LIMIT) {
             if (message.getPrice() == null) errors.add("Price is required for limit orders");
             else {
                 String priceError = validatePrice(message.getPrice());
                 if (priceError != null) errors.add(priceError);
             }
+        } else if (ordType == OrdType.MARKET && message.getPrice() != null) {
+            errors.add("Price must not be specified on market orders");
         }
 
         // 6. Validar Capacity (requerido)

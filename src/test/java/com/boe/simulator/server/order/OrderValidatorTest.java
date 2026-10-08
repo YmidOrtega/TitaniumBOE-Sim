@@ -341,4 +341,34 @@ class OrderValidatorTest {
         when(orderRepository.existsByClOrdID(clOrdID)).thenReturn(false);
         assertFalse(orderValidator.isDuplicateClOrdID(clOrdID, orderRepository));
     }
+
+    @Test
+    void validateNewOrder_whenStopOrder_isRejectedAsUnsupported() {
+        NewOrderMessage message = buildNewOrderMessage("STOP1", (byte) '1', 10, "AAPL", (byte) '3', new BigDecimal("150.00"), (byte) 'C', (byte) 0, null, null, (byte) 0);
+        OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
+        assertFalse(result.isValid());
+        assertTrue(result.errorMessage().contains("Stop and Stop Limit orders are not supported by the simulator"));
+    }
+
+    @Test
+    void validateNewOrder_whenOrdTypeIsUnknown_isRejectedInsteadOfThrowing() {
+        NewOrderMessage message = buildNewOrderMessage("ODD1", (byte) '1', 10, "AAPL", (byte) 'P', new BigDecimal("150.00"), (byte) 'C', (byte) 0, null, null, (byte) 0);
+        OrderValidator.ValidationResult result = assertDoesNotThrow(() -> orderValidator.validateNewOrder(message));
+        assertFalse(result.isValid());
+        assertTrue(result.errorMessage().contains("Invalid OrdType"));
+    }
+
+    @Test
+    void validateNewOrder_whenMarketOrderHasPrice_isRejected() {
+        NewOrderMessage message = buildNewOrderMessage("MKT1", (byte) '1', 10, "AAPL", (byte) '1', new BigDecimal("150.00"), (byte) 'C', (byte) 0, null, null, (byte) 0);
+        OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
+        assertFalse(result.isValid());
+        assertTrue(result.errorMessage().contains("Price must not be specified on market orders"));
+    }
+
+    @Test
+    void validateNewOrder_whenMarketOrderHasNoPrice_isValid() {
+        NewOrderMessage message = buildNewOrderMessage("MKT2", (byte) '1', 10, "AAPL", (byte) '1', null, (byte) 'C', (byte) 0, null, null, (byte) 0);
+        assertTrue(orderValidator.validateNewOrder(message).isValid());
+    }
 }
