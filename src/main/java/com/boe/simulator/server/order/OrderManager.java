@@ -504,10 +504,10 @@ public class OrderManager {
                         handler.getSession().getReturnBitfields()
                 );
                 execMsg.setMatchingUnit(handler.getSession().getMatchingUnit());
-                execMsg.setSequenceNumber(handler.getSession().getNextSentSequenceNumber());
-
-                byte[] msgBytes = execMsg.toBytes();
-                handler.sendMessage(msgBytes);
+                handler.sendSequenced(seq -> {
+                    execMsg.setSequenceNumber(seq);
+                    return execMsg.toBytes();
+                });
 
                 LOGGER.log(Level.INFO, "Sent execution to {0}: {1}",
                         new Object[]{order.getUsername(), execMsg});

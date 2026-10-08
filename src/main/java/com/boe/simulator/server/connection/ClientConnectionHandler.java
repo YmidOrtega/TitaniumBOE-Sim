@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.IntFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -348,6 +349,15 @@ public class ClientConnectionHandler implements Runnable {
 
     }
 
+    public void sendSequenced(IntFunction<byte[]> encoder) throws IOException {
+        sendLock.lock();
+        try {
+            sendMessage(encoder.apply(session.getNextSentSequenceNumber()));
+        } finally {
+            sendLock.unlock();
+        }
+    }
+
     public void sendMessage(byte[] messageBytes) throws IOException {
         sendLock.lock();
         try {
@@ -374,9 +384,10 @@ public class ClientConnectionHandler implements Runnable {
             );
 
             response.setMatchingUnit(session.getMatchingUnit());
-            response.setSequenceNumber(session.getNextSentSequenceNumber());
-
-            sendMessage(response.toBytes());
+            sendSequenced(seq -> {
+                response.setSequenceNumber(seq);
+                return response.toBytes();
+            });
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent LoginResponse: status={1}, msg=''{2}''", new Object[]{
                     session.getConnectionId(),
@@ -405,10 +416,10 @@ public class ClientConnectionHandler implements Runnable {
             );
 
             response.setMatchingUnit(session.getMatchingUnit());
-            response.setSequenceNumber(session.getNextSentSequenceNumber());
-
-            byte[] responseBytes = response.toBytes();
-            sendMessage(responseBytes);
+            sendSequenced(seq -> {
+                response.setSequenceNumber(seq);
+                return response.toBytes();
+            });
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent LogoutResponse", session.getConnectionId());
 
@@ -419,15 +430,12 @@ public class ClientConnectionHandler implements Runnable {
 
     private void sendOrderAcknowledgment(com.boe.simulator.server.order.Order order) {
         try {
-            OrderAcknowledgmentMessage ack = OrderAcknowledgmentMessage.fromOrder(
+            sendSequenced(seq -> OrderAcknowledgmentMessage.fromOrder(
                     order,
                     session.getMatchingUnit(),
-                    session.getNextSentSequenceNumber(),
+                    seq,
                     session.getReturnBitfields()
-            );
-
-            byte[] ackBytes = ack.toBytes();
-            sendMessage(ackBytes);
+            ).toBytes());
 
             if (LOGGER.isLoggable(Level.FINE)) {
                 LOGGER.log(Level.FINE, "[Session {0}] → Sent OrderAcknowledgment: ClOrdID={1}, OrderID={2}", new Object[]{
@@ -446,10 +454,10 @@ public class ClientConnectionHandler implements Runnable {
         try {
             OrderRejectedMessage rejected = new OrderRejectedMessage(clOrdID, reason, text);
             rejected.setMatchingUnit(session.getMatchingUnit());
-            rejected.setSequenceNumber(session.getNextSentSequenceNumber());
-
-            byte[] rejectedBytes = rejected.toBytes();
-            sendMessage(rejectedBytes);
+            sendSequenced(seq -> {
+                rejected.setSequenceNumber(seq);
+                return rejected.toBytes();
+            });
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderRejected: ClOrdID={1}, Reason={2}", new Object[]{
                     session.getConnectionId(),
@@ -464,13 +472,11 @@ public class ClientConnectionHandler implements Runnable {
 
     private void sendOrderModified(com.boe.simulator.server.order.Order order) {
         try {
-            OrderModifiedMessage modified = OrderModifiedMessage.fromOrder(
+            sendSequenced(seq -> OrderModifiedMessage.fromOrder(
                     order,
                     session.getMatchingUnit(),
-                    session.getNextSentSequenceNumber()
-            );
-
-            sendMessage(modified.toBytes());
+                    seq
+            ).toBytes());
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderModified: ClOrdID={1}, OrderID={2}",
                     new Object[]{session.getConnectionId(),
@@ -501,10 +507,10 @@ public class ClientConnectionHandler implements Runnable {
         try {
             OrderCancelledMessage cancelled = OrderCancelledMessage.fromOrder(order, reason);
             cancelled.setMatchingUnit(session.getMatchingUnit());
-            cancelled.setSequenceNumber(session.getNextSentSequenceNumber());
-
-            byte[] cancelledBytes = cancelled.toBytes();
-            sendMessage(cancelledBytes);
+            sendSequenced(seq -> {
+                cancelled.setSequenceNumber(seq);
+                return cancelled.toBytes();
+            });
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderCancelled: ClOrdID={1}", new Object[]{
                     session.getConnectionId(),

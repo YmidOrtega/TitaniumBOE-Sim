@@ -67,10 +67,10 @@ public class HeartbeatMonitor {
         try {
             ServerHeartbeatMessage heartbeat = new ServerHeartbeatMessage();
             heartbeat.setMatchingUnit(handler.getSession().getMatchingUnit());
-            heartbeat.setSequenceNumber(handler.getSession().getNextSentSequenceNumber());
-
-            byte[] heartbeatBytes = heartbeat.toBytes();
-            handler.sendMessage(heartbeatBytes);
+            handler.sendSequenced(seq -> {
+                heartbeat.setSequenceNumber(seq);
+                return heartbeat.toBytes();
+            });
 
             handler.getSession().updateHeartbeatSent();
 
