@@ -79,7 +79,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 593 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 599 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -664,8 +664,9 @@ El Modify Order requiere un orden específico para mantener la integridad del Or
 1. Calcular delta:
      delta        = newOrderQty - order.getEffectiveOrderQty()
      newLeavesQty = order.getLeavesQty() + delta
-2. Si solo baja la cantidad (mismo precio y OrdType, newLeavesQty > 0)
-     → book.updateInPlace: la orden conserva su sitio en la cola → retorna []
+2. Si el modify solo baja la cantidad, cambia MaxFloor y/o cambia StopPx de una Stop sin elegir
+   (mismo precio y OrdType, sin subir la cantidad, newLeavesQty > 0)
+     → book.updateInPlace (o la Stop sigue en su sitio de la lista): conserva la prioridad → retorna []
 3. removeOrder(book)        // ANTES de cambiar el precio (TreeMap key)
 4. Si newLeavesQty <= 0 → order.cancel() → retorna []
 5. order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty)
@@ -676,7 +677,10 @@ El Modify Order requiere un orden específico para mantener la integridad del Or
 Si el modify cruza y llena la orden entera, la respuesta es Order Modified seguido de las
 ejecuciones; Order Cancelled se reserva para el caso 4.
 
-Cualquier otro cambio, o un modify sin cambios, pierde la prioridad (p.77).
+Cualquier otro cambio, o un modify sin cambios, pierde la prioridad (p.77). Un MaxFloor o un StopPx
+iguales a los actuales no cuentan como cambio. Si cambia MaxFloor, la parte visible se recalcula.
+Las Stops pendientes tienen su propio orden de entrada en el libro: una Stop modificada que pierde la
+prioridad vuelve a entrar al final.
 
 **Validación en `OrderManager.processModifyOrder`:**
 
@@ -1029,14 +1033,14 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-593 tests distribuidos en 65 clases (cifras de `mvn test`, no estimadas):
+599 tests distribuidos en 65 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
 | Wire format (`protocol/message/`) | 253 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
 | Order management (`server/order/`) | 81 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
-| **Matching engine (`server/matching/`)** | **64** | Prioridad precio-tiempo, self-trade y PreventMatch, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
+| **Matching engine (`server/matching/`)** | **70** | Prioridad precio-tiempo, self-trade y PreventMatch, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
@@ -1073,7 +1077,7 @@ el reprecio mueve la orden entre niveles sin dejar fantasmas y **la orden sigue 
 cancelable después**, que es la regresión concreta que aparecería si se actualizara el precio
 antes de removerla del `TreeMap`. Cubre también la lógica de delta sobre `leavesQty` en ambos
 sentidos, la auto-cancelación cuando el delta la deja en cero, el reprecio agresivo que cruza y la
-prioridad temporal: bajar solo la cantidad la conserva; aumentarla, reprecio o un modify sin cambios la pierden.
+prioridad temporal: bajar la cantidad, cambiar MaxFloor o el StopPx de una Stop sin elegir (solos o combinados) la conservan; aumentar la cantidad, reprecio, combinarlos con otros cambios o un modify sin cambios la pierden.
 
 **`MatchingEngineTimeInForceTest`** — TimeInForce y lado agresor:
 IOC con resto cancelado y sin contrapartida, FOK que no ejecuta nada si no hay liquidez para toda la
