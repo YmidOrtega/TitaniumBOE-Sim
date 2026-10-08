@@ -20,6 +20,7 @@ public class ServerConfiguration {
     // Flow control
     private final int maxUnacknowledgedMessages;
     private final int resumeReadingBelow;
+    private final int maxOpenOrdersPerSession;
 
     // Logging
     private final Level logLevel;
@@ -36,6 +37,7 @@ public class ServerConfiguration {
         this.rateLimitPerSecond = builder.rateLimitPerSecond;
         this.maxUnacknowledgedMessages = builder.maxUnacknowledgedMessages;
         this.resumeReadingBelow = builder.resumeReadingBelow;
+        this.maxOpenOrdersPerSession = builder.maxOpenOrdersPerSession;
         this.logLevel = builder.logLevel;
     }
     
@@ -65,6 +67,7 @@ public class ServerConfiguration {
     public int getRateLimitPerSecond() { return rateLimitPerSecond; }
     public int getMaxUnacknowledgedMessages() { return maxUnacknowledgedMessages; }
     public int getResumeReadingBelow() { return resumeReadingBelow; }
+    public int getMaxOpenOrdersPerSession() { return maxOpenOrdersPerSession; }
     public Level getLogLevel() { return logLevel; }
     
     @Override
@@ -79,6 +82,7 @@ public class ServerConfiguration {
                 ", rateLimit=" + rateLimitPerSecond + "/s" +
                 ", maxUnacknowledged=" + maxUnacknowledgedMessages +
                 ", resumeReadingBelow=" + resumeReadingBelow +
+                ", maxOpenOrdersPerSession=" + maxOpenOrdersPerSession +
                 ", logLevel=" + logLevel +
                 '}';
     }
@@ -93,6 +97,7 @@ public class ServerConfiguration {
         private int rateLimitPerSecond = 1_000;
         private int maxUnacknowledgedMessages = 1_024;
         private int resumeReadingBelow = 960;
+        private int maxOpenOrdersPerSession = 2_000; // spec: 200,000 per port
         private Level logLevel = Level.INFO;
         
         public Builder host(String host) {
@@ -141,6 +146,12 @@ public class ServerConfiguration {
                 throw new IllegalArgumentException("Resume threshold must be between 1 and the pause threshold");
             this.maxUnacknowledgedMessages = maxUnacknowledged;
             this.resumeReadingBelow = resumeBelow;
+            return this;
+        }
+
+        public Builder maxOpenOrdersPerSession(int limit) {
+            if (limit < 1) throw new IllegalArgumentException("Max open orders must be at least 1");
+            this.maxOpenOrdersPerSession = limit;
             return this;
         }
         

@@ -92,6 +92,7 @@ public class CboeServer {
         this.healthMetrics = new HealthMetrics();
         this.orderManager = new OrderManager(dbManager);
         this.orderManager.setSessionManager(sessionManager);
+        this.orderManager.setMaxOpenOrdersPerSession(config.getMaxOpenOrdersPerSession());
 
         // Initialize statistics generator
         this.statisticsGenerator = new StatisticsGeneratorService(

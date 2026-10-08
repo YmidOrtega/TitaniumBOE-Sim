@@ -306,4 +306,50 @@ class OrderManagerTest {
             "Reject text was: " + response.getRejectText());
         assertEquals(0, orderManager.getTotalOrdersCancelled(), "Total cancelled orders should be 0");
     }
+
+    @Test
+    void processNewOrder_whenMaxOpenOrdersReached_isRejectedWithReasonO() {
+        orderManager.setMaxOpenOrdersPerSession(2);
+        when(orderValidator.validateNewOrder(any(NewOrderMessage.class)))
+                .thenReturn(OrderValidator.ValidationResult.valid());
+        when(matchingEngine.processOrder(any(Order.class))).thenReturn(Collections.emptyList());
+
+        assertTrue(orderManager.processNewOrder(createNewOrderMessage("OPEN1", '1', 100.0, 10, "AAPL"), clientSession).isAcknowledged());
+        assertTrue(orderManager.processNewOrder(createNewOrderMessage("OPEN2", '1', 100.0, 10, "AAPL"), clientSession).isAcknowledged());
+
+        OrderManager.OrderResponse response =
+                orderManager.processNewOrder(createNewOrderMessage("OPEN3", '1', 100.0, 10, "AAPL"), clientSession);
+
+        assertFalse(response.isAcknowledged());
+        assertEquals(OrderRejectedMessage.REASON_MAX_OPEN_ORDERS_EXCEEDED, response.getRejectReason());
+        verify(matchingEngine, times(2)).processOrder(any(Order.class));
+    }
+
+    @Test
+    void processNewOrder_afterCancelBelowMaxOpenOrders_isAcceptedAgain() {
+        orderManager.setMaxOpenOrdersPerSession(1);
+        when(orderValidator.validateNewOrder(any(NewOrderMessage.class)))
+                .thenReturn(OrderValidator.ValidationResult.valid());
+        when(matchingEngine.processOrder(any(Order.class))).thenReturn(Collections.emptyList());
+
+        orderManager.processNewOrder(createNewOrderMessage("OPEN1", '1', 100.0, 10, "AAPL"), clientSession);
+        assertFalse(orderManager.processNewOrder(createNewOrderMessage("OPEN2", '1', 100.0, 10, "AAPL"), clientSession).isAcknowledged());
+
+        orderManager.processCancelOrder("OPEN1", "testUser");
+
+        assertTrue(orderManager.processNewOrder(createNewOrderMessage("OPEN3", '1', 100.0, 10, "AAPL"), clientSession).isAcknowledged());
+    }
+
+    @Test
+    void processNewOrder_restOrdersDoNotCountTowardsBoeLimit() {
+        orderManager.setMaxOpenOrdersPerSession(1);
+        when(orderValidator.validateNewOrder(any(NewOrderMessage.class)))
+                .thenReturn(OrderValidator.ValidationResult.valid());
+        when(matchingEngine.processOrder(any(Order.class))).thenReturn(Collections.emptyList());
+
+        assertTrue(orderManager.processNewOrder(createNewOrderMessage("REST1", '1', 100.0, 10, "AAPL"), "testUser").isAcknowledged());
+        assertTrue(orderManager.processNewOrder(createNewOrderMessage("REST2", '1', 100.0, 10, "AAPL"), "testUser").isAcknowledged());
+
+        assertTrue(orderManager.processNewOrder(createNewOrderMessage("BOE1", '1', 100.0, 10, "AAPL"), clientSession).isAcknowledged());
+    }
 }

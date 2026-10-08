@@ -24,6 +24,7 @@ import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
 import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
+import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.OrderBook;
@@ -42,6 +43,7 @@ public class OrderManager {
 
     private ClientSessionManager sessionManager;
     private WebSocketService webSocketService;
+    private int maxOpenOrdersPerSession = ServerConfiguration.getDefault().getMaxOpenOrdersPerSession();
 
     private final ConcurrentHashMap<String, Order> activeOrdersByClOrdID;
     private final ConcurrentHashMap<Long, Order> activeOrdersByOrderID;
@@ -85,6 +87,10 @@ public class OrderManager {
 
     public void setWebSocketService(WebSocketService webSocketService) {
         this.webSocketService = webSocketService;
+    }
+
+    public void setMaxOpenOrdersPerSession(int maxOpenOrdersPerSession) {
+        this.maxOpenOrdersPerSession = maxOpenOrdersPerSession;
     }
 
     private void setupMatchingEngineListeners() {
@@ -168,7 +174,20 @@ public class OrderManager {
             );
         }
 
-        // 3. Create order
+        // 4. Max open orders per BOE port
+        if (context instanceof TcpExecutionContext
+                && countOpenBoeOrders(context.getUsername()) >= maxOpenOrdersPerSession) {
+            LOGGER.log(Level.WARNING, "[{0}] Order rejected - max open orders ({1}) reached: {2}",
+                    new Object[]{context.getSessionIdentifier(), maxOpenOrdersPerSession, message.getClOrdID()});
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(
+                    message.getClOrdID(),
+                    OrderRejectedMessage.REASON_MAX_OPEN_ORDERS_EXCEEDED,
+                    "Max open orders count exceeded (" + maxOpenOrdersPerSession + ")"
+            );
+        }
+
+        // 5. Create order
         try {
             long orderID = orderIDGenerator.getAndIncrement();
 
@@ -386,6 +405,14 @@ public class OrderManager {
             LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error cancelling order", e);
             return CancelResponse.rejected(origClOrdID, "Internal error: " + e.getMessage());
         }
+    }
+
+    private long countOpenBoeOrders(String username) {
+        return activeOrdersByOrderID.values().stream()
+                .filter(o -> o.getState().isActive())
+                .filter(o -> o.getUsername() != null && o.getUsername().equals(username))
+                .filter(o -> o.getSessionSubID() != null && o.getSessionSubID().startsWith(TcpExecutionContext.SESSION_PREFIX))
+                .count();
     }
 
     private CancelResponse processMassCancel(CancelOrderMessage message, OrderExecutionContext context) {

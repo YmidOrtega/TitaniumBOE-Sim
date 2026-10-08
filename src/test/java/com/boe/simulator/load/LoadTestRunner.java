@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   --ack-sessions=N   parallel sessions for latency test      (default: 10)
  *   --ack-orders=N     orders per session for latency test     (default: 90)
  *   --mem-orders=N     total orders for memory stability test  (default: 10000)
+ *   --max-open=N       server open-order limit per BOE session (default: 2000)
  *   --skip-tcp         skip Phase 1
  *   --skip-login       skip Phase 2
  *   --skip-rest        skip Phase 3
@@ -76,6 +77,7 @@ public class LoadTestRunner {
         int ackSessions  = intArg(args, "--ack-sessions",     10);
         int ackOrders    = intArg(args, "--ack-orders",        90);
         int memOrders    = intArg(args, "--mem-orders",   10_000);
+        int maxOpen      = intArg(args, "--max-open",      2_000);
 
         boolean skipTcp    = hasFlag(args, "--skip-tcp");
         boolean skipLogin  = hasFlag(args, "--skip-login");
@@ -97,7 +99,7 @@ public class LoadTestRunner {
         if (!skipLogin)  { loginResult = runLoginThroughputTest(loginTarget, holdSecs);      System.out.println(); }
         if (!skipRest)   { restResult  = runRestTest(restTotal, concurrency);                System.out.println(); }
         if (!skipAck)    { ackResult   = runOrderAckLatencyTest(ackSessions, ackOrders);     System.out.println(); }
-        if (!skipMemory) { memResult   = runMemoryStabilityTest(memOrders);                  System.out.println(); }
+        if (!skipMemory) { memResult   = runMemoryStabilityTest(memOrders, maxOpen);         System.out.println(); }
 
         System.out.println("═══════════════════════════════════════════════════════════");
         System.out.println("  FINAL REPORT");
@@ -425,37 +427,42 @@ public class LoadTestRunner {
     }
 
     // ── Phase 5: Memory Stability ─────────────────────────────────────────────
-    // Single session sends N orders sequentially; measures heap growth.
-    // Orders use a price that will not match (buy at $0.01) so they rest in the book.
+    // Sends N orders that rest in the book; measures heap growth.
+    // Orders are spread over several sessions so none exceeds the server's
+    // open-order limit per BOE session (--max-open).
     // A bounded heap growth (< 100 bytes/order after GC) indicates no object leak.
 
-    static MemoryStabilityResult runMemoryStabilityTest(int totalOrders) throws Exception {
-        System.out.printf("┌─ Phase 5: Memory Stability  orders=%,d%n", totalOrders);
+    static MemoryStabilityResult runMemoryStabilityTest(int totalOrders, int maxOpenPerSession) throws Exception {
+        int warmUp   = 100;
+        int sessions = (warmUp + totalOrders + maxOpenPerSession - 1) / maxOpenPerSession;
+        System.out.printf("┌─ Phase 5: Memory Stability  orders=%,d  sessions=%d (≤%,d open each)%n",
+                totalOrders, sessions, maxOpenPerSession);
         System.out.println("│");
 
         HttpClient http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
-        registerUser(http, "MST1", "MemTest1!"); // usernames are at most 4 chars
-        System.out.println("│  User MST1 registered");
 
+        List<Socket> sockets = new ArrayList<>();
         int ackOk     = 0;
         int ackFailed = 0;
 
-        try (Socket s = loginBoe("MST1", "MemTest1!", "MST")) {
-            if (s == null) throw new IOException("Login failed for MST1");
-            s.setSoTimeout(10_000);
-            OutputStream out = s.getOutputStream();
-            InputStream  in  = s.getInputStream();
+        try {
+            for (int k = 0; k < sessions; k++) {
+                String user = String.format("M%03d", k); // usernames are at most 4 chars
+                registerUser(http, user, "MemTest1!");
+                Socket s = loginBoe(user, "MemTest1!", String.format("M%03d", k));
+                if (s == null) throw new IOException("Login failed for " + user);
+                s.setSoTimeout(10_000);
+                sockets.add(s);
+            }
+            System.out.printf("│  %d sessions logged in%n", sessions);
 
             // Warm-up: 100 orders to let JIT settle
             System.out.println("│  Warm-up (100 orders)...");
-            for (int i = 0; i < 100; i++) {
-                String clOrdID = String.format("WU%07d", i);
-                out.write(buildNewOrder(clOrdID, i + 1));
-                out.flush();
-                byte[] ack = readUntilOrderResponse(in);
-                if (ack != null && ack[4] == MSG_ORDER_ACK) ackOk++;
+            for (int i = 0; i < warmUp; i++) {
+                if (sendRestingOrder(sockets.get(i / maxOpenPerSession), String.format("WU%07d", i),
+                        i % maxOpenPerSession + 1)) ackOk++;
                 else ackFailed++;
             }
 
@@ -469,11 +476,9 @@ public class LoadTestRunner {
             System.out.printf("│  Sending %,d orders...%n", totalOrders);
 
             for (int i = 0; i < totalOrders; i++) {
-                String clOrdID = String.format("MS%07d", i);
-                out.write(buildNewOrder(clOrdID, 100 + i + 1));
-                out.flush();
-                byte[] ack = readUntilOrderResponse(in);
-                if (ack != null && ack[4] == MSG_ORDER_ACK) ackOk++;
+                int n = warmUp + i;
+                if (sendRestingOrder(sockets.get(n / maxOpenPerSession), String.format("MS%07d", i),
+                        n % maxOpenPerSession + 1)) ackOk++;
                 else ackFailed++;
 
                 if ((i + 1) % 2_000 == 0)
@@ -489,7 +494,17 @@ public class LoadTestRunner {
 
             return new MemoryStabilityResult(totalOrders, ackOk, ackFailed,
                     heapBefore, heapAfter, elapsedMs);
+        } finally {
+            for (Socket s : sockets) s.close();
         }
+    }
+
+    static boolean sendRestingOrder(Socket s, String clOrdID, int seqNum) throws IOException {
+        OutputStream out = s.getOutputStream();
+        out.write(buildNewOrder(clOrdID, seqNum));
+        out.flush();
+        byte[] ack = readUntilOrderResponse(s.getInputStream());
+        return ack != null && ack[4] == MSG_ORDER_ACK;
     }
 
     // ── Wire helpers ──────────────────────────────────────────────────────────

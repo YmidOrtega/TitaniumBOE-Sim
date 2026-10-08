@@ -42,6 +42,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
     public static final byte REASON_INVALID_CAPACITY           = (byte) 'C';
     public static final byte REASON_RATE_LIMIT_EXCEEDED        = (byte) 'R';
     public static final byte REASON_SESSION_NOT_AUTHENTICATED  = (byte) 'A';
+    public static final byte REASON_MAX_OPEN_ORDERS_EXCEEDED   = (byte) 'o';
 
     // Header (unsequenced — always 0)
     private byte matchingUnit;
