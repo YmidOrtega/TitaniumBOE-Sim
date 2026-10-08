@@ -22,6 +22,7 @@ import com.boe.simulator.server.auth.AuthenticationService;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.heartbeat.HeartbeatMonitor;
+import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.BoeSessionState;
@@ -41,6 +42,7 @@ public class ClientConnectionHandler implements Runnable {
     private final ErrorHandler errorHandler;
     private final RateLimiter rateLimiter;
     private final OrderManager orderManager;
+    private final HealthMetrics healthMetrics;
 
     private InputStream inputStream;
     private OutputStream outputStream;
@@ -56,6 +58,10 @@ public class ClientConnectionHandler implements Runnable {
     private record Inbound(BoeMessage message, boolean receivedDuringReplay) {}
 
     public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService, ClientSessionManager sessionManager, ErrorHandler errorHandler, RateLimiter rateLimiter, OrderManager orderManager) {
+        this(socket, connectionId, config, authService, sessionManager, errorHandler, rateLimiter, orderManager, new HealthMetrics());
+    }
+
+    public ClientConnectionHandler(Socket socket, int connectionId, ServerConfiguration config, AuthenticationService authService, ClientSessionManager sessionManager, ErrorHandler errorHandler, RateLimiter rateLimiter, OrderManager orderManager, HealthMetrics healthMetrics) {
         this.socket = socket;
         this.session = new ClientSession(connectionId, socket.getRemoteSocketAddress().toString());
         this.serializer = new BoeMessageSerializer();
@@ -66,6 +72,7 @@ public class ClientConnectionHandler implements Runnable {
         this.errorHandler = errorHandler;
         this.rateLimiter = rateLimiter;
         this.orderManager = orderManager;
+        this.healthMetrics = healthMetrics;
         this.gate = new UnacknowledgedMessageGate(config.getMaxUnacknowledgedMessages(), config.getResumeReadingBelow());
 
         LOGGER.log(Level.INFO, "[Session {0}] Handler created for {1}", new Object[]{
@@ -114,6 +121,7 @@ public class ClientConnectionHandler implements Runnable {
                 BoeMessage message = serializer.deserialize(inputStream);
                 session.incrementMessagesReceived();
                 session.markInbound();
+                healthMetrics.recordBytesReceived(message.getLength());
 
                 if (gate.onRead()) {
                     LOGGER.log(Level.WARNING, "[Session {0}] {1} unacknowledged messages - pausing socket reads",
@@ -557,6 +565,7 @@ public class ClientConnectionHandler implements Runnable {
             outputStream.flush();
             session.incrementMessagesSent();
             session.markOutbound();
+            healthMetrics.recordBytesSent(messageBytes.length);
 
             LOGGER.log(Level.FINE, "[Session {0}] → Sent message ({1} bytes)", new Object[]{
                     session.getConnectionId(),

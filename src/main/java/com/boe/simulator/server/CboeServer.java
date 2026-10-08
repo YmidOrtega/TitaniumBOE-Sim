@@ -221,7 +221,7 @@ public class CboeServer {
             handler = new ClientConnectionHandler(
                     socket, connectionId, config, authService,
                     sessionManager, errorHandler, rateLimiter,
-                    orderManager
+                    orderManager, healthMetrics
             );
             sessionManager.registerHandler(handler);
             healthMetrics.updatePeakConnections(activeConnections.get());
