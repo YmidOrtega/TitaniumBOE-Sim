@@ -58,6 +58,7 @@ public class CboeServer {
     private final ExecutorService clientExecutor;
     private final AtomicBoolean running;
     private final AtomicInteger activeConnections;
+    private final AtomicInteger connectionIds = new AtomicInteger(0);
     private final RocksDBManager dbManager;
     private final AuthenticationService authService;
     private final ClientSessionManager sessionManager;
@@ -195,7 +196,8 @@ public class CboeServer {
                 clientSocket.setSoTimeout(config.getConnectionTimeout());
                 clientSocket.setTcpNoDelay(true);
 
-                int connectionId = activeConnections.incrementAndGet();
+                activeConnections.incrementAndGet();
+                int connectionId = connectionIds.incrementAndGet();
                 LOGGER.log(Level.INFO, "✓ New connection accepted [ID: {0}] from {1} (Active: {2}/{3})", new Object[]{
                     connectionId, clientSocket.getRemoteSocketAddress(), activeConnections.get(), config.getMaxConnections()
                 });
