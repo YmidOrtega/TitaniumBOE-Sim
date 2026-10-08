@@ -343,11 +343,11 @@ class OrderValidatorTest {
     }
 
     @Test
-    void validateNewOrder_whenStopOrder_isRejectedAsUnsupported() {
+    void validateNewOrder_whenStopOrderHasNoStopPx_isRejected() {
         NewOrderMessage message = buildNewOrderMessage("STOP1", (byte) '1', 10, "AAPL", (byte) '3', new BigDecimal("150.00"), (byte) 'C', (byte) 0, null, null, (byte) 0);
         OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
         assertFalse(result.isValid());
-        assertTrue(result.errorMessage().contains("Stop and Stop Limit orders are not supported by the simulator"));
+        assertTrue(result.errorMessage().contains("StopPx is required for Stop and Stop Limit orders"));
     }
 
     @Test

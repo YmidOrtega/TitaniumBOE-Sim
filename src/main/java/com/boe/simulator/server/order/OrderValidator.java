@@ -20,6 +20,7 @@ public class OrderValidator {
     // Límites del sistema
     static final int MAX_ORDER_QTY = 999999;
     private static final int MIN_ORDER_QTY = 1;
+    private static final java.util.Set<String> PROPRIETARY_CLASSES = java.util.Set.of("DJX", "RUT", "SPX", "XSP", "VIX");
 
     // Patrones para validación
     private static final Pattern CLORDID_PATTERN = Pattern.compile("^[\\x21-\\x7E&&[^,;|@\"]]+$");
@@ -51,19 +52,36 @@ public class OrderValidator {
         OrdType ordType = null;
         byte ordTypeByte = message.getOrdType();
         if (ordTypeByte == 0) ordType = OrdType.LIMIT;
-        else if (ordTypeByte == '3' || ordTypeByte == '4') errors.add("Stop and Stop Limit orders are not supported by the simulator");
         else {
             try { ordType = OrdType.fromByte(ordTypeByte); }
             catch (IllegalArgumentException e) { errors.add("Invalid OrdType: " + e.getMessage()); }
         }
-        if (ordType == OrdType.LIMIT) {
-            if (message.getPrice() == null) errors.add("Price is required for limit orders");
+        if (ordType == OrdType.LIMIT || ordType == OrdType.STOP_LIMIT) {
+            if (message.getPrice() == null) errors.add("Price is required for " + (ordType == OrdType.LIMIT ? "limit" : "stop limit") + " orders");
             else {
                 String priceError = validatePrice(message.getPrice());
                 if (priceError != null) errors.add(priceError);
             }
-        } else if (ordType == OrdType.MARKET && message.getPrice() != null) {
-            errors.add("Price must not be specified on market orders");
+        } else if ((ordType == OrdType.MARKET || ordType == OrdType.STOP) && message.getPrice() != null) {
+            errors.add("Price must not be specified on " + (ordType == OrdType.MARKET ? "market" : "stop") + " orders");
+        }
+        if (ordType != null && ordType.isStop()) {
+            if (message.getStopPx() == null || message.getStopPx().signum() <= 0) errors.add("StopPx is required for Stop and Stop Limit orders");
+            byte tif = message.getTimeInForce();
+            if (tif != 0 && tif != '0' && tif != '1' && tif != '6') errors.add("Stop and Stop Limit orders must be Day, GTC or GTD");
+        } else if (message.getStopPx() != null) {
+            errors.add("StopPx is only valid on Stop and Stop Limit orders");
+        }
+
+        // Reserve and minimum quantity (List of Optional Fields, p.205)
+        if (message.getMinQty() < 0 || message.getMinQty() > message.getOrderQty()) errors.add("MinQty must be between 0 and OrderQty");
+        if (message.getMaxFloor() < 0) errors.add("MaxFloor must not be negative");
+        if (message.getMaxFloor() > 0 && PROPRIETARY_CLASSES.contains(message.getSymbol())) {
+            errors.add("MaxFloor is not allowed for Cboe proprietary class " + message.getSymbol());
+        }
+        if (message.getDisplayRange() != 0 && message.getMaxFloor() == 0) errors.add("DisplayRange requires MaxFloor");
+        if (message.getDisplayRange() < 0 || (message.getMaxFloor() > 0 && message.getDisplayRange() >= message.getMaxFloor())) {
+            errors.add("DisplayRange must be between 0 and MaxFloor");
         }
 
         // 6. Validar Capacity (requerido)

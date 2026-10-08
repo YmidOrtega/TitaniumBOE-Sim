@@ -242,14 +242,16 @@ class ModifyOrderMessageTest {
     }
 
     @Test
-    void executionChangingFields_areRejectedUnlessDefault() {
+    void maxFloorAndStopPx_areRead() {
         ByteBuffer maxFloor = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putInt(100).putInt(50);
-        assertEquals("MaxFloor is not supported by the simulator",
-                ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x01}, maxFloor.array())).getFieldError());
+        ModifyOrderMessage withMaxFloor = ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x01}, maxFloor.array()));
+        assertNull(withMaxFloor.getFieldError());
+        assertEquals(50, withMaxFloor.getMaxFloor());
 
         ByteBuffer stopPx = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN).putInt(100).putLong(100_000L);
-        assertEquals("StopPx is not supported by the simulator",
-                ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x02}, stopPx.array())).getFieldError());
+        ModifyOrderMessage withStopPx = ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x02}, stopPx.array()));
+        assertNull(withStopPx.getFieldError());
+        assertEquals(new BigDecimal("10.0000"), withStopPx.getStopPx());
 
         assertEquals("ExecInst is not supported by the simulator",
                 ModifyOrderMessage.parse(buildRaw("C1", "O1", 1, new byte[]{0x44}, new byte[]{100, 0, 0, 0, 'f'})).getFieldError());

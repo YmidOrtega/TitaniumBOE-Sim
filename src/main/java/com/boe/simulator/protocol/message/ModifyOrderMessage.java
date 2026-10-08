@@ -137,8 +137,6 @@ public final class ModifyOrderMessage extends ApplicationMessage {
         if (cancelOrigOnReject != 0 && cancelOrigOnReject != 'N' && cancelOrigOnReject != 'Y')
             return "Invalid CancelOrigOnReject '" + (char) cancelOrigOnReject + "'";
         if (execInst != 0) return "ExecInst is not supported by the simulator";
-        if (maxFloor != 0) return "MaxFloor is not supported by the simulator";
-        if (stopPx != 0) return "StopPx is not supported by the simulator";
         return null;
     }
 
@@ -183,6 +181,9 @@ public final class ModifyOrderMessage extends ApplicationMessage {
     public byte  getCancelOrigOnReject()  { return cancelOrigOnReject; }
     public boolean cancelsOrigOnReject()  { return cancelOrigOnReject == 'Y'; }
     public String getRoutingFirmID()      { return routingFirmID; }
+    public boolean hasMaxFloor()          { return hasBit(1, 0x01); }
+    public int   getMaxFloor()            { return maxFloor; }
+    public BigDecimal getStopPx()         { return hasBit(1, 0x02) ? BigDecimal.valueOf(stopPx, 4) : null; }
     public String getFieldError()         { return fieldError; }
     public boolean hasOrderQty()          { return hasBit(0, 0x04); }
     public boolean hasPrice()             { return hasBit(0, 0x08); }

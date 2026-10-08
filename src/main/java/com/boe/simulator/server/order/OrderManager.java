@@ -62,6 +62,9 @@ public class OrderManager {
     private final ConcurrentHashMap<Long, Order> activeOrdersByOrderID;
     private final ConcurrentHashMap<Long, List<IntFunction<byte[]>>> deferredExecutions = new ConcurrentHashMap<>();
     private final RiskLockouts riskLockouts = new RiskLockouts();
+    // The request being processed on this thread: messages for its user wait for its response, in order
+    private record CurrentRequest(long orderID, String username) {}
+    private final ThreadLocal<CurrentRequest> currentRequest = new ThreadLocal<>();
 
     private final AtomicLong orderIDGenerator;
 
@@ -267,6 +270,10 @@ public class OrderManager {
                     .echoFields(message.getRawFields())
                     .preventMatch(preventMatch)
                     .customGroupId(message.getCustomGroupId())
+                    .minQty(message.getMinQty())
+                    .maxFloor(message.getMaxFloor())
+                    .displayRange(message.getDisplayRange())
+                    .stopPx(message.getStopPx())
                     .symbol(message.getSymbol())
                     .capacity(message.getCapacity() != 0 ? Capacity.fromByte(message.getCapacity()) : Capacity.AGENCY)
                     .openClose(message.getOpenClose() != 0 ? OpenClose.fromByte(message.getOpenClose()) : OpenClose.NONE)
@@ -286,7 +293,13 @@ public class OrderManager {
             activeOrdersByOrderID.put(order.getOrderID(), order);
 
             // 9. Send to matching engine
-            List<Trade> trades = matchingEngine.processOrder(order);
+            List<Trade> trades;
+            currentRequest.set(new CurrentRequest(order.getOrderID(), order.getUsername()));
+            try {
+                trades = matchingEngine.processOrder(order);
+            } finally {
+                currentRequest.remove();
+            }
 
             if (order.getState() == OrderState.CANCELLED) {
                 activeOrdersByClOrdID.remove(order.getClOrdID());
@@ -364,7 +377,13 @@ public class OrderManager {
         activeOrdersByClOrdID.remove(currentClOrdID);
 
         try {
-            matchingEngine.modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty);
+            order.modifyReserveAndStop(message.hasMaxFloor() ? message.getMaxFloor() : -1, message.getStopPx());
+            currentRequest.set(new CurrentRequest(order.getOrderID(), order.getUsername()));
+            try {
+                matchingEngine.modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty);
+            } finally {
+                currentRequest.remove();
+            }
             List<IntFunction<byte[]>> executions = takeDeferredExecutions(order);
 
             if (order.getState() != OrderState.CANCELLED) {
@@ -399,15 +418,23 @@ public class OrderManager {
         if (!message.hasOrderQty()) return "OrderQty is required in Modify Order";
         if (message.getOrderQty() < 0 || message.getOrderQty() > 999_999) return "OrderQty must be between 0 and 999,999";
 
-        byte ordType = message.getOrdType();
-        if (ordType == '3' || ordType == '4') return "Stop and Stop Limit orders are not supported by the simulator";
-        if (ordType != 0 && ordType != '1' && ordType != '2') return "Invalid OrdType: 0x" + Integer.toHexString(ordType & 0xFF);
+        byte ordTypeByte = message.getOrdType();
+        if (ordTypeByte != 0 && (ordTypeByte < '1' || ordTypeByte > '4')) return "Invalid OrdType: 0x" + Integer.toHexString(ordTypeByte & 0xFF);
+        OrdType ordType = ordTypeByte != 0 ? OrdType.fromByte(ordTypeByte) : order.getOrdType();
 
-        boolean isMarket = ordType == '1' || (ordType == 0 && order.getOrdType() == OrdType.MARKET);
-        if (!isMarket) {
+        if (ordType == OrdType.LIMIT || ordType == OrdType.STOP_LIMIT) {
             if (!message.hasPrice() || message.getPrice() == null) return "Price is required in Modify Order for limit orders";
             if (message.getPrice().signum() < 0) return "Price cannot be negative";
         }
+        if (ordType.isStop()) {
+            if (order.isStopElected()) return "The stop order has already been elected";
+            BigDecimal stopPx = message.getStopPx() != null ? message.getStopPx() : order.getStopPx();
+            if (stopPx == null || stopPx.signum() <= 0) return "StopPx is required for Stop and Stop Limit orders";
+            if (order.getTimeInForce().isImmediate()) return "Stop and Stop Limit orders must be Day, GTC or GTD";
+        } else if (message.getStopPx() != null && message.getStopPx().signum() != 0) {
+            return "StopPx is only valid on Stop and Stop Limit orders";
+        }
+        if (message.hasMaxFloor() && message.getMaxFloor() < 0) return "MaxFloor must not be negative";
 
         if (order.getModifyCount() >= MAX_MODIFICATIONS_PER_ORDER)
             return "Maximum of 1,295 modifications reached; the order can only be cancelled";
@@ -769,7 +796,7 @@ public class OrderManager {
         OrderCancelledMessage msg = OrderCancelledMessage.fromOrder(order, reason,
                 OrderReturnFields.forOrder(order).select(state.getReturnBitfields(), OrderCancelledMessage.MESSAGE_TYPE));
         msg.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
-        sendToOwner(order, seq -> {
+        deliver(order, seq -> {
             msg.setSequenceNumber(seq);
             return msg.toBytes();
         });
@@ -785,8 +812,17 @@ public class OrderManager {
             msg.setSequenceNumber(seq);
             return msg.toBytes();
         };
-        if (incoming) deferredExecutions.computeIfAbsent(order.getOrderID(), k -> new ArrayList<>()).add(encoder);
-        else sendToOwner(order, encoder);
+        deliver(order, encoder);
+    }
+
+    // Messages for the user of the request in progress go after its response; everyone else's go now
+    private void deliver(Order order, IntFunction<byte[]> encoder) {
+        CurrentRequest request = currentRequest.get();
+        if (request != null && request.username().equals(order.getUsername())) {
+            deferredExecutions.computeIfAbsent(request.orderID(), k -> new ArrayList<>()).add(encoder);
+        } else {
+            sendToOwner(order, encoder);
+        }
     }
 
     private static boolean isBoeOrder(Order order) {
@@ -801,8 +837,7 @@ public class OrderManager {
     private void dispatchExecution(Order order, Trade trade, boolean isAggressive) {
         IntFunction<byte[]> encoder = executionEncoder(order, trade, isAggressive);
         if (encoder == null) return;
-        if (isAggressive) deferredExecutions.computeIfAbsent(order.getOrderID(), k -> new ArrayList<>()).add(encoder);
-        else sendToOwner(order, encoder);
+        deliver(order, encoder);
     }
 
     private List<IntFunction<byte[]>> takeDeferredExecutions(Order order) {

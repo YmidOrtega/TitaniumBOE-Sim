@@ -25,6 +25,9 @@ public class OrderBook {
     // Index for quick search by OrderID — ConcurrentHashMap, no lock needed
     private final Map<Long, Order> orderIndex;
 
+    // Stop and Stop Limit orders waiting for election; not part of the displayed book
+    private final List<Order> stops = new ArrayList<>();
+
     private volatile BigDecimal lastTradePrice;
     private volatile int totalBidQuantity;
     private volatile int totalAskQuantity;
@@ -173,6 +176,61 @@ public class OrderBook {
         }
     }
 
+    public void addStop(Order order) {
+        long stamp = lock.writeLock();
+        try {
+            stops.add(order);
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    public boolean removeStop(Order order) {
+        long stamp = lock.writeLock();
+        try {
+            return stops.remove(order);
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    public boolean hasStop(Order order) {
+        long stamp = lock.readLock();
+        try {
+            return stops.contains(order);
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
+    /** Removes and returns, in entry order, the stops elected by a last sale at {@code lastPrice}. */
+    public List<Order> takeElectedStops(BigDecimal lastPrice) {
+        long stamp = lock.writeLock();
+        try {
+            List<Order> elected = new ArrayList<>();
+            for (Order stop : stops) {
+                int cmp = lastPrice.compareTo(stop.getStopPx());
+                if (stop.getSide() == Side.BUY ? cmp >= 0 : cmp <= 0) elected.add(stop);
+            }
+            stops.removeAll(elected);
+            elected.sort(Comparator.comparingLong(Order::getOrderID));
+            return elected;
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    /** Moves a resting order to the back of its price level, keeping the side totals. */
+    public void requeue(Order order) {
+        long stamp = lock.writeLock();
+        try {
+            LinkedList<Order> level = (order.getSide() == Side.BUY ? bids : asks).get(order.getPrice());
+            if (level != null && level.remove(order)) level.addLast(order);
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
     public List<Order> getOppositeOrders(Side side) {
         long stamp = lock.readLock();
         try {
@@ -212,14 +270,14 @@ public class OrderBook {
             int count = 0;
             for (Map.Entry<BigDecimal, LinkedList<Order>> entry : bids.entrySet()) {
                 if (count++ >= depth) break;
-                int totalQty = entry.getValue().stream().mapToInt(Order::getLeavesQty).sum();
+                int totalQty = entry.getValue().stream().mapToInt(Order::getDisplayQty).sum();
                 bidLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
             }
 
             count = 0;
             for (Map.Entry<BigDecimal, LinkedList<Order>> entry : asks.entrySet()) {
                 if (count++ >= depth) break;
-                int totalQty = entry.getValue().stream().mapToInt(Order::getLeavesQty).sum();
+                int totalQty = entry.getValue().stream().mapToInt(Order::getDisplayQty).sum();
                 askLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
             }
 

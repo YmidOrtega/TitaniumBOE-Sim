@@ -130,20 +130,33 @@ class NewOrderMessageTest {
 
     @Test
     void executionChangingField_isRejected_butStillConsumed() {
-        // Bitfield 1 bit 64 = MinQty (4 bytes) before Symbol and Capacity
-        NewOrderMessage m = NewOrderMessage.parse(order("02 40 41 05 00 00 00 4D 53 46 54 00 00 00 00 43"));
+        // Bitfield 1 bit 8 = ExecInst (1 byte) before Symbol and Capacity
+        NewOrderMessage m = NewOrderMessage.parse(order("02 08 41 59 4D 53 46 54 00 00 00 00 43"));
 
-        assertEquals("MinQty is not supported by the simulator", m.getFieldError());
-        assertEquals("MSFT", m.getSymbol(), "The fields after MinQty are still read correctly");
+        assertEquals("ExecInst is not supported by the simulator", m.getFieldError());
+        assertEquals("MSFT", m.getSymbol(), "The fields after ExecInst are still read correctly");
+    }
+
+    @Test
+    void reserveMinQtyAndStopFields_areRead() {
+        // Bitfield 1: MinQty (64), MaxFloor (128); bitfield 6: DisplayRange (1), StopPx (2)
+        NewOrderMessage m = NewOrderMessage.parse(order("06 C0 41 00 00 00 03 03 00 00 00 0A 00 00 00 4D 53 46 54 00 00 00 00 43 "
+                + "02 00 00 00 A0 86 01 00 00 00 00 00"));
+
+        assertNull(m.getFieldError());
+        assertEquals(3, m.getMinQty());
+        assertEquals(10, m.getMaxFloor());
+        assertEquals(2, m.getDisplayRange());
+        assertEquals(new java.math.BigDecimal("10.0000"), m.getStopPx());
     }
 
     @Test
     void executionChangingFieldWithItsDefaultValue_isAccepted() {
-        NewOrderMessage zero = NewOrderMessage.parse(order("02 80 41 00 00 00 00 4D 53 46 54 00 00 00 00 43"));
-        NewOrderMessage five = NewOrderMessage.parse(order("02 80 41 05 00 00 00 4D 53 46 54 00 00 00 00 43"));
+        NewOrderMessage zero = NewOrderMessage.parse(order("02 08 41 00 4D 53 46 54 00 00 00 00 43"));
+        NewOrderMessage set = NewOrderMessage.parse(order("02 08 41 59 4D 53 46 54 00 00 00 00 43"));
 
-        assertNull(zero.getFieldError(), "MaxFloor 0 displays the whole order, the same as not sending it");
-        assertEquals("MaxFloor is not supported by the simulator", five.getFieldError());
+        assertNull(zero.getFieldError(), "ExecInst 0 is the default, the same as not sending it");
+        assertEquals("ExecInst is not supported by the simulator", set.getFieldError());
     }
 
     @Test
@@ -193,8 +206,8 @@ class NewOrderMessageTest {
 
     @Test
     void unsupportedFieldError_takesPrecedenceOverACharsetError() {
-        NewOrderMessage m = NewOrderMessage.parse(order("02 40 41 05 00 00 00 4D 53 2D 54 00 00 00 00 43"));
+        NewOrderMessage m = NewOrderMessage.parse(order("02 08 41 59 4D 53 2D 54 00 00 00 00 43"));
 
-        assertEquals("MinQty is not supported by the simulator", m.getFieldError());
+        assertEquals("ExecInst is not supported by the simulator", m.getFieldError());
     }
 }

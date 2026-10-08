@@ -62,7 +62,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     private static final OptionalField[][] FIELDS = {
         { OptionalField.read("ClearingFirm", 4), OptionalField.read("ClearingAccount", 4), OptionalField.read("Price", 8),
           OptionalField.rejectUnless("ExecInst", 1, "00"), OptionalField.read("OrdType", 1), OptionalField.read("TimeInForce", 1),
-          OptionalField.reject("MinQty", 4), OptionalField.rejectUnless("MaxFloor", 4, "00000000") },
+          OptionalField.read("MinQty", 4), OptionalField.read("MaxFloor", 4) },
         { OptionalField.read("Symbol", 8), null, null, null, null, null,
           OptionalField.read("Capacity", 1), OptionalField.read("RoutingInst", 4) },
         { OptionalField.read("Account", 16), OptionalField.rejectUnless("DisplayIndicator", 1, "56"), null, null, null,
@@ -71,7 +71,7 @@ public final class NewOrderMessage extends ApplicationMessage {
           OptionalField.read("RiskReset", 8), OptionalField.read("OpenClose", 1), OptionalField.ignore("CMTANumber", 4),
           OptionalField.reject("TargetPartyID", 4), null },
         { OptionalField.ignore("SessionEligibility", 1), OptionalField.ignore("AttributedQuote", 1), null, null, null, null, null, null },
-        { OptionalField.reject("DisplayRange", 4), OptionalField.reject("StopPx", 8), OptionalField.ignore("RoutStrategy", 6),
+        { OptionalField.read("DisplayRange", 4), OptionalField.read("StopPx", 8), OptionalField.ignore("RoutStrategy", 6),
           OptionalField.ignore("RouteDeliveryMethod", 3), OptionalField.ignore("ExDestination", 1), OptionalField.ignore("EchoText", 64),
           OptionalField.reject("AuctionId", 8), OptionalField.ignore("RoutingFirmID", 4) },
         { null, OptionalField.read("CustomGroupId", 2), null, null, null, null, null, null },
@@ -110,6 +110,10 @@ public final class NewOrderMessage extends ApplicationMessage {
     private byte openClose;         // 'O', 'C', 'N'
     private byte[] preventMatch;
     private String riskReset;
+    private int minQty;
+    private int maxFloor;
+    private int displayRange;
+    private BigDecimal stopPx;
     private int customGroupId;
 
     private String fieldError;      // first unsupported or invalid optional field, if any
@@ -220,6 +224,10 @@ public final class NewOrderMessage extends ApplicationMessage {
             case "OpenClose" -> openClose = value[0];
             case "PreventMatch" -> preventMatch = value;
             case "RiskReset" -> riskReset = text(value);
+            case "MinQty" -> minQty = v.getInt();
+            case "MaxFloor" -> maxFloor = v.getInt();
+            case "DisplayRange" -> displayRange = v.getInt();
+            case "StopPx" -> stopPx = BinaryPrice.fromBytes(value).toPrice();
             case "CustomGroupId" -> customGroupId = v.getShort() & 0xFFFF;
             default -> throw new IllegalStateException("No field mapping for " + name);
         }
@@ -470,6 +478,10 @@ public final class NewOrderMessage extends ApplicationMessage {
     public byte getTimeInForce() { return timeInForce; }
     public String getFieldError() { return fieldError; }
     public String getRiskReset() { return riskReset; }
+    public int getMinQty() { return minQty; }
+    public int getMaxFloor() { return maxFloor; }
+    public int getDisplayRange() { return displayRange; }
+    public BigDecimal getStopPx() { return stopPx; }
     public int getCustomGroupId() { return customGroupId; }
     public byte[] getPreventMatch() { return preventMatch != null ? preventMatch.clone() : null; }
     public Map<String, byte[]> getRawFields() { return Map.copyOf(rawFields); }

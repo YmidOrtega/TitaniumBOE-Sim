@@ -34,6 +34,13 @@ public class Order {
     private final TimeInForce timeInForce;
     private final PreventMatch preventMatch;
     private final int customGroupId;
+    private final int minQty;
+    private volatile int maxFloor;
+    private final int displayRange;
+    private final BigDecimal stopPx;
+    private volatile BigDecimal modifiedStopPx;
+    private volatile int displayQty;
+    private volatile boolean stopElected;
 
     // Symbology
     private final String symbol;
@@ -88,6 +95,10 @@ public class Order {
         this.timeInForce = builder.timeInForce;
         this.preventMatch = builder.preventMatch;
         this.customGroupId = builder.customGroupId;
+        this.minQty = builder.minQty;
+        this.maxFloor = builder.maxFloor;
+        this.displayRange = builder.displayRange;
+        this.stopPx = builder.stopPx;
         this.symbol = builder.symbol;
         this.maturityDate = builder.maturityDate;
         this.strikePrice = builder.strikePrice;
@@ -139,6 +150,7 @@ public class Order {
 
         this.cumQty += qty;
         this.leavesQty -= qty;
+        if (maxFloor > 0) this.displayQty = Math.max(0, displayQty - qty);
         this.notional = notional.add(execPrice.multiply(BigDecimal.valueOf(qty)));
 
         if (this.leavesQty == 0) this.state = OrderState.FILLED;
@@ -147,10 +159,25 @@ public class Order {
         this.lastModified = Instant.now();
     }
 
+    public void reloadDisplay(int displayed) {
+        this.displayQty = Math.max(1, Math.min(displayed, leavesQty));
+    }
+
+    public void elect() {
+        this.stopElected = true;
+        this.lastModified = Instant.now();
+    }
+
+    public void modifyReserveAndStop(int newMaxFloor, BigDecimal newStopPx) {
+        if (newMaxFloor >= 0) this.maxFloor = newMaxFloor;
+        if (newStopPx != null) this.modifiedStopPx = newStopPx;
+    }
+
     public void decrement(int qty, boolean orderQtyToo) {
         if (qty <= 0 || qty > leavesQty) throw new IllegalArgumentException("Invalid decrement: " + qty);
         if (orderQtyToo) this.modifiedOrderQty = getEffectiveOrderQty() - qty;
         this.leavesQty -= qty;
+        if (maxFloor > 0) this.displayQty = Math.min(displayQty, leavesQty);
         this.lastModified = Instant.now();
     }
 
@@ -164,6 +191,7 @@ public class Order {
         if (newOrdType  != null) this.modifiedOrdType  = newOrdType;
         if (newOrderQty  > 0)   this.modifiedOrderQty  = newOrderQty;
         this.leavesQty    = newLeavesQty;
+        if (maxFloor > 0) this.displayQty = Math.min(displayQty, newLeavesQty);
         this.modifyCount++;
         this.lastModified = Instant.now();
     }
@@ -194,6 +222,14 @@ public class Order {
     public TimeInForce getTimeInForce() { return timeInForce; }
     public PreventMatch getPreventMatch() { return preventMatch; }
     public int getCustomGroupId() { return customGroupId; }
+    public int getMinQty() { return minQty; }
+    public int getMaxFloor() { return maxFloor; }
+    public int getDisplayRange() { return displayRange; }
+    public BigDecimal getStopPx() { return modifiedStopPx != null ? modifiedStopPx : stopPx; }
+    public boolean isReserve() { return maxFloor > 0; }
+    public int getDisplayQty() { return maxFloor > 0 ? displayQty : leavesQty; }
+    public boolean isPendingStop() { return getOrdType().isStop() && !stopElected; }
+    public boolean isStopElected() { return stopElected; }
     public byte getCancelReason() { return cancelReason; }
     public String getSymbol() { return symbol; }
     public Instant getMaturityDate() { return maturityDate; }
@@ -273,6 +309,10 @@ public class Order {
         private TimeInForce timeInForce = TimeInForce.DAY;
         private PreventMatch preventMatch;
         private int customGroupId;
+        private int minQty;
+        private int maxFloor;
+        private int displayRange;
+        private BigDecimal stopPx;
         private String symbol;
         private Instant maturityDate;
         private BigDecimal strikePrice;
@@ -335,6 +375,26 @@ public class Order {
 
         public Builder timeInForce(TimeInForce timeInForce) {
             this.timeInForce = timeInForce;
+            return this;
+        }
+
+        public Builder minQty(int minQty) {
+            this.minQty = minQty;
+            return this;
+        }
+
+        public Builder maxFloor(int maxFloor) {
+            this.maxFloor = maxFloor;
+            return this;
+        }
+
+        public Builder displayRange(int displayRange) {
+            this.displayRange = displayRange;
+            return this;
+        }
+
+        public Builder stopPx(BigDecimal stopPx) {
+            this.stopPx = stopPx;
             return this;
         }
 
@@ -424,6 +484,7 @@ public class Order {
             if (symbol == null || symbol.isEmpty()) throw new IllegalArgumentException("Symbol is required");
 
             if (ordType == OrdType.LIMIT && price == null) throw new IllegalArgumentException("Price is required for limit orders");
+            if (ordType == OrdType.STOP_LIMIT && price == null) throw new IllegalArgumentException("Price is required for stop limit orders");
 
             return new Order(this);
         }

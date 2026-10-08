@@ -365,17 +365,17 @@ class OrderManagerTest {
     @Test
     void processNewOrder_whenAnUnsupportedOptionalFieldIsSet_isRejectedWithZ() {
         NewOrderMessage message = NewOrderMessage.parse(new byte[]{
-                (byte) 0xBA, (byte) 0xBA, 0x2A, 0x00, 0x38, 0x00, 0x01, 0x00, 0x00, 0x00,
+                (byte) 0xBA, (byte) 0xBA, 0x24, 0x00, 0x38, 0x00, 0x01, 0x00, 0x00, 0x00,
                 'M', 'Q', '1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 '1', 0x0A, 0x00, 0x00, 0x00,
-                0x01, 0x40, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00   // Bitfield 1 = MinQty (4 bytes)
+                0x01, 0x08, 'Y'   // Bitfield 1 = ExecInst
         });
 
         OrderManager.OrderResponse response = orderManager.processNewOrder(message, clientSession);
 
         assertFalse(response.isAcknowledged());
         assertEquals(OrderRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
-        assertEquals("MinQty is not supported by the simulator", response.getRejectText());
+        assertEquals("ExecInst is not supported by the simulator", response.getRejectText());
         verifyNoInteractions(orderValidator);
         verify(matchingEngine, never()).processOrder(any(Order.class));
     }
@@ -605,7 +605,7 @@ class OrderManagerTest {
         placeOrder("A", "AAPL", "TEST");
 
         assertModifyRejected(modify("B", "A", 10, null), "Price is required in Modify Order for limit orders");
-        assertModifyRejected(modify("B", "A", 10, "100.00", (byte) '3', (byte) 0), "Stop and Stop Limit orders are not supported by the simulator");
+        assertModifyRejected(modify("B", "A", 10, "100.00", (byte) '3', (byte) 0), "StopPx is required for Stop and Stop Limit orders");
         assertModifyRejected(modify("B", "A", 10, "100.00", (byte) '9', (byte) 0), "Invalid OrdType: 0x39");
         assertModifyRejected(modify("B", "A", 1_000_000, "100.00"), "OrderQty must be between 0 and 999,999");
         assertModifyRejected(modify("", "A", 10, "100.00"), "ClOrdID is required in Modify Order");
