@@ -622,10 +622,7 @@ public class ClientConnectionHandler implements Runnable {
 
     public void sendSequenced(IntFunction<byte[]> encoder) throws IOException {
         BoeSessionState state = sessionState;
-        if (state == null) {
-            sendMessage(encoder.apply(0));
-            return;
-        }
+        if (state == null) throw new IllegalStateException("Sequenced message before login on session " + session.getConnectionId());
         state.sendSequenced(encoder, session.isAuthenticated() ? this::sendMessage : null);
     }
 
