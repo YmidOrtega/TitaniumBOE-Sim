@@ -251,6 +251,7 @@ public class MatchingEngine {
                 .price(price)
                 .matchingUnit(aggressive.getMatchingUnit())
                 .clearingFirm(aggressive.getClearingFirm())
+                .aggressorSide(aggressive.getSide())
                 .build();
     }
 

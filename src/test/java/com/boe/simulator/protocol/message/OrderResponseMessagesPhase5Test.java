@@ -37,7 +37,7 @@ class OrderResponseMessagesPhase5Test {
     private static Trade minimalTrade() {
         return new Trade(9999L, "SPX", 42L, "ORD001", "user",
                 43L, "ORD002", "user2",
-                50, new BigDecimal("1.50"), Instant.now(), (byte) 1, "");
+                50, new BigDecimal("1.50"), Instant.now(), (byte) 1, "", Side.BUY);
     }
 
     private static ReturnBitfields fullAckBitfields() {

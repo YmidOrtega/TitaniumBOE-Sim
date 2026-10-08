@@ -1,5 +1,6 @@
 package com.boe.simulator.server.matching;
 
+import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.persistence.util.SerializationUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -364,7 +365,8 @@ public class TradeRepositoryService implements TradeRepository {
             @JsonProperty("price") String price,
             @JsonProperty("executionTime") String executionTime,
             @JsonProperty("matchingUnit") byte matchingUnit,
-            @JsonProperty("clearingFirm") String clearingFirm
+            @JsonProperty("clearingFirm") String clearingFirm,
+            @JsonProperty("aggressorSide") String aggressorSide
     ) {
         @JsonCreator
         public PersistedTrade {}
@@ -383,7 +385,8 @@ public class TradeRepositoryService implements TradeRepository {
                     trade.getPrice().toString(),
                     trade.getExecutionTime().toString(),
                     trade.getMatchingUnit(),
-                    trade.getClearingFirm()
+                    trade.getClearingFirm(),
+                    trade.getAggressorSide() != null ? trade.getAggressorSide().name() : null
             );
         }
 
@@ -402,6 +405,7 @@ public class TradeRepositoryService implements TradeRepository {
                     .executionTime(Instant.parse(executionTime))
                     .matchingUnit(matchingUnit)
                     .clearingFirm(clearingFirm)
+                    .aggressorSide(aggressorSide != null ? Side.valueOf(aggressorSide) : null)
                     .build();
         }
     }

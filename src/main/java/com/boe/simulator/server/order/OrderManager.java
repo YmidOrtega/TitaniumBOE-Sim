@@ -571,8 +571,8 @@ public class OrderManager {
     }
 
     private void sendExecutionMessages(Trade trade, Order buyOrder, Order sellOrder) {
-        if (buyOrder != null) sendExecutionMessage(buyOrder, trade, true);
-        if (sellOrder != null) sendExecutionMessage(sellOrder, trade, false);
+        if (buyOrder != null) sendExecutionMessage(buyOrder, trade, trade.getAggressorSide() == Side.BUY);
+        if (sellOrder != null) sendExecutionMessage(sellOrder, trade, trade.getAggressorSide() == Side.SELL);
     }
 
     private void sendExecutionMessage(Order order, Trade trade, boolean isAggressive) {
