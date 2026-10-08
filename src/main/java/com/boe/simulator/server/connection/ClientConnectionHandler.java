@@ -581,6 +581,7 @@ public class ClientConnectionHandler implements Runnable {
         } else {
             sendUserModifyRejected(response.getClOrdID(),
                     response.getRejectReason(), response.getRejectText());
+            if (response.cancelledOriginal()) sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_USER_REQUESTED);
         }
     }
 

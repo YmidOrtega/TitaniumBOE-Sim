@@ -2,6 +2,8 @@ package com.boe.simulator.server.order;
 
 import com.boe.simulator.protocol.message.CancelOrderMessage;
 import com.boe.simulator.protocol.message.CancelRejectedMessage;
+import com.boe.simulator.protocol.message.ModifyOrderMessage;
+import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
 import com.boe.simulator.protocol.types.BinaryPrice;
@@ -24,6 +26,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -507,5 +511,160 @@ class OrderManagerTest {
         assertEquals(CancelRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
         assertEquals("SendTime is required on Cancel Order", response.getRejectText());
         assertTrue(orderManager.findByClOrdID("S1").isPresent());
+    }
+
+    // ========== Modify Order ==========
+
+    private static ModifyOrderMessage modify(String clOrdID, String origClOrdID, int qty, String price, byte ordType, byte cancelOrigOnReject) {
+        byte bf1 = 0x04;
+        int size = 4;
+        if (price != null) { bf1 |= 0x08; size += 8; }
+        if (ordType != 0) { bf1 |= 0x10; size += 1; }
+        if (cancelOrigOnReject != 0) { bf1 |= 0x20; size += 1; }
+        ByteBuffer buf = ByteBuffer.allocate(52 + size).order(ByteOrder.LITTLE_ENDIAN);
+        buf.put((byte) 0xBA).put((byte) 0xBA).putShort((short) (50 + size)).put((byte) 0x3A).put((byte) 0).putInt(0);
+        buf.put(java.util.Arrays.copyOf(clOrdID.getBytes(StandardCharsets.US_ASCII), 20));
+        buf.put(java.util.Arrays.copyOf(origClOrdID.getBytes(StandardCharsets.US_ASCII), 20));
+        buf.put((byte) 1).put(bf1).putInt(qty);
+        if (price != null) buf.put(BinaryPrice.fromPrice(new BigDecimal(price)).toBytes());
+        if (ordType != 0) buf.put(ordType);
+        if (cancelOrigOnReject != 0) buf.put(cancelOrigOnReject);
+        return ModifyOrderMessage.parse(buf.array());
+    }
+
+    private static ModifyOrderMessage modify(String clOrdID, String origClOrdID, int qty, String price) {
+        return modify(clOrdID, origClOrdID, qty, price, (byte) 0, (byte) 0);
+    }
+
+    private void engineAppliesModifications() {
+        lenient().when(matchingEngine.modifyOrder(any(Order.class), anyString(), any(), any(), anyInt())).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            int qty = inv.getArgument(4);
+            o.modify(inv.getArgument(1), inv.getArgument(2), inv.getArgument(3), qty, o.getLeavesQty() + qty - o.getEffectiveOrderQty());
+            return List.of();
+        });
+    }
+
+    @Test
+    void chainedModifies_leaveNoStaleClOrdIDInTheCache() {
+        engineAppliesModifications();
+        placeOrder("A", "AAPL", "TEST");
+
+        assertTrue(orderManager.processModifyOrder(modify("B", "A", 10, "100.00"), clientSession).isModified());
+        assertTrue(orderManager.processModifyOrder(modify("C", "B", 10, "99.00"), clientSession).isModified());
+
+        assertTrue(orderManager.findByClOrdID("A").isEmpty());
+        assertTrue(orderManager.findByClOrdID("B").isEmpty(), "The intermediate ClOrdID must not stay live");
+        assertEquals(CancelRejectedMessage.REASON_ORDER_NOT_FOUND, orderManager.processCancelOrder("B", "testUser").getRejectReason());
+        assertTrue(orderManager.processCancelOrder("C", "testUser").isCancelled());
+    }
+
+    @Test
+    void modifyToTheClOrdIDOfAnotherLiveOrder_isRejectedWithD() {
+        placeOrder("A", "AAPL", "TEST");
+        placeOrder("OTHER", "AAPL", "TEST");
+
+        OrderManager.ModifyResponse response = orderManager.processModifyOrder(modify("OTHER", "A", 10, "100.00"), clientSession);
+
+        assertTrue(response.isRejected());
+        assertEquals(UserModifyRejectedMessage.REASON_DUPLICATE_CLORDID, response.getRejectReason());
+        assertEquals("Duplicate ClOrdID: OTHER", response.getRejectText());
+        verify(matchingEngine, never()).modifyOrder(any(Order.class), anyString(), any(), any(), anyInt());
+    }
+
+    @Test
+    void reusingTheClOrdID_isOnlyAllowedForAQuantityReduction() {
+        engineAppliesModifications();
+        placeOrder("A", "AAPL", "TEST");
+
+        assertTrue(orderManager.processModifyOrder(modify("A", "A", 8, "100.00"), clientSession).isModified());
+
+        OrderManager.ModifyResponse repriced = orderManager.processModifyOrder(modify("A", "A", 6, "99.00"), clientSession);
+        assertEquals(UserModifyRejectedMessage.REASON_DUPLICATE_CLORDID, repriced.getRejectReason());
+        assertEquals("ClOrdID can only be reused when the Modify only reduces OrderQty", repriced.getRejectText());
+        assertTrue(orderManager.findByClOrdID("A").isPresent());
+    }
+
+    @Test
+    void modifyOfAnotherUsersOrder_isReportedAsNotFound() {
+        placeOrder("A", "AAPL", "TEST");
+        ClientSession other = mock(ClientSession.class);
+        lenient().when(other.getUsername()).thenReturn("otherUser");
+        lenient().when(other.getSessionSubID()).thenReturn("otherSession");
+
+        OrderManager.ModifyResponse response = orderManager.processModifyOrder(modify("B", "A", 10, "100.00"), other);
+
+        assertEquals(UserModifyRejectedMessage.REASON_NOT_FOUND, response.getRejectReason());
+        assertEquals("Order not found or already terminated", response.getRejectText());
+    }
+
+    @Test
+    void invalidModifies_areRejectedWithZ_withoutReachingTheEngine() {
+        placeOrder("A", "AAPL", "TEST");
+
+        assertModifyRejected(modify("B", "A", 10, null), "Price is required in Modify Order for limit orders");
+        assertModifyRejected(modify("B", "A", 10, "100.00", (byte) '3', (byte) 0), "Stop and Stop Limit orders are not supported by the simulator");
+        assertModifyRejected(modify("B", "A", 10, "100.00", (byte) '9', (byte) 0), "Invalid OrdType: 0x39");
+        assertModifyRejected(modify("B", "A", 1_000_000, "100.00"), "OrderQty must be between 0 and 999,999");
+        assertModifyRejected(modify("", "A", 10, "100.00"), "ClOrdID is required in Modify Order");
+        verify(matchingEngine, never()).modifyOrder(any(Order.class), anyString(), any(), any(), anyInt());
+    }
+
+    private void assertModifyRejected(ModifyOrderMessage message, String text) {
+        OrderManager.ModifyResponse response = orderManager.processModifyOrder(message, clientSession);
+        assertTrue(response.isRejected(), text);
+        assertEquals(UserModifyRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
+        assertEquals(text, response.getRejectText());
+        assertFalse(response.cancelledOriginal());
+    }
+
+    @Test
+    void marketModify_doesNotNeedAPrice() {
+        engineAppliesModifications();
+        placeOrder("A", "AAPL", "TEST");
+
+        assertTrue(orderManager.processModifyOrder(modify("B", "A", 10, null, (byte) '1', (byte) 0), clientSession).isModified());
+    }
+
+    @Test
+    void rejectedModifyWithCancelOrigOnReject_cancelsTheOriginalOrder() {
+        when(matchingEngine.cancelOrder(any(Order.class))).thenReturn(true);
+        placeOrder("A", "AAPL", "TEST");
+
+        OrderManager.ModifyResponse response =
+                orderManager.processModifyOrder(modify("B", "A", 10, null, (byte) 0, (byte) 'Y'), clientSession);
+
+        assertTrue(response.isRejected());
+        assertTrue(response.cancelledOriginal());
+        assertEquals("A", response.getOrder().getClOrdID());
+        assertEquals(OrderState.CANCELLED, response.getOrder().getState());
+        assertTrue(orderManager.findByClOrdID("A").isEmpty());
+    }
+
+    @Test
+    void rejectedModifyWithoutCancelOrigOnReject_leavesTheOriginalOrder() {
+        placeOrder("A", "AAPL", "TEST");
+
+        OrderManager.ModifyResponse response =
+                orderManager.processModifyOrder(modify("B", "A", 10, null, (byte) 0, (byte) 'N'), clientSession);
+
+        assertFalse(response.cancelledOriginal());
+        assertTrue(orderManager.findByClOrdID("A").isPresent());
+        verify(matchingEngine, never()).cancelOrder(any(Order.class));
+    }
+
+    @Test
+    void modify1296_isRejected() {
+        engineAppliesModifications();
+        placeOrder("M0", "AAPL", "TEST");
+        for (int i = 1; i <= OrderManager.MAX_MODIFICATIONS_PER_ORDER; i++) {
+            assertTrue(orderManager.processModifyOrder(modify("M" + i, "M" + (i - 1), 10, "100.00"), clientSession).isModified(), "Modify " + i);
+        }
+
+        OrderManager.ModifyResponse response = orderManager.processModifyOrder(modify("MX", "M1295", 10, "100.00"), clientSession);
+
+        assertEquals(UserModifyRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
+        assertEquals("Maximum of 1,295 modifications reached; the order can only be cancelled", response.getRejectText());
+        assertTrue(orderManager.findByClOrdID("M1295").isPresent(), "The order can still be cancelled");
     }
 }

@@ -50,6 +50,7 @@ public class Order {
 
     // Mutable overrides applied by Modify Order
     private volatile String modifiedClOrdID;
+    private volatile int modifyCount;
     private volatile BigDecimal modifiedPrice;
     private volatile OrdType modifiedOrdType;
     private volatile int modifiedOrderQty;  // 0 = not modified
@@ -137,6 +138,7 @@ public class Order {
         if (newOrdType  != null) this.modifiedOrdType  = newOrdType;
         if (newOrderQty  > 0)   this.modifiedOrderQty  = newOrderQty;
         this.leavesQty    = newLeavesQty;
+        this.modifyCount++;
         this.lastModified = Instant.now();
     }
 
@@ -155,6 +157,7 @@ public class Order {
     public String getUsername() { return username; }
     public Side getSide() { return side; }
     public int getOrderQty() { return orderQty; }
+    public int getModifyCount() { return modifyCount; }
     public int getEffectiveOrderQty() { return modifiedOrderQty > 0 ? modifiedOrderQty : orderQty; }
     public int getLeavesQty() { return leavesQty; }
     public int getCumQty() { return cumQty; }

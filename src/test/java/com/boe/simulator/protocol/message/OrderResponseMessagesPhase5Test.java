@@ -233,7 +233,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void userModifyRejected_somAndMessageType() {
-        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNKNOWN, "").toBytes();
+        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNFORESEEN, "").toBytes();
         assertEquals((byte) 0xBA, b[0]);
         assertEquals((byte) 0xBA, b[1]);
         assertEquals((byte) 0x29, b[4]);
@@ -241,7 +241,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void userModifyRejected_unsequencedHeaderZero() {
-        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNKNOWN, "").toBytes();
+        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNFORESEEN, "").toBytes();
         assertEquals(0x00, b[5], "MatchingUnit must be 0 (unsequenced)");
         assertEquals(0x00, b[6]);
         assertEquals(0x00, b[9], "SequenceNumber must be 0 (unsequenced)");

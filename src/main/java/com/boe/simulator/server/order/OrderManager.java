@@ -269,61 +269,42 @@ public class OrderManager {
                 new Object[]{context.getSessionIdentifier(),
                         message.getOrigClOrdID(), message.getClOrdID()});
 
-        // 1. OrderQty is required per spec
-        if (!message.hasOrderQty()) {
-            return ModifyResponse.rejected(message.getClOrdID(),
-                    UserModifyRejectedMessage.REASON_UNKNOWN,
-                    "OrderQty is required in Modify Order");
-        }
-
-        // 2. Find the order
         Order order = activeOrdersByClOrdID.get(message.getOrigClOrdID());
-        if (order == null) {
+        if (order == null || !order.getUsername().equals(context.getUsername())) {
             return ModifyResponse.rejected(message.getClOrdID(),
                     UserModifyRejectedMessage.REASON_NOT_FOUND,
-                    "Order not found: " + message.getOrigClOrdID());
+                    "Order not found or already terminated");
         }
-
-        // 3. Permission check
-        if (!order.getUsername().equals(context.getUsername())) {
-            return ModifyResponse.rejected(message.getClOrdID(),
-                    UserModifyRejectedMessage.REASON_UNKNOWN,
-                    "Unauthorized: order belongs to a different user");
-        }
-
-        // 4. State check
         if (!order.getState().isActive()) {
             return ModifyResponse.rejected(message.getClOrdID(),
                     UserModifyRejectedMessage.REASON_TOO_LATE_TO_CANCEL,
                     "Order not modifiable in state: " + order.getState());
         }
 
-        // 5. Price required for limit orders (OrdType LIMIT or not specified)
-        boolean isMarket = message.getOrdType() == (byte) '1'
-                || (message.getOrdType() == 0 && order.getOrdType() == OrdType.MARKET);
-        if (!isMarket && !message.hasPrice()) {
-            return ModifyResponse.rejected(message.getClOrdID(),
-                    UserModifyRejectedMessage.REASON_UNKNOWN,
-                    "Price is required for non-market Modify Order");
-        }
+        String invalid = validateModify(message, order);
+        if (invalid != null) return rejectModify(message, order, UserModifyRejectedMessage.REASON_UNFORESEEN, invalid, context);
 
-        // 6. Resolve new values
-        BigDecimal newPrice  = message.hasPrice() ? message.getPrice() : order.getPrice();
-        OrdType    newOrdType = message.getOrdType() != 0
-                ? OrdType.fromByte(message.getOrdType()) : null;
+        BigDecimal newPrice   = message.getPrice() != null ? message.getPrice() : order.getPrice();
+        OrdType    newOrdType = message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : null;
         int        newOrderQty = message.getOrderQty();
 
-        // 7. Update caches: remove old ClOrdID key
-        String oldClOrdID = order.getOrigClOrdID();
-        activeOrdersByClOrdID.remove(oldClOrdID);
+        String newClOrdID = message.getClOrdID();
+        if (newClOrdID.equals(message.getOrigClOrdID())) {
+            if (!reducesQuantityOnly(order, newPrice, newOrdType, newOrderQty)) {
+                return rejectModify(message, order, UserModifyRejectedMessage.REASON_DUPLICATE_CLORDID,
+                        "ClOrdID can only be reused when the Modify only reduces OrderQty", context);
+            }
+        } else if (activeOrdersByClOrdID.containsKey(newClOrdID)) {
+            return rejectModify(message, order, UserModifyRejectedMessage.REASON_DUPLICATE_CLORDID,
+                    "Duplicate ClOrdID: " + newClOrdID, context);
+        }
+
+        String currentClOrdID = order.getClOrdID();
+        activeOrdersByClOrdID.remove(currentClOrdID);
 
         try {
-            // 8. Apply modification in matching engine
-            List<com.boe.simulator.server.matching.Trade> trades =
-                    matchingEngine.modifyOrder(order, message.getClOrdID(),
-                            newPrice, newOrdType, newOrderQty);
+            matchingEngine.modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty);
 
-            // 9. Update caches with new ClOrdID
             if (order.getState().isActive()) {
                 activeOrdersByClOrdID.put(order.getClOrdID(), order);
                 orderRepository.saveAsync(order);
@@ -332,7 +313,6 @@ public class OrderManager {
                                 order.getClOrdID(), order.getOrderID()});
                 return ModifyResponse.modified(order);
             } else {
-                // Auto-cancelled because newLeavesQty <= 0
                 activeOrdersByOrderID.remove(order.getOrderID());
                 orderRepository.saveAsync(order);
                 totalOrdersCancelled.incrementAndGet();
@@ -342,13 +322,53 @@ public class OrderManager {
             }
 
         } catch (Exception e) {
-            // Restore old key on failure
-            activeOrdersByClOrdID.put(oldClOrdID, order);
+            activeOrdersByClOrdID.put(currentClOrdID, order);
             LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error modifying order", e);
             return ModifyResponse.rejected(message.getClOrdID(),
-                    UserModifyRejectedMessage.REASON_UNKNOWN,
+                    UserModifyRejectedMessage.REASON_UNFORESEEN,
                     "Internal error: " + e.getMessage());
         }
+    }
+
+    // Modify Order rules (p.77); null = valid
+    private static String validateModify(ModifyOrderMessage message, Order order) {
+        if (message.getFieldError() != null) return message.getFieldError();
+        if (message.getClOrdID().isEmpty()) return "ClOrdID is required in Modify Order";
+        if (!message.hasOrderQty()) return "OrderQty is required in Modify Order";
+        if (message.getOrderQty() < 0 || message.getOrderQty() > 999_999) return "OrderQty must be between 0 and 999,999";
+
+        byte ordType = message.getOrdType();
+        if (ordType == '3' || ordType == '4') return "Stop and Stop Limit orders are not supported by the simulator";
+        if (ordType != 0 && ordType != '1' && ordType != '2') return "Invalid OrdType: 0x" + Integer.toHexString(ordType & 0xFF);
+
+        boolean isMarket = ordType == '1' || (ordType == 0 && order.getOrdType() == OrdType.MARKET);
+        if (!isMarket) {
+            if (!message.hasPrice() || message.getPrice() == null) return "Price is required in Modify Order for limit orders";
+            if (message.getPrice().signum() < 0) return "Price cannot be negative";
+        }
+
+        if (order.getModifyCount() >= MAX_MODIFICATIONS_PER_ORDER)
+            return "Maximum of 1,295 modifications reached; the order can only be cancelled";
+        return null;
+    }
+
+    // Time priority is kept, and the ClOrdID may be reused, only when OrderQty decreases with no other change (p.77)
+    private static boolean reducesQuantityOnly(Order order, BigDecimal newPrice, OrdType newOrdType, int newOrderQty) {
+        boolean samePrice = newPrice == null || order.getPrice() == null || newPrice.compareTo(order.getPrice()) == 0;
+        boolean sameOrdType = newOrdType == null || newOrdType == order.getOrdType();
+        return samePrice && sameOrdType && newOrderQty < order.getEffectiveOrderQty();
+    }
+
+    private ModifyResponse rejectModify(ModifyOrderMessage message, Order order, byte reason, String text,
+                                        OrderExecutionContext context) {
+        LOGGER.log(Level.WARNING, "[{0}] Modify rejected for {1}: {2}",
+                new Object[]{context.getSessionIdentifier(), message.getOrigClOrdID(), text});
+        if (!message.cancelsOrigOnReject()) return ModifyResponse.rejected(message.getClOrdID(), reason, text);
+
+        CancelResponse cancel = processSingleCancel(order.getClOrdID(), context);
+        return cancel.isCancelled()
+                ? ModifyResponse.rejectedAndCancelled(message.getClOrdID(), reason, text, cancel.getOrder())
+                : ModifyResponse.rejected(message.getClOrdID(), reason, text);
     }
 
     // ========== TCP/BOE Cancel ==========
@@ -511,6 +531,8 @@ public class OrderManager {
     // Tradable universe. Must stay in sync with the catalogue exposed by
     // com.boe.simulator.api.service.SymbolService — a symbol listed there but missing here
     // shows up in GET /api/symbols and is then rejected on order entry.
+    static final int MAX_MODIFICATIONS_PER_ORDER = 1_295;
+
     private static final Set<String> VALID_SYMBOLS = Set.of(
             "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META",
             "TSLA", "NVDA", "NFLX", "AMD", "DIS"
@@ -667,10 +689,15 @@ public class OrderManager {
             return new ModifyResponse(ResponseType.REJECTED, null, clOrdID, reason, text);
         }
 
+        public static ModifyResponse rejectedAndCancelled(String clOrdID, byte reason, String text, Order cancelled) {
+            return new ModifyResponse(ResponseType.REJECTED, cancelled, clOrdID, reason, text);
+        }
+
         public boolean isModified()       { return type == ResponseType.MODIFIED; }
         public boolean isAutoCancelled()  { return type == ResponseType.AUTO_CANCELLED; }
         public boolean isRejected()       { return type == ResponseType.REJECTED; }
         public Order   getOrder()         { return order; }
+        public boolean cancelledOriginal() { return type == ResponseType.REJECTED && order != null; }
         public String  getClOrdID()       { return clOrdID; }
         public byte    getRejectReason()  { return rejectReason; }
         public String  getRejectText()    { return rejectText; }

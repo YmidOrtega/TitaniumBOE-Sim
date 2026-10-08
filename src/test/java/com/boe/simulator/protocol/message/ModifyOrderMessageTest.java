@@ -195,38 +195,84 @@ class ModifyOrderMessageTest {
     }
 
     @Test
-    void parse_side() {
-        // bit 7 = Side, plus OrderQty (bit 2)
-        byte[] opt = new byte[5];
-        ByteBuffer ob = ByteBuffer.wrap(opt).order(ByteOrder.LITTLE_ENDIAN);
-        ob.putInt(50);     // OrderQty (bit 2 first)
-        ob.put((byte)'1'); // Side = Buy (bit 7)
-
-        byte[] raw = buildRaw("C1", "O1", 1, new byte[]{(byte) 0x84}, opt); // 0x84 = bits 2,7
-        ModifyOrderMessage msg = ModifyOrderMessage.parse(raw);
-
-        assertEquals((byte) '1', msg.getSide());
+    void side_isNotAllowed() {
+        byte[] raw = buildRaw("C1", "O1", 1, new byte[]{(byte) 0x84}, new byte[]{50, 0, 0, 0, '1'});
+        assertEquals("Bitfield 1 bit 128 cannot be specified on Modify Order", ModifyOrderMessage.parse(raw).getFieldError());
     }
 
-    // ── Byte 2 optional fields ────────────────────────────────────────────────
+    @Test
+    void reservedBit_isRejected() {
+        byte[] raw = buildRaw("C1", "O1", 1, new byte[]{0x06}, new byte[8]);
+        assertEquals("Bitfield 1 bit 2 cannot be specified on Modify Order", ModifyOrderMessage.parse(raw).getFieldError());
+    }
 
     @Test
-    void parse_byte2_fields_do_not_crash() {
-        // Byte 2: 0x01=MaxFloor(4B), 0x02=StopPx(8B), 0x04=RoutingFirmID(4B)
-        // Plus OrderQty (byte1 bit 2) to satisfy requirement
-        byte[] opt = new byte[20]; // 4 + 4 + 8 + 4
-        ByteBuffer ob = ByteBuffer.wrap(opt).order(ByteOrder.LITTLE_ENDIAN);
-        ob.putInt(100);        // OrderQty (byte1 bit 2)
-        ob.putInt(50);         // MaxFloor (byte2 bit 0)
-        ob.putLong(100_000L);  // StopPx  (byte2 bit 1)
-        ob.putInt(0);          // RoutingFirmID (byte2 bit 2)
+    void blankAndNotAllowedBitsOfBitfield2_areRejected() {
+        for (int bit : new int[]{0x08, 0x10, 0x20, 0x40, 0x80}) {
+            byte[] raw = buildRaw("C1", "O1", 2, new byte[]{0x04, (byte) bit}, new byte[24]);
+            assertEquals("Bitfield 2 bit " + bit + " cannot be specified on Modify Order",
+                    ModifyOrderMessage.parse(raw).getFieldError());
+        }
+    }
 
-        byte[] raw = buildRaw("C1", "O1", 2,
-                new byte[]{0x04, 0x07}, opt); // byte1:OrderQty, byte2:MaxFloor+StopPx+RoutingFirmID
+    @Test
+    void bitBeyondTheTwoSpecBitfields_isRejected() {
+        byte[] raw = buildRaw("C1", "O1", 3, new byte[]{0x04, 0x00, 0x01}, new byte[5]);
+        assertEquals("Bitfield 3 bit 1 cannot be specified on Modify Order", ModifyOrderMessage.parse(raw).getFieldError());
+    }
 
-        assertDoesNotThrow(() -> ModifyOrderMessage.parse(raw));
-        ModifyOrderMessage msg = ModifyOrderMessage.parse(raw);
+    @Test
+    void optionalFieldsShorterThanTheBitfields_areRejected() {
+        byte[] raw = buildRaw("C1", "O1", 1, new byte[]{0x0C}, new byte[6]);
+        assertEquals("Modify Order is too short for its optional fields", ModifyOrderMessage.parse(raw).getFieldError());
+    }
+
+    @Test
+    void routingFirmId_isRead_andByte2DefaultsAreAccepted() {
+        ByteBuffer ob = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN);
+        ob.putInt(100);        // OrderQty
+        ob.putInt(0);          // MaxFloor
+        ob.putLong(0);         // StopPx
+        putAlpha(ob, "RT01", 4);
+
+        ModifyOrderMessage msg = ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x07}, ob.array()));
+
         assertEquals(100, msg.getOrderQty());
+        assertEquals("RT01", msg.getRoutingFirmID());
+        assertNull(msg.getFieldError());
+    }
+
+    @Test
+    void executionChangingFields_areRejectedUnlessDefault() {
+        ByteBuffer maxFloor = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putInt(100).putInt(50);
+        assertEquals("MaxFloor is not supported by the simulator",
+                ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x01}, maxFloor.array())).getFieldError());
+
+        ByteBuffer stopPx = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN).putInt(100).putLong(100_000L);
+        assertEquals("StopPx is not supported by the simulator",
+                ModifyOrderMessage.parse(buildRaw("C1", "O1", 2, new byte[]{0x04, 0x02}, stopPx.array())).getFieldError());
+
+        assertEquals("ExecInst is not supported by the simulator",
+                ModifyOrderMessage.parse(buildRaw("C1", "O1", 1, new byte[]{0x44}, new byte[]{100, 0, 0, 0, 'f'})).getFieldError());
+        assertNull(ModifyOrderMessage.parse(buildRaw("C1", "O1", 1, new byte[]{0x44}, new byte[]{100, 0, 0, 0, 0})).getFieldError());
+    }
+
+    @Test
+    void cancelOrigOnReject_isRead_andValidated() {
+        ModifyOrderMessage yes = ModifyOrderMessage.parse(buildRaw("C1", "O1", 1, new byte[]{0x24}, new byte[]{100, 0, 0, 0, 'Y'}));
+        ModifyOrderMessage no = ModifyOrderMessage.parse(buildRaw("C1", "O1", 1, new byte[]{0x24}, new byte[]{100, 0, 0, 0, 'N'}));
+        ModifyOrderMessage bad = ModifyOrderMessage.parse(buildRaw("C1", "O1", 1, new byte[]{0x24}, new byte[]{100, 0, 0, 0, 'X'}));
+
+        assertTrue(yes.cancelsOrigOnReject());
+        assertNull(yes.getFieldError());
+        assertFalse(no.cancelsOrigOnReject());
+        assertEquals("Invalid CancelOrigOnReject 'X'", bad.getFieldError());
+    }
+
+    @Test
+    void orderQtyZero_isPresent() {
+        ModifyOrderMessage msg = ModifyOrderMessage.parse(buildRaw("C1", "O1", 1, new byte[]{0x04}, new byte[4]));
+        assertTrue(msg.hasOrderQty(), "OrderQty 0 is present: the delta cancels the order");
     }
 
     // ── Validation ────────────────────────────────────────────────────────────

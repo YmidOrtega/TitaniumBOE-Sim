@@ -26,6 +26,8 @@ import com.boe.simulator.protocol.message.CancelRejectedMessage;
 import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 import com.boe.simulator.protocol.message.MassCancelAcknowledgmentMessage;
+import com.boe.simulator.protocol.message.ModifyOrderMessage;
+import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.Side;
@@ -47,6 +49,7 @@ class ClientConnectionHandlerCancelTest {
     private static final byte ORDER_CANCELLED = 0x2A;
     private static final byte CANCEL_REJECTED = 0x2B;
     private static final byte MASS_CANCEL_ACK = 0x36;
+    private static final byte USER_MODIFY_REJECTED = 0x29;
 
     private ServerSocket listener;
     private Socket client;
@@ -165,6 +168,29 @@ class ClientConnectionHandlerCancelTest {
         send(other.toBytes());
 
         for (int i = 0; i < 11; i++) expect(MASS_CANCEL_ACK);
+    }
+
+    @Test
+    void rejectedModifyWithCancelOrigOnReject_sendsUserModifyRejectedThenOrderCancelled() throws Exception {
+        when(orderManager.processModifyOrder(any(ModifyOrderMessage.class), any(ClientSession.class)))
+                .thenReturn(OrderManager.ModifyResponse.rejectedAndCancelled("NEW1",
+                        UserModifyRejectedMessage.REASON_UNFORESEEN, "Price is required in Modify Order for limit orders", order("ORIG1")));
+        send(modifyWithCancelOrigOnReject("NEW1", "ORIG1"));
+
+        byte[] rejected = expect(USER_MODIFY_REJECTED);
+        assertEquals("NEW1", text(rejected, 18, 20));
+        assertEquals('Z', rejected[38]);
+        assertEquals("ORIG1", text(expect(ORDER_CANCELLED), 18, 20));
+    }
+
+    // header(10) + ClOrdID(20) + OrigClOrdID(20) + NumberOfBitfields(1) + bitfield(1) + OrderQty(4) + CancelOrigOnReject(1)
+    private byte[] modifyWithCancelOrigOnReject(String clOrdID, String origClOrdID) {
+        ByteBuffer buf = ByteBuffer.allocate(57).order(ByteOrder.LITTLE_ENDIAN);
+        buf.put((byte) 0xBA).put((byte) 0xBA).putShort((short) 55).put((byte) 0x3A).put((byte) 0).putInt(++sequence);
+        buf.put(java.util.Arrays.copyOf(clOrdID.getBytes(StandardCharsets.US_ASCII), 20));
+        buf.put(java.util.Arrays.copyOf(origClOrdID.getBytes(StandardCharsets.US_ASCII), 20));
+        buf.put((byte) 1).put((byte) 0x24).putInt(10).put((byte) 'Y');
+        return buf.array();
     }
 
     private byte[] cancel(String origClOrdID) {
