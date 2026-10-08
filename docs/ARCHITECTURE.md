@@ -79,7 +79,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 565 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 576 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -330,9 +330,9 @@ que nunca lee desplazado un campo que no implementa. Cada campo tiene un tratami
 
 | Tratamiento | Campos |
 |---|---|
-| Se lee | ClearingFirm, ClearingAccount, Price, OrdType, TimeInForce, Symbol, Capacity, RoutingInst, Account, MaturityDate, StrikePrice, PutOrCall, OpenClose, PreventMatch |
-| Se consume e ignora (informativo) | RiskReset, CMTANumber, SessionEligibility, AttributedQuote, RoutStrategy, RouteDeliveryMethod, ExDestination, EchoText, RoutingFirmID, CustomGroupId, ClearingOptionalData, ClientIDAttr, FrequentTraderID, Compression, OrderOrigin, ORS, Held |
-| Rechazo `Z` (cambia la ejecución y no está implementado) | MinQty, ExpireTime, TargetPartyID, DisplayRange, StopPx, AuctionId, FloorDestination; ExecInst, MaxFloor, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
+| Se lee | ClearingFirm, ClearingAccount, Price, OrdType, TimeInForce, MinQty, MaxFloor, Symbol, Capacity, RoutingInst, Account, PreventMatch, MaturityDate, StrikePrice, PutOrCall, RiskReset, OpenClose, DisplayRange, StopPx, CustomGroupId |
+| Se consume e ignora (informativo; se devuelve si se pide) | CMTANumber, SessionEligibility, AttributedQuote, RoutStrategy, RouteDeliveryMethod, ExDestination, EchoText, RoutingFirmID, ClearingOptionalData, ClientIDAttr, FrequentTraderID, Compression, OrderOrigin, ORS, Held |
+| Rechazo `Z` (cambia la ejecución y no está implementado) | ExpireTime, TargetPartyID, AuctionId, FloorDestination; ExecInst, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
 | Rechazo (en blanco o reservado en la spec) | el resto de bits, y cualquier bit más allá del bitfield 10 |
 
 **New Order: TimeInForce** (p.212). El simulador no tiene subastas ni sesiones de varios días:
@@ -445,8 +445,20 @@ liquidez). El campo opcional Subreason (p.215) no se envía.
 **Orden de las respuestas.** El ACK (o el Order Modified) sale **antes** que las ejecuciones que
 provoca la propia orden, y una IOC/FOK termina con su Order Cancelled. Las ejecuciones del agresor
 se construyen en el momento del cruce (con su `LeavesQty` de ese instante), `OrderManager` las
-aparca y viajan en la respuesta para que `ClientConnectionHandler` las envíe tras el ACK. Las de la
-orden pasiva salen en el acto: van a otra sesión.
+aparca y viajan en la respuesta para que `ClientConnectionHandler` las envíe tras el ACK. En
+general, mientras se procesa una petición todo lo que va al **mismo usuario** (sus ejecuciones, las
+de una Stop suya elegida por ese trade, cancelaciones `V` o recargas `L` de sus otras órdenes) se
+aparca en el orden en que se genera y sale después de la respuesta; lo de otros usuarios sale en el
+acto.
+
+**Reserva, MinQty y Stop** (List of Optional Fields, p.200-211):
+
+| Campo | Comportamiento |
+|---|---|
+| MaxFloor | Solo se muestra (y se cruza) esa parte; el libro publicado suma lo visible. Al agotarse se recarga desde la reserva, pasa al final del nivel (lo visible de las demás va antes) y se envía Order Restated `L`. Prohibido en clases propietarias (DJX, RUT, SPX, XSP, VIX) |
+| DisplayRange | Cada recarga muestra un valor aleatorio entre MaxFloor − DisplayRange y MaxFloor + DisplayRange, en lotes de un contrato. Exige MaxFloor y debe ser menor que él |
+| MinQty | En una IOC, si la liquidez cruzable no llega a MinQty, se cancela sin ejecutar (`N`); en otras órdenes se ignora. No puede superar OrderQty |
+| OrdType `3` Stop / `4` Stop Limit | Exigen StopPx (Stop sin Price, Stop Limit con Price) y TimeInForce Day/GTC/GTD. Esperan fuera del libro; un trade nuevo con última venta ≥ StopPx (compra) o ≤ StopPx (venta) los elige, por orden de entrada, y las elecciones encadenan. Elegida, una Stop actúa como orden a mercado y una Stop Limit como limitada a Price. Se pueden cancelar y modificar (StopPx, MaxFloor) antes de elegirse |
 
 **Cierre del día y apagado.** A las **17:30 America/New_York** (horario de verano incluido; la tarea se
 reprograma cada día) todas las sesiones conectadas reciben `Logout` `E` *End of day* y, después,
@@ -520,7 +532,9 @@ Dentro de cada nivel de precio: las órdenes se mantienen en una `List<Order>` e
 ```
 processOrder(Order incoming)
     │
+    ├── Stop / Stop Limit sin elegir → a la lista de stops del libro, sin trades
     ├── FOK y la liquidez cruzable < leavesQty → cancel(), sin trades
+    ├── IOC con MinQty y la liquidez cruzable < MinQty → cancel(), sin trades
     │
     ├── ¿Puede cruzar? (canMatch)
     │    ├── MARKET → siempre sí
@@ -537,7 +551,8 @@ processOrder(Order incoming)
     │         └── Notifica listeners (WebSocket broadcast)
     │
     ├── IOC, FOK o MARKET con leavesQty > 0 → cancel()
-    └── Si no, leavesQty > 0 y order.isLive() → addOrder(book)
+    ├── Si no, leavesQty > 0 y order.isLive() → addOrder(book) (con la parte visible si es reserva)
+    └── Si hubo trades → electStops: elige las stops con la nueva última venta, en cascada
 ```
 
 En cada Order Execution, `BaseLiquidityIndicator` es `R` para el lado `aggressorSide` del trade y `A`
@@ -985,14 +1000,14 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-565 tests distribuidos en 60 clases (cifras de `mvn test`, no estimadas):
+576 tests distribuidos en 61 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 252 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
+| Wire format (`protocol/message/`) | 253 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
 | Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
 | Order management (`server/order/`) | 71 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
-| **Matching engine (`server/matching/`)** | **54** | Prioridad precio-tiempo, self-trade y PreventMatch, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
+| **Matching engine (`server/matching/`)** | **64** | Prioridad precio-tiempo, self-trade y PreventMatch, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
 | Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
@@ -1009,7 +1024,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.2 Cobertura del Motor de Matching
 
-Repartida en seis clases, cubre las invariantes que hacen correcto a un motor de órdenes:
+Repartida en siete clases, cubre las invariantes que hacen correcto a un motor de órdenes:
 
 **`MatchingEnginePriorityTest`** — prioridad precio-tiempo:
 FIFO dentro de un nivel de precio, mejor precio primero entre niveles, precio de ejecución
@@ -1035,6 +1050,11 @@ prioridad temporal: bajar solo la cantidad la conserva; aumentarla, reprecio o u
 IOC con resto cancelado y sin contrapartida, FOK que no ejecuta nada si no hay liquidez para toda la
 orden (sin contar las propias) y que barre varios niveles si la hay, orden a mercado como IOC
 implícita, Day que descansa, y `aggressorSide` del trade igual al lado de la orden entrante.
+
+**`MatchingEngineReserveStopTest`** — reserva (solo se publica MaxFloor, recarga con `L`, lo visible
+de las demás va antes, DisplayRange), MinQty en IOC, Stop de compra elegida por la última venta que
+opera como mercado, Stop Limit de venta que se queda en el libro, Stop elegida sin liquidez (`N`),
+cascada de elecciones, que solo un trade nuevo elija, y cancelar/modificar una Stop pendiente.
 
 **`MatchingEngineConcurrencyTest`** — las dos capas de bloqueo (§6.3):
 símbolos distintos procesados en paralelo mantienen sus libros aislados; agresores concurrentes
