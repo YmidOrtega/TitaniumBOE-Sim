@@ -431,7 +431,10 @@ El reset diario borra los lockouts junto con las órdenes.
 | Cualquier otra validación, campo no soportado o error interno | `Z` *Unforeseen reason* + texto |
 
 Order Cancelled usa `U` (petición del usuario, también en los mass cancel) y `N` (IOC/FOK sin
-liquidez). El campo opcional Subreason (p.215) no se envía.
+liquidez). El campo opcional Subreason (p.215) solo va en Order Cancelled, si la sesión lo pide:
+`A` / `B` / `C` en los mass cancel y purges (nivel EFID, símbolo o CustomGroupID) y `J` en Cancel on
+Disconnect. Order Rejected no lo envía, tampoco en los rechazos `f` / `s` por lockout: la spec no dice
+qué Subreason los acompaña.
 
 **Mensajes que el simulador no procesa.** La spec solo dice que una violación del protocolo acaba en
 `Logout` `!`; nunca se deja un mensaje sin respuesta:
