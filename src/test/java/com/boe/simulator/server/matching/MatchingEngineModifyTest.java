@@ -206,4 +206,62 @@ class MatchingEngineModifyTest {
         assertTrue(!engine.cancelOrder(never));
         assertNull(engine.getOrderBook(SYMBOL).orElse(null));
     }
+
+    @Test
+    @DisplayName("Bajar solo la cantidad mantiene la prioridad temporal (p.77)")
+    void reducingOnlyTheQuantityKeepsTimePriority() {
+        Order first = order("B1", Side.BUY, "100.00", 10);
+        Order second = order("B2", Side.BUY, "100.00", 10);
+        engine.processOrder(first);
+        engine.processOrder(second);
+
+        engine.modifyOrder(first, "B1-R", new BigDecimal("100.00"), null, 6);
+
+        OrderBook book = engine.getOrderBook(SYMBOL).orElseThrow();
+        assertEquals(16, book.getTotalBidQuantity());
+        assertEquals(6, first.getLeavesQty());
+        assertEquals("B1-R", first.getClOrdID());
+
+        List<Trade> trades = engine.processOrder(order("S1", Side.SELL, "100.00", 5));
+        assertEquals("B1-R", trades.get(0).getBuyClOrdID(), "B1 sigue primera en la cola");
+    }
+
+    @Test
+    @DisplayName("Un modify sin cambios pierde la prioridad")
+    void modifyWithoutChangesLosesTimePriority() {
+        Order first = order("B1", Side.BUY, "100.00", 10);
+        engine.processOrder(first);
+        engine.processOrder(order("B2", Side.BUY, "100.00", 10));
+
+        engine.modifyOrder(first, "B1-R", new BigDecimal("100.00"), null, 10);
+
+        List<Trade> trades = engine.processOrder(order("S1", Side.SELL, "100.00", 5));
+        assertEquals("B2", trades.get(0).getBuyClOrdID());
+    }
+
+    @Test
+    @DisplayName("Aumentar la cantidad pierde la prioridad")
+    void increasingTheQuantityLosesTimePriority() {
+        Order first = order("B1", Side.BUY, "100.00", 10);
+        engine.processOrder(first);
+        engine.processOrder(order("B2", Side.BUY, "100.00", 10));
+
+        engine.modifyOrder(first, "B1-R", new BigDecimal("100.00"), null, 12);
+
+        List<Trade> trades = engine.processOrder(order("S1", Side.SELL, "100.00", 5));
+        assertEquals("B2", trades.get(0).getBuyClOrdID());
+    }
+
+    @Test
+    @DisplayName("Bajar la cantidad y cambiar el precio pierde la prioridad")
+    void reducingTheQuantityAndRepricingLosesTimePriority() {
+        Order first = order("B1", Side.BUY, "100.00", 10);
+        engine.processOrder(first);
+        engine.processOrder(order("B2", Side.BUY, "99.00", 10));
+
+        engine.modifyOrder(first, "B1-R", new BigDecimal("99.00"), null, 5);
+
+        List<Trade> trades = engine.processOrder(order("S1", Side.SELL, "99.00", 5));
+        assertEquals("B2", trades.get(0).getBuyClOrdID());
+    }
 }

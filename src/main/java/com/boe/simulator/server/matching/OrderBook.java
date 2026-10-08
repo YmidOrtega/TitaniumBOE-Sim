@@ -92,6 +92,23 @@ public class OrderBook {
         }
     }
 
+    public void updateInPlace(Order order, Runnable change) {
+        long stamp = lock.writeLock();
+        try {
+            boolean resting = orderIndex.containsKey(order.getOrderID());
+            if (resting) adjustTotal(order, -order.getLeavesQty());
+            change.run();
+            if (resting) adjustTotal(order, order.getLeavesQty());
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    private void adjustTotal(Order order, int qty) {
+        if (order.getSide() == Side.BUY) totalBidQuantity += qty;
+        else totalAskQuantity += qty;
+    }
+
     public BigDecimal getBestBid() {
         long stamp = lock.tryOptimisticRead();
         BigDecimal result = bestBidUnlocked();

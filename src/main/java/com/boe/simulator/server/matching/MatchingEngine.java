@@ -90,16 +90,21 @@ public class MatchingEngine {
         synchronized (symbolLock) {
             OrderBook book = orderBooks.computeIfAbsent(symbol, OrderBook::new);
 
-            // 1. Remove at current (old) price — must happen BEFORE updating price on the order
-            book.removeOrder(order);
-            notifyOrderRemoved(order, book);
-
-            // 2. Compute new leavesQty per spec delta logic (p.77):
-            //    delta = newOrderQty - currentEffectiveOrderQty
-            //    newLeavesQty = leavesQty + delta
+            // Delta logic (p.77): newLeavesQty = leavesQty + (newOrderQty - currentEffectiveOrderQty)
             int currentQty = order.getEffectiveOrderQty();
             int delta       = newOrderQty - currentQty;
             int newLeavesQty = order.getLeavesQty() + delta;
+
+            boolean samePrice = newPrice == null || order.getPrice() == null || newPrice.compareTo(order.getPrice()) == 0;
+            boolean sameOrdType = newOrdType == null || newOrdType == order.getOrdType();
+            if (delta < 0 && newLeavesQty > 0 && samePrice && sameOrdType) {
+                book.updateInPlace(order, () -> order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty));
+                return List.of();
+            }
+
+            // Remove at the current price — must happen BEFORE updating the price on the order
+            book.removeOrder(order);
+            notifyOrderRemoved(order, book);
 
             if (newLeavesQty <= 0) {
                 // Spec: if resulting leavesQty <= 0, cancel the order
