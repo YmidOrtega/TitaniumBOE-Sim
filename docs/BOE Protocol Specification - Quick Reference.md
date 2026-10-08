@@ -588,7 +588,8 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 |------|----------------|---------------------|--------|
 | Cancel / Modify message codes | `0x45` = Cancel, `0x4A` = Modify | `0x39` = Cancel, `0x3A` = Modify (contiguous with `0x38` New Order) | Open — internally consistent, but a real BOE client would not interoperate on these two messages |
 | Heartbeat timing | send after 1 s idle, timeout at 5 s | defaults of 10 s / 30 s in `ServerConfiguration` (configurable via builder) | Open — deliberately relaxed so a GC pause or a debugger breakpoint does not drop the session |
-| Heartbeat sequencing | Server Heartbeat does **not** increment the outbound sequence | `HeartbeatMonitor` calls `getNextSentSequenceNumber()` | Open |
+| Heartbeat sequencing | Server Heartbeat does **not** increment the outbound sequence | `HeartbeatMonitor` takes the next number through `sendSequenced` | Open |
+| Source IP filtering | unknown source IP ranges are blocked | any IP is accepted | Won't fix — out of scope for a simulator; network access control belongs to the deployment |
 | Session message codes | `0x37`/`0x24`/`0x09`/`0x13` | matches the spec | ✅ Fixed |
 | New Order code | `0x38` | `0x38` | ✅ Fixed |
 | `Side` wire values | `'1'` = Buy, `'2'` = Sell (ASCII) | `'1'`/`'2'`; `fromByte` also accepts legacy `1`/`2` and `'B'`/`'S'` for records already in RocksDB | ✅ Fixed |
@@ -598,6 +599,8 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 | String padding | NUL (`0x00`) for Alpha, Alphanumeric and Text | NUL in every encoder; inbound decoders also tolerate trailing spaces | ✅ Fixed |
 | `DateTime` | nanoseconds past the UNIX epoch (UTC) | `BoeTime.nowEpochNanos()` (previously `System.nanoTime()`, which has an arbitrary origin) | ✅ Fixed |
 | `Date` (MaturityDate) | YYYYMMDD as a 4-byte integer | `BoeTime.toYyyymmdd()` in New Order and Order Acknowledgment (New Order previously sent days since 1970) | ✅ Fixed |
+| Load handling | never drop member messages; stop reading the socket instead (1,024 / 960 unacknowledged) | synchronous per-connection processing plus a 1,000 msg/s token bucket that pauses reads; session messages are not counted (previously excess messages were silently dropped at 100/min) | ✅ Fixed |
+| Outbound sequencing | strictly increasing on the wire | sequence assigned and written under one lock (`sendSequenced`); before, executions and heartbeats from other threads could reorder it | ✅ Fixed |
 
 ---
 

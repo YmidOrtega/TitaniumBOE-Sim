@@ -712,7 +712,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-356 tests distribuidos en 35 clases (cifras de `mvn test`, no estimadas):
+360 tests distribuidos en 36 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
@@ -725,7 +725,8 @@ Detalle completo y limitación conocida en §6.3.
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
-| Rate limiting (`server/ratelimit/`) | 6 | Ventana fija por conexión |
+| Rate limiting (`server/ratelimit/`) | 9 | Token bucket por conexión, contrapresión en vez de descarte |
+| Conexión (`server/connection/`) | 1 | Orden de `SequenceNumber` con escritores concurrentes |
 | Validación de mensajes (`server/validation/`) | 5 | Campos obligatorios y rangos |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
 | Métricas (`server/metrics/`) | 5 | Contadores de salud |
