@@ -37,6 +37,7 @@ public final class CancelRejectedMessage extends ApplicationMessage {
     public static final byte REASON_ALREADY_FILLED      = (byte) 'F';
     public static final byte REASON_NOT_AUTHORIZED      = (byte) 'U';
     public static final byte REASON_UNKNOWN             = (byte) 'X';
+    public static final byte REASON_UNFORESEEN          = (byte) 'Z';
 
     private long transactTime;
     private String clOrdID;

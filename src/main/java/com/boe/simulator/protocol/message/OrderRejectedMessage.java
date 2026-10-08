@@ -43,6 +43,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
     public static final byte REASON_RATE_LIMIT_EXCEEDED        = (byte) 'R';
     public static final byte REASON_MAX_OPEN_ORDERS_EXCEEDED   = (byte) 'o';
     public static final byte REASON_RECEIVED_DURING_REPLAY     = (byte) 'y';
+    public static final byte REASON_UNFORESEEN                 = (byte) 'Z';
 
     // Header (unsequenced — always 0)
     private byte matchingUnit;

@@ -36,6 +36,7 @@ public final class UserModifyRejectedMessage extends ApplicationMessage {
     public static final byte REASON_NOT_FOUND           = (byte) 'O';
     public static final byte REASON_UNKNOWN             = (byte) 'X';
     public static final byte REASON_RECEIVED_DURING_REPLAY = (byte) 'y';
+    public static final byte REASON_UNFORESEEN          = (byte) 'Z';
 
     private long transactTime;
     private String clOrdID;

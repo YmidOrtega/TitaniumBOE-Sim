@@ -271,6 +271,10 @@ public class ClientConnectionHandler implements Runnable {
                         + " is not above last processed " + Integer.toUnsignedString(state.lastProcessedInbound()));
                 return;
             }
+            if (inboundMatchingUnitOf(message) != 0) {
+                rejectNonZeroMatchingUnit(message);
+                return;
+            }
             if (receivedDuringReplay && !(message instanceof CancelOrderMessage)) {
                 rejectReceivedDuringReplay(message);
                 return;
@@ -294,6 +298,12 @@ public class ClientConnectionHandler implements Runnable {
                 request.getUsername(),
                 request.getSessionSubID()
         });
+
+        if (request.getMatchingUnit() != 0 || request.getSequenceNumber() != 0) {
+            rejectLogin(request, LoginResponseMessage.STATUS_INVALID_STRUCTURE,
+                    "MatchingUnit and SequenceNumber must be 0 in a Login Request");
+            return;
+        }
 
         String bitfieldError = ReturnBitfieldRules.validate(request.getReturnBitfields());
         if (bitfieldError != null) {
@@ -425,6 +435,7 @@ public class ClientConnectionHandler implements Runnable {
 
     private void handleLogoutRequest(LogoutRequestMessage request) {
         LOGGER.log(Level.INFO, "[Session {0}] Processing logout request", session.getConnectionId());
+        warnIfSessionHeaderNotZero("LogoutRequest", request.getMatchingUnit(), request.getSequenceNumber());
 
         sendLogout(LogoutResponseMessage.REASON_USER_REQUESTED, "Logout successful");
     }
@@ -468,7 +479,36 @@ public class ClientConnectionHandler implements Runnable {
 
     private void handleClientHeartbeat(ClientHeartbeatMessage heartbeat) {
         LOGGER.log(Level.FINE, "[Session {0}] Client heartbeat received", session.getConnectionId());
+        warnIfSessionHeaderNotZero("ClientHeartbeat", heartbeat.getMatchingUnit(), heartbeat.getSequenceNumber());
         session.updateHeartbeatReceived();
+    }
+
+    private void warnIfSessionHeaderNotZero(String messageName, byte matchingUnit, int sequenceNumber) {
+        if (matchingUnit != 0 || sequenceNumber != 0) {
+            LOGGER.log(Level.WARNING, "[Session {0}] {1} should have MatchingUnit 0 and SequenceNumber 0, got {2} / {3}",
+                    new Object[]{session.getConnectionId(), messageName, matchingUnit, Integer.toUnsignedString(sequenceNumber)});
+        }
+    }
+
+    private static int inboundMatchingUnitOf(ApplicationMessage message) {
+        return switch (message) {
+            case NewOrderMessage m -> m.getMatchingUnit();
+            case CancelOrderMessage m -> m.getMatchingUnit();
+            case ModifyOrderMessage m -> m.getMatchingUnit();
+            default -> 0;
+        };
+    }
+
+    private void rejectNonZeroMatchingUnit(ApplicationMessage message) {
+        String text = "MatchingUnit must be 0 for inbound messages";
+        LOGGER.log(Level.WARNING, "[Session {0}] {1} with MatchingUnit {2} rejected",
+                new Object[]{session.getConnectionId(), message.getClass().getSimpleName(), inboundMatchingUnitOf(message)});
+        switch (message) {
+            case NewOrderMessage m -> sendOrderRejected(m.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, text);
+            case ModifyOrderMessage m -> sendUserModifyRejected(m.getClOrdID(), UserModifyRejectedMessage.REASON_UNFORESEEN, text);
+            case CancelOrderMessage m -> sendCancelRejected(m.getOrigClOrdID(), CancelRejectedMessage.REASON_UNFORESEEN, text);
+            default -> { }
+        }
     }
 
     private static int inboundSequenceOf(ApplicationMessage message) {
@@ -640,6 +680,16 @@ public class ClientConnectionHandler implements Runnable {
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE,
                     "[Session " + session.getConnectionId() + "] Error sending UserModifyRejected", e);
+        }
+    }
+
+    private void sendCancelRejected(String clOrdID, byte reason, String text) {
+        try {
+            sendMessage(new CancelRejectedMessage(clOrdID, reason, text).toBytes());
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent CancelRejected: ClOrdID={1}, Reason={2}",
+                    new Object[]{session.getConnectionId(), clOrdID, (char) reason});
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending CancelRejected", e);
         }
     }
 
