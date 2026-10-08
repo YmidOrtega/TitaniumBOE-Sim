@@ -31,18 +31,11 @@ import java.nio.charset.StandardCharsets;
  *   [68]  ReservedInternal       1B
  *   [69]  NumberOfReturnBitfields 1B
  *   [70]  ReturnBitfield¹…ᴺ    NB
- *         Optional fields…
- *
- * Relevant optional fields (p.190):
- *   Byte 3: 0x02=ClearingFirm(4B), 0x04=ClearingAccount(4B), 0x40=OrderQty(4B)
+ *         Optional fields… (Return Bitfields Per Message, p.190)
  */
 public final class OrderExecutedMessage extends ApplicationMessage {
-    private static final byte MESSAGE_TYPE = 0x2C;
-    private static final byte SOM1 = (byte) 0xBA;
-    private static final byte SOM2 = (byte) 0xBA;
-    private static final int FIXED_SIZE = 70;
-    private static final byte[] DEFAULT_BITFIELDS = new byte[]{0x00, 0x41, 0x00};
-    private static final byte[] SUPPORTED_BITFIELD_MASKS = new byte[]{0x00, 0x41, 0x46};
+    public static final byte MESSAGE_TYPE = 0x2C;
+    private static final int FIXED_SIZE = 69; // before NumberOfReturnBitfields
 
     // BaseLiquidityIndicator values
     public static final byte LIQUIDITY_ADDED   = (byte) 'A';
@@ -62,16 +55,7 @@ public final class OrderExecutedMessage extends ApplicationMessage {
     private byte baseLiquidityIndicator;
     private byte subLiquidityIndicator;
     private String contraBroker;
-
-    private int numberOfBitfields;
-    private byte[] bitfields;
-
-    // Optional fields
-    private String symbol;
-    private byte capacity;
-    private String clearingFirm;
-    private String clearingAccount;
-    private int orderQty;
+    private ReturnFields returnFields = new ReturnFields();
 
     public OrderExecutedMessage() {}
 
@@ -92,24 +76,13 @@ public final class OrderExecutedMessage extends ApplicationMessage {
         msg.subLiquidityIndicator = 0x00;
         msg.contraBroker = "";
 
-        msg.symbol = order.getSymbol();
-        msg.capacity = order.getCapacity() != null ? order.getCapacity().wireValue() : 0;
-        msg.clearingFirm = order.getClearingFirm();
-        msg.clearingAccount = order.getClearingAccount();
-        msg.orderQty = order.getOrderQty();
-
-        msg.setupBitfields(returnBitfields != null ? returnBitfields.maskFor(MESSAGE_TYPE) : null);
+        msg.returnFields = OrderReturnFields.forOrder(order)
+                .put(ReturnField.LAST_SHARES, trade.getQuantity())
+                .put(ReturnField.LAST_PX, trade.getPrice())
+                .put(ReturnField.BASE_LIQUIDITY_INDICATOR, msg.baseLiquidityIndicator)
+                .put(ReturnField.TRADE_DATE, trade.getExecutionTime())
+                .select(returnBitfields, MESSAGE_TYPE);
         return msg;
-    }
-
-    private void setupBitfields(byte[] negotiatedMask) {
-        byte[] selected = negotiatedMask != null ? negotiatedMask : DEFAULT_BITFIELDS;
-        numberOfBitfields = selected.length;
-        bitfields = new byte[numberOfBitfields];
-        for (int i = 0; i < selected.length; i++) {
-            byte supported = i < SUPPORTED_BITFIELD_MASKS.length ? SUPPORTED_BITFIELD_MASKS[i] : 0x00;
-            bitfields[i] = (byte) (selected[i] & supported);
-        }
     }
 
     @Override
@@ -117,13 +90,10 @@ public final class OrderExecutedMessage extends ApplicationMessage {
 
     @Override
     public byte[] toBytes() {
-        int optSize = optionalSize();
-        int totalSize = FIXED_SIZE + numberOfBitfields + optSize;
-
+        int totalSize = FIXED_SIZE + returnFields.encodedSize();
         ByteBuffer buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN);
 
-        buf.put(SOM1);
-        buf.put(SOM2);
+        buf.put((byte) 0xBA).put((byte) 0xBA);
         buf.putShort((short) (totalSize - 2));
         buf.put(MESSAGE_TYPE);
         buf.put(matchingUnit);
@@ -138,44 +108,16 @@ public final class OrderExecutedMessage extends ApplicationMessage {
         buf.put(subLiquidityIndicator);
         putText(buf, contraBroker, 4);
         buf.put((byte) 0x00);              // ReservedInternal
-        buf.put((byte) numberOfBitfields);
-        if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
-
-        writeOptional(buf);
+        returnFields.writeTo(buf);
         return buf.array();
-    }
-
-    private void writeOptional(ByteBuffer buf) {
-        if (numberOfBitfields < 2) return;
-
-        if ((bitfields[1] & 0x01) != 0) putText(buf, symbol, 8);
-        if ((bitfields[1] & 0x40) != 0) buf.put(capacity);
-
-        if (numberOfBitfields < 3) return;
-
-        if ((bitfields[2] & 0x02) != 0) putText(buf, clearingFirm, 4);
-        if ((bitfields[2] & 0x04) != 0) putText(buf, clearingAccount, 4);
-        if ((bitfields[2] & 0x40) != 0) buf.putInt(orderQty);
-    }
-
-    private int optionalSize() {
-        int size = 0;
-        if (numberOfBitfields >= 2) {
-            if ((bitfields[1] & 0x01) != 0) size += 8;
-            if ((bitfields[1] & 0x40) != 0) size += 1;
-        }
-        if (numberOfBitfields >= 3) {
-            if ((bitfields[2] & 0x02) != 0) size += 4;
-            if ((bitfields[2] & 0x04) != 0) size += 4;
-            if ((bitfields[2] & 0x40) != 0) size += 4;
-        }
-        return size;
     }
 
     public static OrderExecutedMessage fromBytes(byte[] data) {
         ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         OrderExecutedMessage msg = new OrderExecutedMessage();
 
+        msg.matchingUnit = buf.get(5);
+        msg.sequenceNumber = buf.getInt(6);
         buf.position(10);
         msg.transactTime = buf.getLong();
 
@@ -197,28 +139,7 @@ public final class OrderExecutedMessage extends ApplicationMessage {
         msg.contraBroker = stripNul(cb);
 
         buf.get(); // ReservedInternal
-
-        msg.numberOfBitfields = buf.get() & 0xFF;
-        msg.bitfields = new byte[msg.numberOfBitfields];
-        if (msg.numberOfBitfields > 0) buf.get(msg.bitfields);
-
-        if (msg.numberOfBitfields >= 2) {
-            if ((msg.bitfields[1] & 0x01) != 0) {
-                byte[] s = new byte[8]; buf.get(s); msg.symbol = stripNul(s);
-            }
-            if ((msg.bitfields[1] & 0x40) != 0) msg.capacity = buf.get();
-        }
-
-        if (msg.numberOfBitfields >= 3) {
-            if ((msg.bitfields[2] & 0x02) != 0) {
-                byte[] cf = new byte[4]; buf.get(cf); msg.clearingFirm = stripNul(cf);
-            }
-            if ((msg.bitfields[2] & 0x04) != 0) {
-                byte[] ca = new byte[4]; buf.get(ca); msg.clearingAccount = stripNul(ca);
-            }
-            if ((msg.bitfields[2] & 0x40) != 0) msg.orderQty = buf.getInt();
-        }
-
+        msg.returnFields = ReturnFields.readFrom(buf);
         return msg;
     }
 
@@ -247,9 +168,10 @@ public final class OrderExecutedMessage extends ApplicationMessage {
     public int getLeavesQty() { return leavesQty; }
     public byte getBaseLiquidityIndicator() { return baseLiquidityIndicator; }
     public String getContraBroker() { return contraBroker; }
-    public String getSymbol() { return symbol; }
-    public byte getCapacity() { return capacity; }
-    public byte[] getBitfields() { return bitfields != null ? bitfields.clone() : new byte[0]; }
+    public ReturnFields getReturnFields() { return returnFields; }
+    public String getSymbol() { return (String) returnFields.get(ReturnField.SYMBOL); }
+    public byte getCapacity() { return OrderAcknowledgmentMessage.firstChar(returnFields.get(ReturnField.CAPACITY)); }
+    public byte[] getBitfields() { return returnFields.mask(); }
     public boolean isFilled() { return leavesQty == 0; }
 
     @Override

@@ -93,7 +93,7 @@ class ClientConnectionHandlerReplayTest {
 
         BoeSessionState state = sessionManager.getSessionStates().latestForUser("U1");
         state.sendSequenced(seq -> OrderAcknowledgmentMessage.fromOrder(
-                orderFor(newOrderMessage("OFF1", 9)), BoeSessionState.MATCHING_UNIT, seq, null).toBytes(), null);
+                orderFor(newOrderMessage("OFF1", 9)), BoeSessionState.MATCHING_UNIT, seq).toBytes(), null);
 
         try (Client c = connect()) {
             c.send(login(UnitSequences.of(false, Map.of(1, 1))));

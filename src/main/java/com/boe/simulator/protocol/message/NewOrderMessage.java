@@ -5,6 +5,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
 import com.boe.simulator.protocol.types.BoeTime;
@@ -108,6 +110,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     private byte openClose;         // 'O', 'C', 'N'
 
     private String fieldError;      // first unsupported or invalid optional field, if any
+    private final Map<String, byte[]> rawFields = new LinkedHashMap<>();
     private String charsetError;
 
     public NewOrderMessage() {
@@ -163,6 +166,7 @@ public final class NewOrderMessage extends ApplicationMessage {
                 }
                 byte[] value = new byte[field.length()];
                 buffer.get(value);
+                rawFields.put(field.name(), value);
 
                 switch (field.handling()) {
                     case READ -> assign(field.name(), value);
@@ -459,6 +463,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     public byte getOrdType() { return ordType; }
     public byte getTimeInForce() { return timeInForce; }
     public String getFieldError() { return fieldError; }
+    public Map<String, byte[]> getRawFields() { return Map.copyOf(rawFields); }
 
     @Override
     public String toString() {

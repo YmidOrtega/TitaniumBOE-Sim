@@ -228,6 +228,7 @@ public class OrderManager {
                     .price(message.getPrice())
                     .ordType(message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : OrdType.LIMIT)
                     .timeInForce(TimeInForce.fromByte(message.getTimeInForce()))
+                    .echoFields(message.getRawFields())
                     .symbol(message.getSymbol())
                     .capacity(message.getCapacity() != 0 ? Capacity.fromByte(message.getCapacity()) : Capacity.AGENCY)
                     .openClose(message.getOpenClose() != 0 ? OpenClose.fromByte(message.getOpenClose()) : OpenClose.NONE)
@@ -529,7 +530,9 @@ public class OrderManager {
                 new Object[]{context.getSessionIdentifier(), cancelled.size()});
 
         Character style = message.massCancelInstChar(2);
-        return CancelResponse.massCancelled(cancelled, style != null ? style : 'M', message.getMassCancelId());
+        CancelResponse response = CancelResponse.massCancelled(cancelled, style != null ? style : 'M', message.getMassCancelId());
+        response.subreason = message.getRiskRoot() != null && !message.getRiskRoot().isBlank() ? SUBREASON_SYMBOL_LEVEL : SUBREASON_EFID_LEVEL;
+        return response;
     }
 
     // MassCancelInst rules from List of Optional Fields (p.204); null = valid
@@ -568,6 +571,10 @@ public class OrderManager {
     // com.boe.simulator.api.service.SymbolService — a symbol listed there but missing here
     // shows up in GET /api/symbols and is then rejected on order entry.
     static final int MAX_MODIFICATIONS_PER_ORDER = 1_295;
+
+    // Order and Quote Subreason Codes (p.215)
+    static final byte SUBREASON_EFID_LEVEL = (byte) 'A';
+    static final byte SUBREASON_SYMBOL_LEVEL = (byte) 'B';
 
     private static final Set<String> VALID_SYMBOLS = Set.of(
             "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META",
@@ -837,6 +844,7 @@ public class OrderManager {
         private final List<Order> massCancelledOrders;
         private final char ackStyle;
         private final String massCancelId;
+        private byte subreason;
 
         private CancelResponse(ResponseType type, Order order, String clOrdID, byte reason,
                                String rejectText, List<Order> massCancelledOrders, char ackStyle, String massCancelId) {
@@ -906,6 +914,10 @@ public class OrderManager {
 
         public byte getRejectReason() {
             return cancelReason;
+        }
+
+        public byte getSubreason() {
+            return subreason;
         }
 
         public String getMassCancelId() {

@@ -1,6 +1,7 @@
 package com.boe.simulator.protocol.message;
 
 import com.boe.simulator.protocol.types.BoeTime;
+import com.boe.simulator.server.order.Order;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -35,7 +36,7 @@ import java.nio.charset.StandardCharsets;
  *   W = Wash
  */
 public final class OrderRestatedMessage extends ApplicationMessage {
-    private static final byte MESSAGE_TYPE = 0x28;
+    public static final byte MESSAGE_TYPE = 0x28;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;
     private static final int FIXED_SIZE = 49;
@@ -54,8 +55,7 @@ public final class OrderRestatedMessage extends ApplicationMessage {
     private long orderID;
     private byte restatementReason;
 
-    private int numberOfBitfields;
-    private byte[] bitfields;
+    private ReturnFields returnFields = new ReturnFields();
 
     public OrderRestatedMessage() {}
 
@@ -67,8 +67,31 @@ public final class OrderRestatedMessage extends ApplicationMessage {
         this.matchingUnit = matchingUnit;
         this.sequenceNumber = sequenceNumber;
         this.transactTime = BoeTime.nowEpochNanos();
-        this.numberOfBitfields = 0;
-        this.bitfields = new byte[0];
+    }
+
+    public static OrderRestatedMessage fromOrder(Order order, byte restatementReason, ReturnBitfields returnBitfields) {
+        OrderRestatedMessage msg = new OrderRestatedMessage(order.getClOrdID(), order.getOrderID(), restatementReason, (byte) 0, 0);
+        msg.returnFields = OrderReturnFields.forOrder(order).select(returnBitfields, MESSAGE_TYPE);
+        return msg;
+    }
+
+    public static OrderRestatedMessage fromBytes(byte[] data) {
+        ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+        OrderRestatedMessage msg = new OrderRestatedMessage();
+        msg.matchingUnit = buf.get(5);
+        msg.sequenceNumber = buf.getInt(6);
+        buf.position(10);
+        msg.transactTime = buf.getLong();
+        byte[] id = new byte[20];
+        buf.get(id);
+        int end = id.length;
+        while (end > 0 && id[end - 1] == 0) end--;
+        msg.clOrdID = new String(id, 0, end, StandardCharsets.US_ASCII);
+        msg.orderID = buf.getLong();
+        msg.restatementReason = buf.get();
+        buf.get(); // ReservedInternal
+        msg.returnFields = ReturnFields.readFrom(buf);
+        return msg;
     }
 
     @Override
@@ -76,7 +99,7 @@ public final class OrderRestatedMessage extends ApplicationMessage {
 
     @Override
     public byte[] toBytes() {
-        int totalSize = FIXED_SIZE + numberOfBitfields;
+        int totalSize = FIXED_SIZE - 1 + returnFields.encodedSize();
 
         ByteBuffer buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN);
 
@@ -90,8 +113,7 @@ public final class OrderRestatedMessage extends ApplicationMessage {
         buf.putLong(orderID);
         buf.put(restatementReason);
         buf.put((byte) 0x00);              // ReservedInternal
-        buf.put((byte) numberOfBitfields);
-        if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
+        returnFields.writeTo(buf);
 
         return buf.array();
     }
@@ -108,6 +130,12 @@ public final class OrderRestatedMessage extends ApplicationMessage {
     public void setMatchingUnit(byte matchingUnit) { this.matchingUnit = matchingUnit; }
     public void setSequenceNumber(int sequenceNumber) { this.sequenceNumber = sequenceNumber; }
     public String getClOrdID() { return clOrdID; }
+    public ReturnFields getReturnFields() { return returnFields; }
+
+    public OrderRestatedMessage withReturnFields(ReturnFields returnFields) {
+        this.returnFields = returnFields;
+        return this;
+    }
     public long getOrderID() { return orderID; }
     public byte getRestatementReason() { return restatementReason; }
 

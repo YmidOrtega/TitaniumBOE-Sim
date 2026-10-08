@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
  *         Optional fields…
  */
 public final class CancelRejectedMessage extends ApplicationMessage {
-    private static final byte MESSAGE_TYPE = 0x2B;
+    public static final byte MESSAGE_TYPE = 0x2B;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;
     private static final int FIXED_SIZE = 101;
@@ -41,8 +41,7 @@ public final class CancelRejectedMessage extends ApplicationMessage {
     private byte cancelRejectReason;
     private String text;
 
-    private int numberOfBitfields;
-    private byte[] bitfields;
+    private ReturnFields returnFields = new ReturnFields();
 
     public CancelRejectedMessage() {}
 
@@ -51,8 +50,6 @@ public final class CancelRejectedMessage extends ApplicationMessage {
         this.cancelRejectReason = reason;
         this.text = text;
         this.transactTime = BoeTime.nowEpochNanos();
-        this.numberOfBitfields = 0;
-        this.bitfields = new byte[0];
     }
 
     @Override
@@ -60,7 +57,7 @@ public final class CancelRejectedMessage extends ApplicationMessage {
 
     @Override
     public byte[] toBytes() {
-        int totalSize = FIXED_SIZE + numberOfBitfields;
+        int totalSize = FIXED_SIZE - 1 + returnFields.encodedSize();
 
         ByteBuffer buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN);
 
@@ -74,8 +71,7 @@ public final class CancelRejectedMessage extends ApplicationMessage {
         buf.put(cancelRejectReason);
         putText(buf, text, 60);
         buf.put((byte) 0x00);            // ReservedInternal
-        buf.put((byte) numberOfBitfields);
-        if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
+        returnFields.writeTo(buf);
 
         return buf.array();
     }
@@ -90,6 +86,12 @@ public final class CancelRejectedMessage extends ApplicationMessage {
     }
 
     public String getClOrdID() { return clOrdID; }
+    public ReturnFields getReturnFields() { return returnFields; }
+
+    public CancelRejectedMessage withReturnFields(ReturnFields returnFields) {
+        this.returnFields = returnFields;
+        return this;
+    }
     public byte getCancelRejectReason() { return cancelRejectReason; }
     public String getText() { return text; }
 

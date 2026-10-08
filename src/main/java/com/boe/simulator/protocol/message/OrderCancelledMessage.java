@@ -24,15 +24,13 @@ import java.nio.charset.StandardCharsets;
  *   [41]  ReturnBitfield¹…ᴺ   NB
  *         Optional fields…
  *
- * Relevant optional fields (p.187):
- *   Byte 1: 0x01=Side, 0x04=Price, 0x10=OrdType
- *   Byte 5: 0x01=OrigClOrdID (20B Text)
+ * Optional fields: Return Bitfields Per Message (p.187).
  */
 public final class OrderCancelledMessage extends ApplicationMessage {
-    private static final byte MESSAGE_TYPE = 0x2A;
+    public static final byte MESSAGE_TYPE = 0x2A;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;
-    private static final int FIXED_SIZE = 41;
+    static final int FIXED_SIZE = 40; // before NumberOfReturnBitfields
 
     // Cancel reason codes
     public static final byte REASON_USER_REQUESTED = (byte) 'U';
@@ -45,18 +43,20 @@ public final class OrderCancelledMessage extends ApplicationMessage {
     private String clOrdID;
     private byte cancelReason;
 
-    private int numberOfBitfields;
-    private byte[] bitfields;
+    private ReturnFields returnFields = new ReturnFields();
 
     public OrderCancelledMessage() {}
 
     public static OrderCancelledMessage fromOrder(Order order, byte cancelReason) {
+        return fromOrder(order, cancelReason, new ReturnFields());
+    }
+
+    public static OrderCancelledMessage fromOrder(Order order, byte cancelReason, ReturnFields returnFields) {
         OrderCancelledMessage msg = new OrderCancelledMessage();
         msg.transactTime = BoeTime.nowEpochNanos();
         msg.clOrdID = order.getClOrdID();
         msg.cancelReason = cancelReason;
-        msg.numberOfBitfields = 0;
-        msg.bitfields = new byte[0];
+        msg.returnFields = returnFields;
         return msg;
     }
 
@@ -65,7 +65,7 @@ public final class OrderCancelledMessage extends ApplicationMessage {
 
     @Override
     public byte[] toBytes() {
-        int totalSize = FIXED_SIZE + numberOfBitfields;
+        int totalSize = FIXED_SIZE + returnFields.encodedSize();
 
         ByteBuffer buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN);
 
@@ -79,14 +79,13 @@ public final class OrderCancelledMessage extends ApplicationMessage {
         putText(buf, clOrdID, 20);
         buf.put(cancelReason);
         buf.put((byte) 0x00);              // ReservedInternal
-        buf.put((byte) numberOfBitfields);
-        if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
+        returnFields.writeTo(buf);
 
         return buf.array();
     }
 
     public static OrderCancelledMessage fromBytes(byte[] data) {
-        if (data == null || data.length < FIXED_SIZE)
+        if (data == null || data.length < FIXED_SIZE + 1)
             throw new IllegalArgumentException("Invalid OrderCancelled data");
 
         ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
@@ -101,10 +100,7 @@ public final class OrderCancelledMessage extends ApplicationMessage {
 
         msg.cancelReason = buf.get();
         buf.get(); // ReservedInternal
-
-        msg.numberOfBitfields = buf.get() & 0xFF;
-        msg.bitfields = new byte[msg.numberOfBitfields];
-        if (msg.numberOfBitfields > 0) buf.get(msg.bitfields);
+        msg.returnFields = ReturnFields.readFrom(buf);
 
         return msg;
     }
@@ -129,6 +125,7 @@ public final class OrderCancelledMessage extends ApplicationMessage {
 
     public String getClOrdID() { return clOrdID; }
     public byte getCancelReason() { return cancelReason; }
+    public ReturnFields getReturnFields() { return returnFields; }
 
     @Override
     public String toString() {

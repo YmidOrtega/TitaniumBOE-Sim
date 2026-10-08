@@ -524,9 +524,9 @@ public class ClientConnectionHandler implements Runnable {
         LOGGER.log(Level.WARNING, "[Session {0}] {1} with MatchingUnit {2} rejected",
                 new Object[]{session.getConnectionId(), message.getClass().getSimpleName(), inboundMatchingUnitOf(message)});
         switch (message) {
-            case NewOrderMessage m -> sendOrderRejected(m.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, text);
-            case ModifyOrderMessage m -> sendUserModifyRejected(m.getClOrdID(), UserModifyRejectedMessage.REASON_UNFORESEEN, text);
-            case CancelOrderMessage m -> sendCancelRejected(m.getOrigClOrdID(), CancelRejectedMessage.REASON_UNFORESEEN, text);
+            case NewOrderMessage m -> sendOrderRejected(m.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, text, OrderReturnFields.forNewOrder(m));
+            case ModifyOrderMessage m -> sendUserModifyRejected(m.getClOrdID(), UserModifyRejectedMessage.REASON_UNFORESEEN, text, modifyReturnFields(m));
+            case CancelOrderMessage m -> sendCancelRejected(m.getOrigClOrdID(), CancelRejectedMessage.REASON_UNFORESEEN, text, cancelReturnFields(m));
             default -> { }
         }
     }
@@ -556,9 +556,9 @@ public class ClientConnectionHandler implements Runnable {
     private void rejectReceivedDuringReplay(ApplicationMessage message) {
         switch (message) {
             case NewOrderMessage m -> sendOrderRejected(m.getClOrdID(),
-                    OrderRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay");
+                    OrderRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay", OrderReturnFields.forNewOrder(m));
             case ModifyOrderMessage m -> sendUserModifyRejected(m.getClOrdID(),
-                    UserModifyRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay");
+                    UserModifyRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay", modifyReturnFields(m));
             default -> LOGGER.log(Level.WARNING, "[Session {0}] Ignoring {1} received during replay",
                     new Object[]{session.getConnectionId(), message.getClass().getSimpleName()});
         }
@@ -588,7 +588,8 @@ public class ClientConnectionHandler implements Runnable {
             sendOrderRejected(
                     response.getClOrdID(),
                     response.getRejectReason(),
-                    response.getRejectText()
+                    response.getRejectText(),
+                    OrderReturnFields.forNewOrder(newOrder)
             );
         }
     }
@@ -601,13 +602,13 @@ public class ClientConnectionHandler implements Runnable {
         OrderManager.ModifyResponse response = orderManager.processModifyOrder(modifyOrder, session);
 
         if (response.isModified()) {
-            sendOrderModified(response.getOrder());
+            sendOrderModified(response.getOrder(), modifyOrder.getOrigClOrdID());
             sendExecutions(response.getExecutions());
         } else if (response.isAutoCancelled()) {
             sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_USER_REQUESTED);
         } else {
             sendUserModifyRejected(response.getClOrdID(),
-                    response.getRejectReason(), response.getRejectText());
+                    response.getRejectReason(), response.getRejectText(), modifyReturnFields(modifyOrder));
             if (response.cancelledOriginal()) sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_USER_REQUESTED);
         }
     }
@@ -620,7 +621,7 @@ public class ClientConnectionHandler implements Runnable {
         if (cancelOrder.isMassCancel() && cancelOrder.getFieldError() == null
                 && !identicalMassCancels.tryAcquire(identicalMassCancelKey(cancelOrder))) {
             sendCancelRejected(cancelOrder.getOrigClOrdID(), CancelRejectedMessage.REASON_RATE_THRESHOLD,
-                    "More than 10 identical mass cancels per second");
+                    "More than 10 identical mass cancels per second", cancelReturnFields(cancelOrder));
             return;
         }
 
@@ -632,12 +633,12 @@ public class ClientConnectionHandler implements Runnable {
             char style = response.getAckStyle();
             if (style == 'M' || style == 'B') {
                 for (com.boe.simulator.server.order.Order order : response.getMassCancelledOrders()) {
-                    sendOrderCancelled(order, response.getCancelReason());
+                    sendOrderCancelled(order, response.getCancelReason(), response.getSubreason());
                 }
             }
             if (style == 'S' || style == 'B') sendMassCancelAcknowledgment(response.getMassCancelId(), response.getMassCancelCount());
         } else {
-            sendCancelRejected(response.getClOrdID(), response.getRejectReason(), response.getRejectText());
+            sendCancelRejected(response.getClOrdID(), response.getRejectReason(), response.getRejectText(), cancelReturnFields(cancelOrder));
         }
     }
 
@@ -701,9 +702,10 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendOrderRejected(String clOrdID, byte reason, String text) {
+    private void sendOrderRejected(String clOrdID, byte reason, String text, ReturnFields values) {
         try {
-            sendMessage(new OrderRejectedMessage(clOrdID, reason, text).toBytes());
+            sendMessage(new OrderRejectedMessage(clOrdID, reason, text)
+                    .withReturnFields(values.select(session.getReturnBitfields(), OrderRejectedMessage.MESSAGE_TYPE)).toBytes());
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderRejected: ClOrdID={1}, Reason={2}", new Object[]{
                     session.getConnectionId(),
@@ -716,12 +718,14 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendOrderModified(com.boe.simulator.server.order.Order order) {
+    private void sendOrderModified(com.boe.simulator.server.order.Order order, String origClOrdID) {
         try {
             sendSequenced(seq -> OrderModifiedMessage.fromOrder(
                     order,
                     BoeSessionState.MATCHING_UNIT,
-                    seq
+                    seq,
+                    session.getReturnBitfields(),
+                    origClOrdID
             ).toBytes());
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent OrderModified: ClOrdID={1}, OrderID={2}",
@@ -734,9 +738,10 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendUserModifyRejected(String clOrdID, byte reason, String text) {
+    private void sendUserModifyRejected(String clOrdID, byte reason, String text, ReturnFields values) {
         try {
-            sendMessage(new UserModifyRejectedMessage(clOrdID, reason, text).toBytes());
+            sendMessage(new UserModifyRejectedMessage(clOrdID, reason, text)
+                    .withReturnFields(values.select(session.getReturnBitfields(), UserModifyRejectedMessage.MESSAGE_TYPE)).toBytes());
 
             LOGGER.log(Level.INFO, "[Session {0}] → Sent UserModifyRejected: ClOrdID={1}, Reason={2}",
                     new Object[]{session.getConnectionId(), clOrdID, (char) reason});
@@ -747,9 +752,10 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendCancelRejected(String clOrdID, byte reason, String text) {
+    private void sendCancelRejected(String clOrdID, byte reason, String text, ReturnFields values) {
         try {
-            sendMessage(new CancelRejectedMessage(clOrdID, reason, text).toBytes());
+            sendMessage(new CancelRejectedMessage(clOrdID, reason, text)
+                    .withReturnFields(values.select(session.getReturnBitfields(), CancelRejectedMessage.MESSAGE_TYPE)).toBytes());
             LOGGER.log(Level.INFO, "[Session {0}] → Sent CancelRejected: ClOrdID={1}, Reason={2}",
                     new Object[]{session.getConnectionId(), clOrdID, (char) reason});
         } catch (IOException e) {
@@ -757,9 +763,25 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
+    private static ReturnFields modifyReturnFields(ModifyOrderMessage m) {
+        return new ReturnFields().put(ReturnField.ROUTING_FIRM_ID, m.getRoutingFirmID());
+    }
+
+    private static ReturnFields cancelReturnFields(CancelOrderMessage m) {
+        return new ReturnFields()
+                .put(ReturnField.MASS_CANCEL_ID, m.getMassCancelId())
+                .put(ReturnField.ROUTING_FIRM_ID, m.getRoutingFirmID());
+    }
+
     private void sendOrderCancelled(com.boe.simulator.server.order.Order order, byte reason) {
+        sendOrderCancelled(order, reason, (byte) 0);
+    }
+
+    private void sendOrderCancelled(com.boe.simulator.server.order.Order order, byte reason, byte subreason) {
         try {
-            OrderCancelledMessage cancelled = OrderCancelledMessage.fromOrder(order, reason);
+            OrderCancelledMessage cancelled = OrderCancelledMessage.fromOrder(order, reason, OrderReturnFields.forOrder(order)
+                    .put(ReturnField.SUBREASON, subreason != 0 ? subreason : null)
+                    .select(session.getReturnBitfields(), OrderCancelledMessage.MESSAGE_TYPE));
             cancelled.setMatchingUnit(BoeSessionState.MATCHING_UNIT);
             sendSequenced(seq -> {
                 cancelled.setSequenceNumber(seq);

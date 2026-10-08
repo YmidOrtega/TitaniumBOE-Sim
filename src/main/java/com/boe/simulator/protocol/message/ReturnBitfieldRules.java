@@ -27,6 +27,11 @@ public final class ReturnBitfieldRules {
 
     private ReturnBitfieldRules() {}
 
+    static byte[] allowedFor(byte messageType) {
+        byte[] allowed = ALLOWED.get(messageType);
+        return allowed != null ? allowed : new byte[0];
+    }
+
     // null = valid; otherwise the text for a Login Response with status F
     public static String validate(ReturnBitfields requested) {
         for (Map.Entry<Byte, byte[]> entry : requested.entries().entrySet()) {

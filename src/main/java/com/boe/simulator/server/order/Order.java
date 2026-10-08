@@ -1,6 +1,7 @@
 package com.boe.simulator.server.order;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +27,7 @@ public class Order {
     private final int orderQty;
     private int leavesQty;
     private int cumQty;
+    private BigDecimal notional = BigDecimal.ZERO;
     private final BigDecimal price;
     private final OrdType ordType;
     private final TimeInForce timeInForce;
@@ -66,6 +68,7 @@ public class Order {
 
     // Optional fields storage
     private final Map<String, Object> optionalFields;
+    private final Map<String, byte[]> echoFields;
 
     private Order(Builder builder) {
         this.clOrdID = builder.clOrdID;
@@ -95,6 +98,7 @@ public class Order {
         this.receivedSequence = builder.receivedSequence;
         this.lastSentSequence = 0;
         this.optionalFields = new HashMap<>(builder.optionalFields);
+        this.echoFields = Map.copyOf(builder.echoFields);
         this.matchingUnit = builder.matchingUnit;
     }
 
@@ -124,6 +128,7 @@ public class Order {
 
         this.cumQty += qty;
         this.leavesQty -= qty;
+        this.notional = notional.add(execPrice.multiply(BigDecimal.valueOf(qty)));
 
         if (this.leavesQty == 0) this.state = OrderState.FILLED;
         else this.state = OrderState.PARTIALLY_FILLED;
@@ -164,6 +169,8 @@ public class Order {
     public int getEffectiveOrderQty() { return modifiedOrderQty > 0 ? modifiedOrderQty : orderQty; }
     public int getLeavesQty() { return leavesQty; }
     public int getCumQty() { return cumQty; }
+    public BigDecimal getAvgPx() { return cumQty > 0 ? notional.divide(BigDecimal.valueOf(cumQty), 4, RoundingMode.HALF_EVEN) : null; }
+    public Map<String, byte[]> getEchoFields() { return echoFields; }
     public BigDecimal getPrice() { return modifiedPrice != null ? modifiedPrice : price; }
     public OrdType getOrdType() { return modifiedOrdType != null ? modifiedOrdType : ordType; }
     public TimeInForce getTimeInForce() { return timeInForce; }
@@ -255,6 +262,7 @@ public class Order {
         private RoutingInst routingInst = RoutingInst.BOOK_ONLY;
         private int receivedSequence;
         private final Map<String, Object> optionalFields = new HashMap<>();
+        private Map<String, byte[]> echoFields = Map.of();
         private byte matchingUnit = 0;
 
         public Builder matchingUnit(byte matchingUnit) {
@@ -359,6 +367,11 @@ public class Order {
 
         public Builder receivedSequence(int receivedSequence) {
             this.receivedSequence = receivedSequence;
+            return this;
+        }
+
+        public Builder echoFields(Map<String, byte[]> echoFields) {
+            this.echoFields = echoFields != null ? echoFields : Map.of();
             return this;
         }
 

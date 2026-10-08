@@ -27,16 +27,11 @@ import java.nio.charset.StandardCharsets;
  *   [48]  ReturnBitfield¹…ᴺ   NB
  *         Optional fields…
  *
- * Relevant optional fields (p.184 — same bitfield map as Order Ack):
- *   Byte 1: 0x04=Price, 0x10=OrdType
- *   Byte 2: 0x01=Symbol, 0x40=Capacity
- *   Byte 5: 0x02=LeavesQty
+ * Optional fields: Return Bitfields Per Message (p.184).
  */
 public final class OrderModifiedMessage extends ApplicationMessage {
-    private static final byte MESSAGE_TYPE = 0x27;
-    private static final byte SOM1 = (byte) 0xBA;
-    private static final byte SOM2 = (byte) 0xBA;
-    private static final int FIXED_SIZE = 48;
+    public static final byte MESSAGE_TYPE = 0x27;
+    private static final int FIXED_SIZE = 47; // before NumberOfReturnBitfields
 
     private byte matchingUnit;
     private int sequenceNumber;
@@ -44,47 +39,26 @@ public final class OrderModifiedMessage extends ApplicationMessage {
     private long transactTime;
     private String clOrdID;
     private long orderID;
-
-    private int numberOfBitfields;
-    private byte[] bitfields;
-
-    // Optional fields
-    private BigDecimal price;
-    private byte ordType;
-    private String symbol;
-    private byte capacity;
-    private int leavesQty;
+    private ReturnFields returnFields = new ReturnFields();
 
     public OrderModifiedMessage() {}
 
     public static OrderModifiedMessage fromOrder(Order order, byte matchingUnit, int sequenceNumber) {
+        return fromOrder(order, matchingUnit, sequenceNumber, null, null);
+    }
+
+    public static OrderModifiedMessage fromOrder(Order order, byte matchingUnit, int sequenceNumber,
+                                                 ReturnBitfields returnBitfields, String origClOrdID) {
         OrderModifiedMessage msg = new OrderModifiedMessage();
         msg.matchingUnit = matchingUnit;
         msg.sequenceNumber = sequenceNumber;
         msg.transactTime = BoeTime.nowEpochNanos();
         msg.clOrdID = order.getClOrdID();
         msg.orderID = order.getOrderID();
-
-        msg.price = order.getPrice();
-        msg.ordType = order.getOrdType().wireValue();
-        msg.symbol = order.getSymbol();
-        msg.capacity = order.getCapacity() != null ? order.getCapacity().wireValue() : 0;
-        msg.leavesQty = order.getLeavesQty();
-
-        msg.setupBitfields();
+        msg.returnFields = OrderReturnFields.forOrder(order)
+                .put(ReturnField.ORIG_CL_ORD_ID, origClOrdID)
+                .select(returnBitfields, MESSAGE_TYPE);
         return msg;
-    }
-
-    private void setupBitfields() {
-        // 5 bitfield bytes to reach LeavesQty at byte 5
-        numberOfBitfields = 5;
-        bitfields = new byte[5];
-
-        if (price != null) bitfields[0] |= 0x04;           // Byte 1: Price
-        bitfields[0] |= 0x10;                               // Byte 1: OrdType
-        if (symbol != null && !symbol.isBlank()) bitfields[1] |= 0x01; // Byte 2: Symbol
-        if (capacity != 0) bitfields[1] |= 0x40;           // Byte 2: Capacity
-        bitfields[4] |= 0x02;                               // Byte 5: LeavesQty
     }
 
     @Override
@@ -92,12 +66,10 @@ public final class OrderModifiedMessage extends ApplicationMessage {
 
     @Override
     public byte[] toBytes() {
-        int optSize = optionalSize();
-        int totalSize = FIXED_SIZE + numberOfBitfields + optSize;
-
+        int totalSize = FIXED_SIZE + returnFields.encodedSize();
         ByteBuffer buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN);
 
-        buf.put(SOM1); buf.put(SOM2);
+        buf.put((byte) 0xBA).put((byte) 0xBA);
         buf.putShort((short) (totalSize - 2));
         buf.put(MESSAGE_TYPE);
         buf.put(matchingUnit);
@@ -105,27 +77,27 @@ public final class OrderModifiedMessage extends ApplicationMessage {
         buf.putLong(transactTime);
         putText(buf, clOrdID, 20);
         buf.putLong(orderID);
-        buf.put((byte) 0x00);
-        buf.put((byte) numberOfBitfields);
-        buf.put(bitfields, 0, numberOfBitfields);
-
-        if ((bitfields[0] & 0x04) != 0) BinaryPrice.fromPrice(price).putInto(buf);
-        if ((bitfields[0] & 0x10) != 0) buf.put(ordType);
-        if ((bitfields[1] & 0x01) != 0) putText(buf, symbol, 8);
-        if ((bitfields[1] & 0x40) != 0) buf.put(capacity);
-        if ((bitfields[4] & 0x02) != 0) buf.putInt(leavesQty);
-
+        buf.put((byte) 0x00);              // ReservedInternal
+        returnFields.writeTo(buf);
         return buf.array();
     }
 
-    private int optionalSize() {
-        int size = 0;
-        if ((bitfields[0] & 0x04) != 0) size += 8;
-        if ((bitfields[0] & 0x10) != 0) size += 1;
-        if ((bitfields[1] & 0x01) != 0) size += 8;
-        if ((bitfields[1] & 0x40) != 0) size += 1;
-        if ((bitfields[4] & 0x02) != 0) size += 4;
-        return size;
+    public static OrderModifiedMessage fromBytes(byte[] data) {
+        ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+        OrderModifiedMessage msg = new OrderModifiedMessage();
+        msg.matchingUnit = buf.get(5);
+        msg.sequenceNumber = buf.getInt(6);
+        buf.position(10);
+        msg.transactTime = buf.getLong();
+        byte[] id = new byte[20];
+        buf.get(id);
+        int end = id.length;
+        while (end > 0 && id[end - 1] == 0) end--;
+        msg.clOrdID = new String(id, 0, end, StandardCharsets.US_ASCII);
+        msg.orderID = buf.getLong();
+        buf.get(); // ReservedInternal
+        msg.returnFields = ReturnFields.readFrom(buf);
+        return msg;
     }
 
     private static void putText(ByteBuffer buf, String s, int len) {
@@ -141,11 +113,11 @@ public final class OrderModifiedMessage extends ApplicationMessage {
     public void setSequenceNumber(int sequenceNumber) { this.sequenceNumber = sequenceNumber; }
     public String getClOrdID() { return clOrdID; }
     public long getOrderID() { return orderID; }
-    public int getLeavesQty() { return leavesQty; }
+    public ReturnFields getReturnFields() { return returnFields; }
+    public int getLeavesQty() { return returnFields.get(ReturnField.LEAVES_QTY) instanceof Number n ? n.intValue() : 0; }
 
     @Override
     public String toString() {
-        return "OrderModified{clOrdID='" + clOrdID + "', orderID=" + orderID
-                + ", symbol='" + symbol + "', price=" + price + ", leavesQty=" + leavesQty + '}';
+        return "OrderModified{clOrdID='" + clOrdID + "', orderID=" + orderID + '}';
     }
 }

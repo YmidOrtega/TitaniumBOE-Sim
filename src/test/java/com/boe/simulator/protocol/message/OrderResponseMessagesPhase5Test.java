@@ -167,10 +167,11 @@ class OrderResponseMessagesPhase5Test {
     }
 
     @Test
-    void orderModified_wireSize_minimalOrder() {
-        // fixed(48) + bitfields(5) + Price(8)+OrdType(1)+Symbol(8)+LeavesQty(4) = 74
+    void orderModified_wireSize_withoutNegotiatedFields() {
+        // fixed(48) with NumberOfReturnBitfields = 0: nothing is returned unless requested at login
         byte[] b = OrderModifiedMessage.fromOrder(minimalOrder(), (byte) 1, 2).toBytes();
-        assertEquals(74, b.length);
+        assertEquals(48, b.length);
+        assertEquals(0, b[47]);
     }
 
     @Test
