@@ -126,7 +126,7 @@ public final class LoginRequestMessage extends SessionMessage {
     }
 
     public static LoginRequestMessage parseFromBytes(byte[] data) {
-        if (data == null || data.length < 29) throw new IllegalArgumentException("Invalid LoginRequest message data");
+        if (data == null || data.length < 29) throw new IllegalArgumentException("Login Request is shorter than the 29-byte fixed part");
 
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
 
@@ -170,6 +170,7 @@ public final class LoginRequestMessage extends SessionMessage {
         if (buffer.remaining() > 0) {
             numberOfParamGroups = buffer.get() & 0xFF;
             int groupsStart = buffer.position();
+            validateParamGroups(numberOfParamGroups, buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN));
             paramGroupBytes = Arrays.copyOfRange(data, groupsStart, data.length);
             returnBitfields = ReturnBitfields.parse(numberOfParamGroups, buffer);
             buffer.position(groupsStart);
@@ -180,6 +181,34 @@ public final class LoginRequestMessage extends SessionMessage {
         msg.setSequenceNumber(sequenceNumber);
         msg.paramGroupBytes = paramGroupBytes;
         return msg;
+    }
+
+    private static void validateParamGroups(int numberOfGroups, ByteBuffer buf) {
+        int unitSequencesGroups = 0;
+        for (int i = 1; i <= numberOfGroups; i++) {
+            if (buf.remaining() < 3) throw new IllegalArgumentException("Parameter group " + i + " of " + numberOfGroups + " is missing");
+
+            int groupStart = buf.position();
+            int groupLen = buf.getShort() & 0xFFFF;
+            if (groupLen < 3) throw new IllegalArgumentException("Parameter group " + i + " has invalid length " + groupLen);
+            if (groupLen - 2 > buf.remaining()) throw new IllegalArgumentException("Parameter group " + i + " length " + groupLen + " exceeds the message");
+
+            byte groupType = buf.get();
+            if (groupType == UnitSequences.PARAM_GROUP_TYPE) {
+                if (++unitSequencesGroups > 1) throw new IllegalArgumentException("Only one Unit Sequences parameter group may be included");
+                if (groupLen < 5) throw new IllegalArgumentException("Unit Sequences group is too short");
+                buf.get();
+                int numberOfUnits = buf.get() & 0xFF;
+                if (groupLen != 5 + numberOfUnits * 5) throw new IllegalArgumentException("Unit Sequences group length " + groupLen + " does not match " + numberOfUnits + " units");
+            } else if (groupType == (byte) 0x81) {
+                if (groupLen < 5) throw new IllegalArgumentException("Return Bitfields group is too short");
+                buf.get();
+                int numberOfBitfields = buf.get() & 0xFF;
+                if (groupLen != 5 + numberOfBitfields) throw new IllegalArgumentException("Return Bitfields group length " + groupLen + " does not match " + numberOfBitfields + " bitfields");
+            }
+            buf.position(groupStart + groupLen);
+        }
+        if (buf.hasRemaining()) throw new IllegalArgumentException(buf.remaining() + " unexpected bytes after the parameter groups");
     }
 
     public void setMatchingUnit(byte matchingUnit) {

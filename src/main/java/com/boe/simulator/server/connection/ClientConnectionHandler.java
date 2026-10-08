@@ -209,6 +209,18 @@ public class ClientConnectionHandler implements Runnable {
     private void processMessage(BoeMessage message, boolean receivedDuringReplay) {
         byte messageType = message.getMessageType();
 
+        if (messageType == MessageType.LOGIN_REQUEST.wireValue()) {
+            LoginRequestMessage request;
+            try {
+                request = LoginRequestMessage.parseFromBytes(message.getData());
+            } catch (IllegalArgumentException e) {
+                rejectLogin(null, LoginResponseMessage.STATUS_INVALID_STRUCTURE, e.getMessage());
+                return;
+            }
+            handleLoginRequest(request);
+            return;
+        }
+
         try {
             // Create specific message object
             BoeProtocolMessage specificMessage = BoeMessageFactory.createMessage(message);
@@ -236,7 +248,6 @@ public class ClientConnectionHandler implements Runnable {
 
     private void handleSessionMessage(SessionMessage message) {
         switch (message) {
-            case LoginRequestMessage loginRequestMessage -> handleLoginRequest(loginRequestMessage);
             case LogoutRequestMessage logoutRequestMessage -> handleLogoutRequest(logoutRequestMessage);
             case ClientHeartbeatMessage clientHeartbeatMessage -> handleClientHeartbeat(clientHeartbeatMessage);
             default -> LOGGER.log(Level.WARNING, "[Session {0}] Unsupported inbound session message: {1}", new Object[]{
@@ -278,6 +289,12 @@ public class ClientConnectionHandler implements Runnable {
                 request.getUsername(),
                 request.getSessionSubID()
         });
+
+        String bitfieldError = ReturnBitfieldRules.validate(request.getReturnBitfields());
+        if (bitfieldError != null) {
+            rejectLogin(request, LoginResponseMessage.STATUS_INVALID_BITFIELD, bitfieldError);
+            return;
+        }
 
         session.setUsername(request.getUsername());
         session.setSessionSubID(request.getSessionSubID());
@@ -376,9 +393,9 @@ public class ClientConnectionHandler implements Runnable {
                     text,
                     0,
                     Map.of(),
-                    request.getUnitSequences().isNoUnspecifiedUnitReplay(),
-                    request.getNumberOfParamGroups(),
-                    request.getParamGroupBytes()
+                    request != null && request.getUnitSequences().isNoUnspecifiedUnitReplay(),
+                    request != null ? request.getNumberOfParamGroups() : 0,
+                    request != null ? request.getParamGroupBytes() : new byte[0]
             ).toBytes());
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LoginResponse", e);

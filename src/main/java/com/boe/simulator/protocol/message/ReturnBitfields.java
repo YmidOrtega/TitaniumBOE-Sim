@@ -39,24 +39,31 @@ public final class ReturnBitfields {
 
         Map<Byte, byte[]> result = new HashMap<>();
         for (int i = 0; i < numberOfGroups; i++) {
-            if (buf.remaining() < MIN_GROUP_LEN) break;
+            if (buf.remaining() < 3) break;
 
+            int groupStart = buf.position();
             int groupLen = buf.getShort() & 0xFFFF;
-            if (groupLen < MIN_GROUP_LEN || buf.remaining() < groupLen - 2) break;
+            if (groupLen < 3 || buf.remaining() < groupLen - 2) break;
+            int groupEnd = groupStart + groupLen;
 
             byte groupType = buf.get();
-            if (groupType == PARAM_GROUP_TYPE) {
+            if (groupType == PARAM_GROUP_TYPE && groupLen >= MIN_GROUP_LEN) {
                 byte msgType = buf.get();
                 int numBF = buf.get() & 0xFF;
-                if (numBF > groupLen - 5) break; // malformed
+                if (numBF > groupLen - MIN_GROUP_LEN) break; // malformed
                 byte[] bfs = new byte[numBF];
                 if (numBF > 0) buf.get(bfs);
                 result.put(msgType, bfs);
-            } else {
-                buf.position(buf.position() + groupLen - 3);
             }
+            buf.position(groupEnd);
         }
         return new ReturnBitfields(Map.copyOf(result));
+    }
+
+    public Map<Byte, byte[]> entries() {
+        Map<Byte, byte[]> copy = new HashMap<>();
+        negotiated.forEach((type, mask) -> copy.put(type, mask.clone()));
+        return copy;
     }
 
     public int entryCount() {
