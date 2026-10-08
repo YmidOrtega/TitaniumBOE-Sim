@@ -589,7 +589,7 @@ public class ClientConnectionHandler implements Runnable {
         running = false;
 
         if (heartbeatMonitor != null) heartbeatMonitor.shutdown();
-        if (session.getUsername() != null) authService.endSession(session.getUsername());
+        if (session.isAuthenticated()) authService.endSession(session.getUsername());
 
         errorHandler.clearConnectionStats(session.getConnectionId());
         rateLimiter.clearConnection(session.getConnectionId());
