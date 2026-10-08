@@ -55,6 +55,8 @@ public class ClientConnectionHandler implements Runnable {
     private final LinkedBlockingQueue<Inbound> inbound = new LinkedBlockingQueue<>();
     private final UnacknowledgedMessageGate gate;
     private final IdenticalRequestLimiter identicalMassCancels = new IdenticalRequestLimiter(10, Duration.ofSeconds(1));
+    private final IdenticalRequestLimiter identicalPurges = new IdenticalRequestLimiter(10, Duration.ofSeconds(1));
+    private final IdenticalRequestLimiter riskResets = new IdenticalRequestLimiter(1, Duration.ofMillis(100));
     private volatile boolean replayInProgress;
     private volatile BoeSessionState sessionState;
     private volatile boolean ownsAuthSession;
@@ -290,7 +292,7 @@ public class ClientConnectionHandler implements Runnable {
                 rejectNonZeroMatchingUnit(message);
                 return;
             }
-            if (receivedDuringReplay && !(message instanceof CancelOrderMessage)) {
+            if (receivedDuringReplay && !(message instanceof CancelOrderMessage) && !(message instanceof PurgeOrdersMessage)) {
                 rejectReceivedDuringReplay(message);
                 return;
             }
@@ -300,6 +302,8 @@ public class ClientConnectionHandler implements Runnable {
             case NewOrderMessage newOrderMessage       -> handleNewOrder(newOrderMessage);
             case CancelOrderMessage cancelOrderMessage -> handleCancelOrder(cancelOrderMessage);
             case ModifyOrderMessage modifyOrderMessage -> handleModifyOrder(modifyOrderMessage);
+            case PurgeOrdersMessage purgeOrdersMessage -> handlePurgeOrders(purgeOrdersMessage);
+            case ResetRiskMessage resetRiskMessage     -> handleResetRisk(resetRiskMessage);
             default -> LOGGER.log(Level.WARNING, "[Session {0}] Unsupported inbound application message: {1}", new Object[]{
                     session.getConnectionId(),
                     message.getClass().getSimpleName()
@@ -515,6 +519,8 @@ public class ClientConnectionHandler implements Runnable {
             case NewOrderMessage m -> m.getMatchingUnit();
             case CancelOrderMessage m -> m.getMatchingUnit();
             case ModifyOrderMessage m -> m.getMatchingUnit();
+            case PurgeOrdersMessage m -> m.getMatchingUnit();
+            case ResetRiskMessage m -> m.getMatchingUnit();
             default -> 0;
         };
     }
@@ -527,6 +533,8 @@ public class ClientConnectionHandler implements Runnable {
             case NewOrderMessage m -> sendOrderRejected(m.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, text, OrderReturnFields.forNewOrder(m));
             case ModifyOrderMessage m -> sendUserModifyRejected(m.getClOrdID(), UserModifyRejectedMessage.REASON_UNFORESEEN, text, modifyReturnFields(m));
             case CancelOrderMessage m -> sendCancelRejected(m.getOrigClOrdID(), CancelRejectedMessage.REASON_UNFORESEEN, text, cancelReturnFields(m));
+            case PurgeOrdersMessage m -> sendPurgeRejected(CancelRejectedMessage.REASON_UNFORESEEN, text, m.getMassCancelId());
+            case ResetRiskMessage m -> sendRiskResetAcknowledgment(m.getRiskStatusID(), RiskResetAcknowledgmentMessage.RESULT_INVALID_MATCHING_UNIT);
             default -> { }
         }
     }
@@ -537,6 +545,8 @@ public class ClientConnectionHandler implements Runnable {
             case CancelOrderMessage m -> m.getSequenceNumber();
             case ModifyOrderMessage m -> m.getSequenceNumber();
             case QuoteUpdateMessage m -> m.getSequenceNumber();
+            case PurgeOrdersMessage m -> m.getSequenceNumber();
+            case ResetRiskMessage m -> m.getSequenceNumber();
             default -> 0;
         };
     }
@@ -559,6 +569,7 @@ public class ClientConnectionHandler implements Runnable {
                     OrderRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay", OrderReturnFields.forNewOrder(m));
             case ModifyOrderMessage m -> sendUserModifyRejected(m.getClOrdID(),
                     UserModifyRejectedMessage.REASON_RECEIVED_DURING_REPLAY, "Order received by Cboe during replay", modifyReturnFields(m));
+            case ResetRiskMessage m -> sendRiskResetAcknowledgment(m.getRiskStatusID(), RiskResetAcknowledgmentMessage.RESULT_IN_REPLAY);
             default -> LOGGER.log(Level.WARNING, "[Session {0}] Ignoring {1} received during replay",
                     new Object[]{session.getConnectionId(), message.getClass().getSimpleName()});
         }
@@ -641,6 +652,57 @@ public class ClientConnectionHandler implements Runnable {
         } else {
             sendCancelRejected(response.getClOrdID(), response.getRejectReason(), response.getRejectText(), cancelReturnFields(cancelOrder));
         }
+    }
+
+    private void handlePurgeOrders(PurgeOrdersMessage purge) {
+        LOGGER.log(Level.INFO, "[Session {0}] Processing PurgeOrders: {1}", new Object[]{session.getConnectionId(), purge});
+
+        if (purge.getFieldError() == null && !identicalPurges.tryAcquire(identicalPurgeKey(purge))) {
+            sendPurgeRejected(CancelRejectedMessage.REASON_RATE_THRESHOLD, "More than 10 identical purges per second", purge.getMassCancelId());
+            return;
+        }
+
+        OrderManager.CancelResponse response = orderManager.processPurgeOrders(purge, session);
+        if (response.isRejected()) {
+            sendPurgeRejected(response.getRejectReason(), response.getRejectText(), purge.getMassCancelId());
+            return;
+        }
+
+        int count = response.getMassCancelCount();
+        switch (response.getAckStyle()) {
+            case 'M' -> response.getMassCancelledOrders().forEach(o -> sendOrderCancelled(o, response.getCancelReason(), response.getSubreason()));
+            case 'S' -> sendMassCancelAcknowledgment(response.getMassCancelId(), count, 0);
+            case 'B' -> {
+                response.getMassCancelledOrders().forEach(o -> sendOrderCancelled(o, response.getCancelReason(), response.getSubreason()));
+                sendMassCancelAcknowledgment(response.getMassCancelId(), count, 0);
+            }
+            case 'A' -> {
+                sendMassCancelAcknowledgment(response.getMassCancelId(), count, 0);
+                if (count > 0) sendPurgeNotification(response, count);
+            }
+            case 'I' -> {
+                if (count > 0) sendMassCancelAcknowledgment(response.getMassCancelId(), count, BoeSessionState.MATCHING_UNIT);
+                sendMassCancelAcknowledgment(response.getMassCancelId(), count, 0);
+            }
+            default -> LOGGER.log(Level.WARNING, "Unexpected acknowledgement style {0}", response.getAckStyle());
+        }
+    }
+
+    private void handleResetRisk(ResetRiskMessage reset) {
+        LOGGER.log(Level.INFO, "[Session {0}] Processing ResetRisk: {1} {2}",
+                new Object[]{session.getConnectionId(), reset.getRiskStatusID(), reset.getRiskReset()});
+        boolean allowed = true;
+        for (char type : reset.getRiskReset().toCharArray()) {
+            allowed &= riskResets.tryAcquire(type + "|" + reset.getClearingFirm() + "|" + reset.getRiskRoot() + "|" + reset.getCustomGroupId());
+        }
+        byte result = allowed ? orderManager.processResetRisk(reset, session.getUsername()) : RiskResetAcknowledgmentMessage.RESULT_IGNORED;
+        sendRiskResetAcknowledgment(reset.getRiskStatusID(), result);
+    }
+
+    // Identical = same CustomGroupID, Symbol, Clearing Firm, MatchingUnit, Lockout, Instrument Type and GTC filters (p.95)
+    private static String identicalPurgeKey(PurgeOrdersMessage m) {
+        return m.getCustomGroupIds() + "|" + m.getRiskRoot() + "|" + m.getClearingFirm() + "|" + m.getTargetMatchingUnit()
+                + "|" + m.massCancelInstChar(3) + "|" + m.massCancelInstChar(4) + "|" + m.massCancelInstChar(5);
     }
 
     // Identical = same Symbol (RiskRoot), ClearingFirm, Lockout, Instrument Type and GTC filters (p.74)
@@ -812,9 +874,43 @@ public class ClientConnectionHandler implements Runnable {
         }
     }
 
-    private void sendMassCancelAcknowledgment(String massCancelId, int count) {
+    private void sendPurgeRejected(byte reason, String text, String massCancelId) {
         try {
-            sendMessage(new MassCancelAcknowledgmentMessage(massCancelId, count).toBytes());
+            sendMessage(new PurgeRejectedMessage(reason, text).withReturnFields(new ReturnFields()
+                    .put(ReturnField.MASS_CANCEL_ID, massCancelId)
+                    .select(session.getReturnBitfields(), PurgeRejectedMessage.MESSAGE_TYPE)).toBytes());
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent PurgeRejected: {1} {2}", new Object[]{session.getConnectionId(), (char) reason, text});
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending PurgeRejected", e);
+        }
+    }
+
+    private void sendPurgeNotification(OrderManager.CancelResponse response, int count) {
+        try {
+            sendMessage(new PurgeNotificationMessage(response.getMassCancelId(), count, BoeSessionState.MATCHING_UNIT,
+                    response.getPurgeClearingFirm(), response.getPurgeRiskRoot(), response.isLockout()).toBytes());
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending PurgeNotification", e);
+        }
+    }
+
+    private void sendRiskResetAcknowledgment(String riskStatusID, byte result) {
+        try {
+            sendMessage(new RiskResetAcknowledgmentMessage(riskStatusID, result).toBytes());
+            LOGGER.log(Level.INFO, "[Session {0}] → Sent RiskResetAcknowledgment: {1} {2}",
+                    new Object[]{session.getConnectionId(), riskStatusID, (char) result});
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending RiskResetAcknowledgment", e);
+        }
+    }
+
+    private void sendMassCancelAcknowledgment(String massCancelId, int count) {
+        sendMassCancelAcknowledgment(massCancelId, count, 0);
+    }
+
+    private void sendMassCancelAcknowledgment(String massCancelId, int count, int sourceMatchingUnit) {
+        try {
+            sendMessage(new MassCancelAcknowledgmentMessage(massCancelId, count, sourceMatchingUnit).toBytes());
             LOGGER.log(Level.INFO, "[Session {0}] → Sent MassCancelAcknowledgment: {1} orders, ID={2}",
                     new Object[]{session.getConnectionId(), count, massCancelId});
         } catch (IOException e) {

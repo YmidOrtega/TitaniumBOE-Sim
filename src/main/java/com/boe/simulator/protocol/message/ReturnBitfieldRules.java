@@ -22,7 +22,8 @@ public final class ReturnBitfieldRules {
             entry((byte) 0x2B, "7D 41 00 2F 00 00 00 06 27 2F 00 80 00 00 08 00 00 00 00"),   // Cancel Rejected
             entry((byte) 0x2C, "7D C1 DF 2F 00 0C 00 7F E7 2F 00 88 DF 10 82 FD 7B 22 07"),   // Order Execution
             entry((byte) 0x2D, "00 41 00 2F 00 00 01 00 27 2D 00 00 00 00 00 00 00 00 00"),   // Trade Cancel or Correct
-            entry((byte) 0x48, "00 00 00 00 00 00 00 00 00 00 00 00 00 00 08 00 00 00 00")    // Purge Rejected
+            entry((byte) 0x48, "00 00 00 00 00 00 00 00 00 00 00 00 00 00 08 00 00 00 00"),   // Purge Rejected
+            entry((byte) 0x63, "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00")    // Purge Notification
     );
 
     private ReturnBitfieldRules() {}

@@ -68,13 +68,13 @@ public final class NewOrderMessage extends ApplicationMessage {
         { OptionalField.read("Account", 16), OptionalField.rejectUnless("DisplayIndicator", 1, "56"), null, null, null,
           OptionalField.read("PreventMatch", 3), null, OptionalField.reject("ExpireTime", 8) },
         { OptionalField.read("MaturityDate", 4), OptionalField.read("StrikePrice", 8), OptionalField.read("PutOrCall", 1),
-          OptionalField.ignore("RiskReset", 8), OptionalField.read("OpenClose", 1), OptionalField.ignore("CMTANumber", 4),
+          OptionalField.read("RiskReset", 8), OptionalField.read("OpenClose", 1), OptionalField.ignore("CMTANumber", 4),
           OptionalField.reject("TargetPartyID", 4), null },
         { OptionalField.ignore("SessionEligibility", 1), OptionalField.ignore("AttributedQuote", 1), null, null, null, null, null, null },
         { OptionalField.reject("DisplayRange", 4), OptionalField.reject("StopPx", 8), OptionalField.ignore("RoutStrategy", 6),
           OptionalField.ignore("RouteDeliveryMethod", 3), OptionalField.ignore("ExDestination", 1), OptionalField.ignore("EchoText", 64),
           OptionalField.reject("AuctionId", 8), OptionalField.ignore("RoutingFirmID", 4) },
-        { null, OptionalField.ignore("CustomGroupId", 2), null, null, null, null, null, null },
+        { null, OptionalField.read("CustomGroupId", 2), null, null, null, null, null, null },
         { null, null, OptionalField.ignore("ClearingOptionalData", 16), OptionalField.ignore("ClientIDAttr", 4),
           OptionalField.ignore("FrequentTraderID", 6), OptionalField.ignore("Compression", 1),
           OptionalField.reject("FloorDestination", 4), OptionalField.rejectUnless("FloorRoutingInst", 1, "00,45") },
@@ -109,6 +109,8 @@ public final class NewOrderMessage extends ApplicationMessage {
     private byte putOrCall;         // '0'=Put, '1'=Call
     private byte openClose;         // 'O', 'C', 'N'
     private byte[] preventMatch;
+    private String riskReset;
+    private int customGroupId;
 
     private String fieldError;      // first unsupported or invalid optional field, if any
     private final Map<String, byte[]> rawFields = new LinkedHashMap<>();
@@ -217,6 +219,8 @@ public final class NewOrderMessage extends ApplicationMessage {
             case "PutOrCall" -> putOrCall = value[0];
             case "OpenClose" -> openClose = value[0];
             case "PreventMatch" -> preventMatch = value;
+            case "RiskReset" -> riskReset = text(value);
+            case "CustomGroupId" -> customGroupId = v.getShort() & 0xFFFF;
             default -> throw new IllegalStateException("No field mapping for " + name);
         }
     }
@@ -465,6 +469,8 @@ public final class NewOrderMessage extends ApplicationMessage {
     public byte getOrdType() { return ordType; }
     public byte getTimeInForce() { return timeInForce; }
     public String getFieldError() { return fieldError; }
+    public String getRiskReset() { return riskReset; }
+    public int getCustomGroupId() { return customGroupId; }
     public byte[] getPreventMatch() { return preventMatch != null ? preventMatch.clone() : null; }
     public Map<String, byte[]> getRawFields() { return Map.copyOf(rawFields); }
 

@@ -55,7 +55,8 @@ public enum MessageType {
     QUOTE_CANCELLED(0x53),
     QUOTE_EXECUTION(0x54),
     RISK_RESET_ACKNOWLEDGMENT(0x57),
-    QUOTE_UPDATE_REJECTED(0x58);
+    QUOTE_UPDATE_REJECTED(0x58),
+    PURGE_NOTIFICATION(0x63);
 
     private final byte wireValue;
 

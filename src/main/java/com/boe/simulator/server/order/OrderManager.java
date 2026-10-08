@@ -24,11 +24,15 @@ import com.boe.simulator.protocol.types.PutOrCall;
 import com.boe.simulator.protocol.types.RoutingInst;
 import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.protocol.types.PreventMatch;
+import com.boe.simulator.server.risk.RiskLockouts;
 import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
 import com.boe.simulator.protocol.message.OrderRestatedMessage;
+import com.boe.simulator.protocol.message.PurgeOrdersMessage;
+import com.boe.simulator.protocol.message.ResetRiskMessage;
+import com.boe.simulator.protocol.message.RiskResetAcknowledgmentMessage;
 import com.boe.simulator.protocol.message.OrderReturnFields;
 import com.boe.simulator.protocol.message.ReturnBitfields;
 import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
@@ -57,6 +61,7 @@ public class OrderManager {
     private final ConcurrentHashMap<String, Order> activeOrdersByClOrdID;
     private final ConcurrentHashMap<Long, Order> activeOrdersByOrderID;
     private final ConcurrentHashMap<Long, List<IntFunction<byte[]>>> deferredExecutions = new ConcurrentHashMap<>();
+    private final RiskLockouts riskLockouts = new RiskLockouts();
 
     private final AtomicLong orderIDGenerator;
 
@@ -208,6 +213,16 @@ public class OrderManager {
             );
         }
 
+        String orderClearingFirm = message.getClearingFirm() != null ? message.getClearingFirm() : "";
+        applyRiskReset(message.getRiskReset(), context.getUsername(), orderClearingFirm, message.getSymbol(), message.getCustomGroupId());
+        byte lockout = riskLockouts.check(context.getUsername(), orderClearingFirm, message.getSymbol(), message.getCustomGroupId());
+        if (lockout != 0) {
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(message.getClOrdID(), lockout, lockout == RiskLockouts.REASON_RISK_ROOT
+                    ? "Risk root " + message.getSymbol() + " is locked out until a risk reset"
+                    : "Clearing firm or CustomGroupID is locked out until a risk reset");
+        }
+
         // 4. Verify duplicate ClOrdID
         if (activeOrdersByClOrdID.containsKey(message.getClOrdID())) {
             if (LOGGER.isLoggable(Level.WARNING)) {
@@ -251,6 +266,7 @@ public class OrderManager {
                     .timeInForce(TimeInForce.fromByte(message.getTimeInForce()))
                     .echoFields(message.getRawFields())
                     .preventMatch(preventMatch)
+                    .customGroupId(message.getCustomGroupId())
                     .symbol(message.getSymbol())
                     .capacity(message.getCapacity() != 0 ? Capacity.fromByte(message.getCapacity()) : Capacity.AGENCY)
                     .openClose(message.getOpenClose() != 0 ? OpenClose.fromByte(message.getOpenClose()) : OpenClose.NONE)
@@ -509,24 +525,88 @@ public class OrderManager {
                 .count();
     }
 
+    private record MassCancelRequest(String inst, boolean purge, boolean hasClearingFirm, String clearingFirm,
+                                     String riskRoot, List<Integer> customGroupIds, String massCancelId) {
+        static MassCancelRequest of(CancelOrderMessage m) {
+            return new MassCancelRequest(m.hasMassCancelInst() ? m.getMassCancelInst() : null, false, m.hasClearingFirm(),
+                    m.getClearingFirm(), blankToNull(m.getRiskRoot()), List.of(), m.getMassCancelId());
+        }
+
+        static MassCancelRequest of(PurgeOrdersMessage m) {
+            return new MassCancelRequest(m.getMassCancelInst(), true, m.hasClearingFirm(), m.getClearingFirm(),
+                    blankToNull(m.getRiskRoot()), m.getCustomGroupIds(), m.getMassCancelId());
+        }
+
+        Character instChar(int position) {
+            return inst == null || inst.length() < position ? null : inst.charAt(position - 1);
+        }
+
+        char ackStyle() {
+            Character style = instChar(2);
+            return style != null ? style : 'M';
+        }
+
+        boolean lockout() {
+            return Character.valueOf('L').equals(instChar(3));
+        }
+
+        String effectiveClearingFirm() {
+            return instChar(1) == 'F' && clearingFirm != null && !clearingFirm.isBlank() ? clearingFirm : null;
+        }
+
+        byte subreason() {
+            if (riskRoot != null) return SUBREASON_SYMBOL_LEVEL;
+            return customGroupIds.isEmpty() ? SUBREASON_EFID_LEVEL : SUBREASON_CUSTOM_GROUP_LEVEL;
+        }
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
     private CancelResponse processMassCancel(CancelOrderMessage message, OrderExecutionContext context) {
         LOGGER.log(Level.INFO, "[{0}] Processing Mass Cancel: {1}", new Object[]{context.getSessionIdentifier(), message});
+        MassCancelRequest request = MassCancelRequest.of(message);
 
-        String invalid = validateMassCancel(message);
+        String invalid = validateMassCancel(request);
         if (invalid != null) {
             LOGGER.log(Level.WARNING, "[{0}] Mass Cancel rejected: {1}", new Object[]{context.getSessionIdentifier(), invalid});
             return CancelResponse.rejected(message.getOrigClOrdID(), CancelRejectedMessage.REASON_UNFORESEEN, invalid);
         }
+        return executeMassCancel(request, context);
+    }
 
-        String clearingFirm = message.massCancelInstChar(1) == 'F' && !message.getClearingFirm().isBlank()
-                ? message.getClearingFirm() : null;
-        String riskRoot = message.getRiskRoot() != null && !message.getRiskRoot().isBlank() ? message.getRiskRoot() : null;
-        boolean complexOnly = Character.valueOf('C').equals(message.massCancelInstChar(4));
+    public CancelResponse processPurgeOrders(PurgeOrdersMessage message, ClientSession session) {
+        OrderExecutionContext context = OrderExecutionContext.fromTcpSession(session);
+        LOGGER.log(Level.INFO, "[{0}] Processing Purge Orders: {1}", new Object[]{context.getSessionIdentifier(), message});
+        MassCancelRequest request = MassCancelRequest.of(message);
+
+        String invalid = message.getFieldError();
+        if (invalid == null && message.getTargetMatchingUnit() > BoeSessionState.MATCHING_UNIT) {
+            invalid = "Invalid MatchingUnit " + message.getTargetMatchingUnit();
+        }
+        if (invalid == null && message.hasMatchingUnitField() && message.getTargetMatchingUnit() != 0 && request.riskRoot() != null) {
+            invalid = "MatchingUnit cannot be combined with a symbol-level purge";
+        }
+        if (invalid == null) invalid = validateMassCancel(request);
+        if (invalid != null) {
+            LOGGER.log(Level.WARNING, "[{0}] Purge Orders rejected: {1}", new Object[]{context.getSessionIdentifier(), invalid});
+            return CancelResponse.rejected(null, CancelRejectedMessage.REASON_UNFORESEEN, invalid);
+        }
+        return executeMassCancel(request, context);
+    }
+
+    private CancelResponse executeMassCancel(MassCancelRequest request, OrderExecutionContext context) {
+        String clearingFirm = request.effectiveClearingFirm();
+        String riskRoot = request.riskRoot();
+        List<Integer> groups = request.customGroupIds();
+        boolean complexOnly = Character.valueOf('C').equals(request.instChar(4));
 
         List<Order> ordersToCancel = complexOnly ? List.of() : activeOrdersByClOrdID.values().stream()
                 .filter(o -> o.getUsername().equals(context.getUsername()))
                 .filter(o -> clearingFirm == null || clearingFirm.equals(o.getClearingFirm()))
                 .filter(o -> riskRoot == null || riskRoot.equals(o.getSymbol()))
+                .filter(o -> groups.isEmpty() || groups.contains(o.getCustomGroupId()))
                 .filter(o -> o.getState().isCancellable())
                 .toList();
 
@@ -545,49 +625,91 @@ public class OrderManager {
                 LOGGER.log(Level.WARNING, "Failed to cancel order: " + order.getClOrdID(), e);
             }
         }
-
         totalOrdersCancelled.addAndGet(cancelled.size());
 
-        LOGGER.log(Level.INFO, "[{0}] Mass Cancel completed: {1} orders cancelled",
-                new Object[]{context.getSessionIdentifier(), cancelled.size()});
+        if (request.lockout()) {
+            if (riskRoot != null) riskLockouts.lockRiskRoot(context.getUsername(), clearingFirm, riskRoot);
+            else if (!groups.isEmpty()) groups.forEach(g -> riskLockouts.lockCustomGroup(context.getUsername(), clearingFirm, g));
+            else riskLockouts.lockEfid(context.getUsername(), clearingFirm);
+        }
 
-        Character style = message.massCancelInstChar(2);
-        CancelResponse response = CancelResponse.massCancelled(cancelled, style != null ? style : 'M', message.getMassCancelId());
-        response.subreason = message.getRiskRoot() != null && !message.getRiskRoot().isBlank() ? SUBREASON_SYMBOL_LEVEL : SUBREASON_EFID_LEVEL;
+        LOGGER.log(Level.INFO, "[{0}] Mass Cancel completed: {1} orders cancelled{2}",
+                new Object[]{context.getSessionIdentifier(), cancelled.size(), request.lockout() ? " and lockout set" : ""});
+
+        CancelResponse response = CancelResponse.massCancelled(cancelled, request.ackStyle(), request.massCancelId());
+        response.subreason = request.subreason();
+        response.purgeClearingFirm = clearingFirm;
+        response.purgeRiskRoot = riskRoot;
+        response.lockout = request.lockout();
         return response;
     }
 
-    // MassCancelInst rules from List of Optional Fields (p.204); null = valid
-    private static String validateMassCancel(CancelOrderMessage message) {
-        String inst = message.getMassCancelInst();
-        if (!message.hasMassCancelInst() || inst == null || inst.isEmpty()) return "MassCancelInst is required for a mass cancel";
+    private String validateMassCancel(MassCancelRequest request) {
+        String kind = request.purge() ? "Purge Orders" : "mass cancel";
+        String inst = request.inst();
+        if (inst == null || inst.isEmpty()) return "MassCancelInst is required for a " + kind;
 
-        char firmFilter = message.massCancelInstChar(1);
+        char firmFilter = request.instChar(1);
         if (firmFilter != 'A' && firmFilter != 'F') return "Invalid Clearing Firm Filter '" + firmFilter + "' in MassCancelInst";
-        if (firmFilter == 'F' && !message.hasClearingFirm()) return "ClearingFirm is required with Clearing Firm Filter F";
+        if (firmFilter == 'F' && !request.hasClearingFirm()) return "ClearingFirm is required with Clearing Firm Filter F";
 
-        Character ackStyle = message.massCancelInstChar(2);
-        char style = ackStyle != null ? ackStyle : 'M';
-        if (style == 'A' || style == 'I') return "Acknowledgement Style " + style + " is only valid on Purge Orders";
-        if (style != 'M' && style != 'S' && style != 'B') return "Invalid Acknowledgement Style '" + style + "' in MassCancelInst";
+        char style = request.ackStyle();
+        if (!request.purge() && (style == 'A' || style == 'I')) return "Acknowledgement Style " + style + " is only valid on Purge Orders";
+        if ("MSBAI".indexOf(style) < 0) return "Invalid Acknowledgement Style '" + style + "' in MassCancelInst";
 
-        String id = message.getMassCancelId();
+        String id = request.massCancelId();
         boolean hasId = id != null && !id.isEmpty();
-        if ((style == 'S' || style == 'B') && !hasId) return "MassCancelID is required with Acknowledgement Style " + style;
-        if (style == 'M' && hasId) return "MassCancelID must be blank with Acknowledgement Style M";
+        if (style != 'M' && !hasId) return "MassCancelID is required with Acknowledgement Style " + style;
+        if (style == 'M' && hasId && !request.purge()) return "MassCancelID must be blank with Acknowledgement Style M";
         if (hasId && id.endsWith(" ")) return "MassCancelID must not end in a space";
 
-        Character lockout = message.massCancelInstChar(3);
+        Character lockout = request.instChar(3);
         if (lockout != null && lockout != 'N' && lockout != 'L') return "Invalid Lockout Instruction '" + lockout + "' in MassCancelInst";
-        if (lockout != null && lockout == 'L') return "Lockout is not supported by the simulator";
+        if (request.lockout() && request.effectiveClearingFirm() == null) return "Lockout requires Clearing Firm Filter F and a ClearingFirm";
 
-        Character instrument = message.massCancelInstChar(4);
+        Character instrument = request.instChar(4);
         if (instrument != null && instrument != 'B' && instrument != 'S' && instrument != 'C') return "Invalid Instrument Type Filter '" + instrument + "' in MassCancelInst";
 
-        Character gtc = message.massCancelInstChar(5);
+        Character gtc = request.instChar(5);
         if (gtc != null && gtc != 'C' && gtc != 'P') return "Invalid GTC Order Filter '" + gtc + "' in MassCancelInst";
+
+        if (request.riskRoot() != null && !isValidSymbol(request.riskRoot())) return "Invalid RiskRoot " + request.riskRoot();
+        if (request.riskRoot() != null && !request.customGroupIds().isEmpty()) return "RiskRoot and CustomGroupID cannot both be specified";
         return null;
     }
+
+    public byte processResetRisk(ResetRiskMessage message, String username) {
+        String error = message.getFieldError();
+        if (error != null) {
+            if (error.contains("ClearingFirm")) return RiskResetAcknowledgmentMessage.RESULT_INVALID_CLEARING_FIRM;
+            if (error.contains("RiskRoot")) return RiskResetAcknowledgmentMessage.RESULT_INVALID_RISK_ROOT;
+            return RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET;
+        }
+        String reset = message.getRiskReset();
+        if (reset.isEmpty() || !reset.chars().allMatch(c -> RISK_RESET_VALUES.indexOf(c) >= 0)) return RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET;
+        if (message.getTargetMatchingUnit() > BoeSessionState.MATCHING_UNIT) return RiskResetAcknowledgmentMessage.RESULT_INVALID_MATCHING_UNIT;
+
+        boolean root = reset.indexOf('S') >= 0 || reset.indexOf('T') >= 0;
+        boolean firm = reset.indexOf('F') >= 0 || reset.indexOf('E') >= 0 || reset.indexOf('G') >= 0;
+        boolean group = reset.indexOf('C') >= 0;
+        if (root && (message.getRiskRoot().isBlank() || !isValidSymbol(message.getRiskRoot()))) return RiskResetAcknowledgmentMessage.RESULT_INVALID_RISK_ROOT;
+        if ((firm || group) && message.getClearingFirm().isBlank()) return RiskResetAcknowledgmentMessage.RESULT_INVALID_CLEARING_FIRM;
+        if (group && message.getCustomGroupId() == 0) return RiskResetAcknowledgmentMessage.RESULT_EMPTY_RESET;
+
+        applyRiskReset(reset, username, message.getClearingFirm(), message.getRiskRoot(), message.getCustomGroupId());
+        LOGGER.log(Level.INFO, "Risk reset {0} applied for {1}", new Object[]{reset, username});
+        return RiskResetAcknowledgmentMessage.RESULT_SUCCESS;
+    }
+
+    // RiskReset values (p.207); the simulator has no risk counters, so S/T and F/E release the same lockouts
+    private void applyRiskReset(String reset, String username, String clearingFirm, String riskRoot, int customGroupId) {
+        if (reset == null || reset.isEmpty()) return;
+        if (reset.indexOf('S') >= 0 || reset.indexOf('T') >= 0) riskLockouts.release(username, clearingFirm, RiskLockouts.Level.RISK_ROOT, riskRoot, 0);
+        if (reset.indexOf('F') >= 0 || reset.indexOf('E') >= 0 || reset.indexOf('G') >= 0) riskLockouts.release(username, clearingFirm, RiskLockouts.Level.EFID, null, 0);
+        if (reset.indexOf('C') >= 0) riskLockouts.release(username, clearingFirm, RiskLockouts.Level.CUSTOM_GROUP, null, customGroupId);
+    }
+
+    private static final String RISK_RESET_VALUES = "SFCGTE";
 
     // Tradable universe. Must stay in sync with the catalogue exposed by
     // com.boe.simulator.api.service.SymbolService — a symbol listed there but missing here
@@ -597,6 +719,7 @@ public class OrderManager {
     // Order and Quote Subreason Codes (p.215)
     static final byte SUBREASON_EFID_LEVEL = (byte) 'A';
     static final byte SUBREASON_SYMBOL_LEVEL = (byte) 'B';
+    static final byte SUBREASON_CUSTOM_GROUP_LEVEL = (byte) 'C';
 
     private static final Set<String> VALID_SYMBOLS = Set.of(
             "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META",
@@ -737,6 +860,7 @@ public class OrderManager {
     }
 
     // Getters
+    public RiskLockouts getRiskLockouts() { return riskLockouts; }
     public long getTotalOrdersReceived() { return totalOrdersReceived.get(); }
     public long getTotalOrdersAccepted() { return totalOrdersAccepted.get(); }
     public long getTotalOrdersRejected() { return totalOrdersRejected.get(); }
@@ -754,6 +878,7 @@ public class OrderManager {
     public void reset() {
         activeOrdersByClOrdID.clear();
         activeOrdersByOrderID.clear();
+        riskLockouts.clear();
         matchingEngine.reset();
         LOGGER.info("OrderManager reset: in-memory orders and order books cleared");
     }
@@ -906,6 +1031,9 @@ public class OrderManager {
         private final char ackStyle;
         private final String massCancelId;
         private byte subreason;
+        private String purgeClearingFirm;
+        private String purgeRiskRoot;
+        private boolean lockout;
 
         private CancelResponse(ResponseType type, Order order, String clOrdID, byte reason,
                                String rejectText, List<Order> massCancelledOrders, char ackStyle, String massCancelId) {
@@ -980,6 +1108,10 @@ public class OrderManager {
         public byte getSubreason() {
             return subreason;
         }
+
+        public String getPurgeClearingFirm() { return purgeClearingFirm; }
+        public String getPurgeRiskRoot() { return purgeRiskRoot; }
+        public boolean isLockout() { return lockout; }
 
         public String getMassCancelId() {
             return massCancelId;

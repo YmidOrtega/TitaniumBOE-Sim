@@ -28,15 +28,21 @@ public final class MassCancelAcknowledgmentMessage extends ApplicationMessage {
     private final long transactTime;
     private final String massCancelId;
     private final int cancelledOrderCount;
+    private final int sourceMatchingUnit;
 
     public MassCancelAcknowledgmentMessage(String massCancelId, int cancelledOrderCount) {
-        this(BoeTime.nowEpochNanos(), massCancelId, cancelledOrderCount);
+        this(massCancelId, cancelledOrderCount, 0);
     }
 
-    private MassCancelAcknowledgmentMessage(long transactTime, String massCancelId, int cancelledOrderCount) {
+    public MassCancelAcknowledgmentMessage(String massCancelId, int cancelledOrderCount, int sourceMatchingUnit) {
+        this(BoeTime.nowEpochNanos(), massCancelId, cancelledOrderCount, sourceMatchingUnit);
+    }
+
+    private MassCancelAcknowledgmentMessage(long transactTime, String massCancelId, int cancelledOrderCount, int sourceMatchingUnit) {
         this.transactTime = transactTime;
         this.massCancelId = massCancelId != null ? massCancelId : "";
         this.cancelledOrderCount = cancelledOrderCount;
+        this.sourceMatchingUnit = sourceMatchingUnit;
     }
 
     public static MassCancelAcknowledgmentMessage fromBytes(byte[] data) {
@@ -49,7 +55,7 @@ public final class MassCancelAcknowledgmentMessage extends ApplicationMessage {
         buf.get(id);
         int end = id.length;
         while (end > 0 && id[end - 1] == 0) end--;
-        return new MassCancelAcknowledgmentMessage(transactTime, new String(id, 0, end, StandardCharsets.US_ASCII), buf.getInt(38));
+        return new MassCancelAcknowledgmentMessage(transactTime, new String(id, 0, end, StandardCharsets.US_ASCII), buf.getInt(38), data[43] & 0xFF);
     }
 
     @Override
@@ -70,11 +76,12 @@ public final class MassCancelAcknowledgmentMessage extends ApplicationMessage {
         buf.put(id);
         buf.putInt(cancelledOrderCount);
         buf.put((byte) 0);
-        buf.put((byte) 0);
+        buf.put((byte) sourceMatchingUnit);
         return buf.array();
     }
 
     public String getMassCancelId() { return massCancelId; }
     public int getCancelledOrderCount() { return cancelledOrderCount; }
+    public int getSourceMatchingUnit() { return sourceMatchingUnit; }
     public long getTransactTime() { return transactTime; }
 }

@@ -29,7 +29,13 @@ import com.boe.simulator.protocol.message.LogoutResponseMessage;
 import com.boe.simulator.protocol.message.ModifyOrderMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
+import com.boe.simulator.protocol.message.MassCancelAcknowledgmentMessage;
+import com.boe.simulator.protocol.message.PurgeNotificationMessage;
+import com.boe.simulator.protocol.message.PurgeOrdersMessage;
+import com.boe.simulator.protocol.message.PurgeRejectedMessage;
 import com.boe.simulator.protocol.message.QuoteUpdateRejectedMessage;
+import com.boe.simulator.protocol.message.ResetRiskMessage;
+import com.boe.simulator.protocol.message.RiskResetAcknowledgmentMessage;
 import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.auth.AuthenticationResult;
@@ -52,6 +58,11 @@ class ClientConnectionHandlerResponsesTest {
     private static final byte ORDER_MODIFIED = 0x27;
     private static final byte ORDER_EXECUTION = 0x2C;
     private static final byte QUOTE_UPDATE_REJECTED = 0x58;
+    private static final byte ORDER_CANCELLED = 0x2A;
+    private static final byte MASS_CANCEL_ACK = 0x36;
+    private static final byte PURGE_REJECTED = 0x48;
+    private static final byte PURGE_NOTIFICATION = 0x63;
+    private static final byte RISK_RESET_ACK = 0x57;
 
     private ServerSocket listener;
     private Socket client;
@@ -135,8 +146,8 @@ class ClientConnectionHandlerResponsesTest {
 
     @Test
     void specMessageTheSimulatorDoesNotImplement_isAProtocolViolation() throws Exception {
-        send(raw((byte) 0x47, new byte[20]));
-        assertLogout("Unsupported message type 0x47 (PURGE_ORDERS)");
+        send(raw((byte) 0x41, new byte[20]));
+        assertLogout("Unsupported message type 0x41 (NEW_ORDER_CROSS)");
     }
 
     @Test
@@ -149,6 +160,93 @@ class ClientConnectionHandlerResponsesTest {
     void malformedNewOrder_isAProtocolViolation() throws Exception {
         send(raw((byte) 0x38, new byte[4]));
         assertLogout("Malformed message type 0x38 (NEW_ORDER)");
+    }
+
+    private byte[] purge(String inst, String massCancelId) {
+        PurgeOrdersMessage msg = new PurgeOrdersMessage();
+        msg.setMassCancelInst(inst);
+        if (massCancelId != null) msg.setMassCancelId(massCancelId);
+        msg.setSendTime(1L);
+        msg.setSequenceNumber(++sequence);
+        return msg.toBytes();
+    }
+
+    private void purgeCancels(List<Order> orders, char style) {
+        when(orderManager.processPurgeOrders(any(PurgeOrdersMessage.class), any(ClientSession.class)))
+                .thenReturn(OrderManager.CancelResponse.massCancelled(orders, style, "P1"));
+    }
+
+    @Test
+    void purgeStyleM_sendsOneOrderCancelledPerOrder() throws Exception {
+        purgeCancels(List.of(order("A1"), order("A2")), 'M');
+        send(purge("AM", "P1"));
+
+        assertEquals(1, seq(expect(ORDER_CANCELLED)));
+        assertEquals(2, seq(expect(ORDER_CANCELLED)));
+    }
+
+    @Test
+    void purgeStyleA_sendsTheAcknowledgmentAndAPurgeNotification() throws Exception {
+        purgeCancels(List.of(order("A1"), order("A2")), 'A');
+        send(purge("AA", "P1"));
+
+        MassCancelAcknowledgmentMessage ack = MassCancelAcknowledgmentMessage.fromBytes(expect(MASS_CANCEL_ACK));
+        PurgeNotificationMessage notification = PurgeNotificationMessage.fromBytes(expect(PURGE_NOTIFICATION));
+        assertEquals(2, ack.getCancelledOrderCount());
+        assertEquals(2, notification.getCancelledOrderCount());
+        assertEquals(1, notification.getSourceMatchingUnit());
+    }
+
+    @Test
+    void purgeStyleI_sendsOneAcknowledgmentPerUnitThenTheFinalOne() throws Exception {
+        purgeCancels(List.of(order("A1")), 'I');
+        send(purge("AI", "P1"));
+
+        assertEquals(1, MassCancelAcknowledgmentMessage.fromBytes(expect(MASS_CANCEL_ACK)).getSourceMatchingUnit());
+        assertEquals(0, MassCancelAcknowledgmentMessage.fromBytes(expect(MASS_CANCEL_ACK)).getSourceMatchingUnit(), "Final acknowledgment");
+    }
+
+    @Test
+    void rejectedPurge_sendsPurgeRejected() throws Exception {
+        when(orderManager.processPurgeOrders(any(PurgeOrdersMessage.class), any(ClientSession.class)))
+                .thenReturn(OrderManager.CancelResponse.rejected(null, (byte) 'Z', "Invalid RiskRoot ZZZ"));
+        send(purge("AS", "P1"));
+
+        PurgeRejectedMessage rejected = PurgeRejectedMessage.fromBytes(expect(PURGE_REJECTED));
+        assertEquals('Z', rejected.getPurgeRejectReason());
+        assertEquals("Invalid RiskRoot ZZZ", rejected.getText());
+    }
+
+    @Test
+    void eleventhIdenticalPurgeInOneSecond_isRejectedWithK() throws Exception {
+        purgeCancels(List.of(), 'S');
+        for (int i = 0; i < 10; i++) {
+            send(purge("AS", "P1"));
+            expect(MASS_CANCEL_ACK);
+        }
+        send(purge("AS", "P1"));
+
+        assertEquals('K', PurgeRejectedMessage.fromBytes(expect(PURGE_REJECTED)).getPurgeRejectReason());
+    }
+
+    @Test
+    void resetRisk_isAcknowledged_andASecondIdenticalResetWithin100msIsIgnored() throws Exception {
+        when(orderManager.processResetRisk(any(ResetRiskMessage.class), anyString())).thenReturn(RiskResetAcknowledgmentMessage.RESULT_SUCCESS);
+        ResetRiskMessage reset = new ResetRiskMessage();
+        reset.setRiskStatusID("R1");
+        reset.setRiskReset("F");
+        reset.setClearingFirm("TEST");
+
+        reset.setSequenceNumber(++sequence);
+        send(reset.toBytes());
+        reset.setSequenceNumber(++sequence);
+        send(reset.toBytes());
+
+        RiskResetAcknowledgmentMessage first = RiskResetAcknowledgmentMessage.fromBytes(expect(RISK_RESET_ACK));
+        RiskResetAcknowledgmentMessage second = RiskResetAcknowledgmentMessage.fromBytes(expect(RISK_RESET_ACK));
+        assertEquals("R1", first.getRiskStatusID());
+        assertEquals('Y', first.getRiskResetResult());
+        assertEquals(' ', second.getRiskResetResult(), "Only one reset of a type per 100 ms");
     }
 
     private void assertLogout(String text) throws IOException {

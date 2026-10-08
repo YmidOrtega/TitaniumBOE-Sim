@@ -33,6 +33,7 @@ public class Order {
     private final OrdType ordType;
     private final TimeInForce timeInForce;
     private final PreventMatch preventMatch;
+    private final int customGroupId;
 
     // Symbology
     private final String symbol;
@@ -86,6 +87,7 @@ public class Order {
         this.ordType = builder.ordType;
         this.timeInForce = builder.timeInForce;
         this.preventMatch = builder.preventMatch;
+        this.customGroupId = builder.customGroupId;
         this.symbol = builder.symbol;
         this.maturityDate = builder.maturityDate;
         this.strikePrice = builder.strikePrice;
@@ -191,6 +193,7 @@ public class Order {
     public OrdType getOrdType() { return modifiedOrdType != null ? modifiedOrdType : ordType; }
     public TimeInForce getTimeInForce() { return timeInForce; }
     public PreventMatch getPreventMatch() { return preventMatch; }
+    public int getCustomGroupId() { return customGroupId; }
     public byte getCancelReason() { return cancelReason; }
     public String getSymbol() { return symbol; }
     public Instant getMaturityDate() { return maturityDate; }
@@ -269,6 +272,7 @@ public class Order {
         private OrdType ordType = OrdType.LIMIT;
         private TimeInForce timeInForce = TimeInForce.DAY;
         private PreventMatch preventMatch;
+        private int customGroupId;
         private String symbol;
         private Instant maturityDate;
         private BigDecimal strikePrice;
@@ -331,6 +335,11 @@ public class Order {
 
         public Builder timeInForce(TimeInForce timeInForce) {
             this.timeInForce = timeInForce;
+            return this;
+        }
+
+        public Builder customGroupId(int customGroupId) {
+            this.customGroupId = customGroupId;
             return this;
         }
 

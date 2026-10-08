@@ -489,7 +489,8 @@ class OrderManagerTest {
         assertMassCancelRejected(massCancel("AM", null, null, "ID1"), "MassCancelID must be blank with Acknowledgement Style M");
         assertMassCancelRejected(massCancel("AS", null, null, "ID1 "), "MassCancelID must not end in a space");
         assertMassCancelRejected(massCancel("AMX", null, null, null), "Invalid Lockout Instruction 'X' in MassCancelInst");
-        assertMassCancelRejected(massCancel("AML", null, null, null), "Lockout is not supported by the simulator");
+        assertMassCancelRejected(massCancel("AML", null, null, null), "Lockout requires Clearing Firm Filter F and a ClearingFirm");
+        assertMassCancelRejected(massCancel("AM", null, "ZZZZ", null), "Invalid RiskRoot ZZZZ");
         assertMassCancelRejected(massCancel("AMNX", null, null, null), "Invalid Instrument Type Filter 'X' in MassCancelInst");
         assertMassCancelRejected(massCancel("AMNBX", null, null, null), "Invalid GTC Order Filter 'X' in MassCancelInst");
     }
