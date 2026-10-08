@@ -5,10 +5,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
+import com.boe.simulator.protocol.types.BoeTime;
 
 /**
  * New Order (0x38) — Member to Cboe.
@@ -28,7 +27,7 @@ import com.boe.simulator.protocol.types.BinaryPrice;
  *   Bitfield 3 (index 2):
  *     bit 0 = Account           (16 bytes Alphanumeric)
  *   Bitfield 4 (index 3):
- *     bit 0 = MaturityDate      (4 bytes Binary)
+ *     bit 0 = MaturityDate      (4 bytes Date, YYYYMMDD)
  *     bit 1 = StrikePrice       (8 bytes Binary Price)
  *     bit 2 = PutOrCall         (1 byte Alphanumeric)
  *     bit 4 = OpenClose         (1 byte Alphanumeric)
@@ -139,7 +138,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         if (bitfields.length >= 4) {
             byte bf4 = bitfields[3];
             if ((bf4 & 0x01) != 0) {
-                maturityDate = Instant.ofEpochMilli((buffer.getInt() & 0xFFFFFFFFL) * 86400_000L);
+                maturityDate = BoeTime.fromYyyymmdd(buffer.getInt());
             }
             if ((bf4 & 0x02) != 0) {
                 strikePrice = BinaryPrice.fromBytes(buffer.array(), buffer.position()).toPrice();
@@ -218,11 +217,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         // Bitfield 4
         if (bitfields.length >= 4) {
             byte bf4 = bitfields[3];
-            if ((bf4 & 0x01) != 0) {
-                LocalDate epoch = LocalDate.of(1970, 1, 1);
-                LocalDate date = maturityDate.atZone(ZoneId.of("America/New_York")).toLocalDate();
-                buffer.putInt((int) java.time.temporal.ChronoUnit.DAYS.between(epoch, date));
-            }
+            if ((bf4 & 0x01) != 0) buffer.putInt(BoeTime.toYyyymmdd(maturityDate));
             if ((bf4 & 0x02) != 0) BinaryPrice.fromPrice(strikePrice).putInto(buffer);
             if ((bf4 & 0x04) != 0) buffer.put(putOrCall);
             if ((bf4 & 0x10) != 0) buffer.put(openClose);

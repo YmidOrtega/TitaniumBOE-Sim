@@ -1,7 +1,12 @@
 package com.boe.simulator.protocol.types;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,8 +39,29 @@ class BoeTimeTest {
     }
 
     @Test
+    void toYyyymmdd_shouldMatchSpecExampleBytes() {
+        // Spec example: EF DB 32 01 = MaturityDate 2011-03-19
+        Instant maturity = LocalDate.of(2011, 3, 19).atStartOfDay(ZoneId.of("America/New_York")).toInstant();
+
+        byte[] wire = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
+                .putInt(BoeTime.toYyyymmdd(maturity)).array();
+
+        assertEquals(20110319, BoeTime.toYyyymmdd(maturity));
+        assertArrayEquals(new byte[]{(byte) 0xEF, (byte) 0xDB, 0x32, 0x01}, wire);
+    }
+
+    @Test
+    void fromYyyymmdd_shouldRoundTrip() {
+        Instant maturity = BoeTime.fromYyyymmdd(20110319);
+
+        assertEquals(20110319, BoeTime.toYyyymmdd(maturity));
+    }
+
+    @Test
     void zeroValues_shouldMapToNull() {
+        assertNull(BoeTime.fromYyyymmdd(0));
         assertNull(BoeTime.fromEpochNanos(0L));
+        assertEquals(0, BoeTime.toYyyymmdd(null));
         assertEquals(0L, BoeTime.toEpochNanos(null));
     }
 }

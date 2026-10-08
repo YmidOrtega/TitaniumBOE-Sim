@@ -9,8 +9,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
 
 /**
  * Order Acknowledgment — Table 66 (p.111), spec v2.11.90
@@ -180,7 +178,7 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
 
         if (numberOfBitfields < 4) return;
         // Byte 4 fields
-        if ((bitfields[3] & 0x01) != 0) buf.putInt(toYYYYMMDD(maturityDate));
+        if ((bitfields[3] & 0x01) != 0) buf.putInt(BoeTime.toYyyymmdd(maturityDate));
         if ((bitfields[3] & 0x02) != 0) putPrice(buf, strikePrice);
         if ((bitfields[3] & 0x04) != 0) buf.put(putOrCall);
         if ((bitfields[3] & 0x08) != 0) buf.put(openClose);
@@ -251,7 +249,7 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
         if ((bitfields[2] & 0x40) != 0) orderQty = buf.getInt();
 
         if (numberOfBitfields < 4) return;
-        if ((bitfields[3] & 0x01) != 0) maturityDate = fromYYYYMMDD(buf.getInt());
+        if ((bitfields[3] & 0x01) != 0) maturityDate = BoeTime.fromYyyymmdd(buf.getInt());
         if ((bitfields[3] & 0x02) != 0) {
             byte[] sp = new byte[8]; buf.get(sp); strikePrice = BinaryPrice.fromBytes(sp).toPrice();
         }
@@ -296,19 +294,6 @@ public final class OrderAcknowledgmentMessage extends ApplicationMessage {
 
     private static String stripSpace(byte[] b) {
         return new String(b, StandardCharsets.US_ASCII).stripTrailing();
-    }
-
-    // MaturityDate: YYYYMMDD packed as uint32 LE (per spec example p.120)
-    private static int toYYYYMMDD(Instant instant) {
-        if (instant == null) return 0;
-        LocalDate d = instant.atZone(ZoneId.of("America/New_York")).toLocalDate();
-        return d.getYear() * 10000 + d.getMonthValue() * 100 + d.getDayOfMonth();
-    }
-
-    private static Instant fromYYYYMMDD(int yyyymmdd) {
-        if (yyyymmdd == 0) return null;
-        int y = yyyymmdd / 10000, m = (yyyymmdd / 100) % 100, d = yyyymmdd % 100;
-        return LocalDate.of(y, m, d).atStartOfDay(ZoneId.of("America/New_York")).toInstant();
     }
 
     // Getters

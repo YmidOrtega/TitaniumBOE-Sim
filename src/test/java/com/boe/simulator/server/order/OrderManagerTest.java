@@ -17,7 +17,6 @@ import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -123,11 +122,7 @@ class OrderManagerTest {
             buffer.put(symbolBytes);
         }
         if ((bf2 & 0x40) != 0) buffer.put(capacity);
-        if ((bf4 & 0x01) != 0) {
-            LocalDate epoch = LocalDate.of(1970, 1, 1);
-            LocalDate matDate = LocalDate.parse(maturityDate, java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-            buffer.putInt((int) java.time.temporal.ChronoUnit.DAYS.between(epoch, matDate));
-        }
+        if ((bf4 & 0x01) != 0) buffer.putInt(Integer.parseInt(maturityDate)); // Date: YYYYMMDD as integer
         if ((bf4 & 0x02) != 0) buffer.put(BinaryPrice.fromPrice(strikePrice).toBytes());
         if ((bf4 & 0x04) != 0) buffer.put(putOrCall);
         if ((bf4 & 0x10) != 0) buffer.put(openClose);
