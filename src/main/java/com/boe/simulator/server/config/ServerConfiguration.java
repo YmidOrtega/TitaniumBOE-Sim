@@ -15,7 +15,7 @@ public class ServerConfiguration {
     private final long heartbeatTimeoutSeconds;
 
     // Rate limiting
-    private final int rateLimitPerMinute;
+    private final int rateLimitPerSecond;
 
     // Logging
     private final Level logLevel;
@@ -29,7 +29,7 @@ public class ServerConfiguration {
         this.connectionTimeout = builder.connectionTimeout;
         this.heartbeatIntervalSeconds = builder.heartbeatIntervalSeconds;
         this.heartbeatTimeoutSeconds = builder.heartbeatTimeoutSeconds;
-        this.rateLimitPerMinute = builder.rateLimitPerMinute;
+        this.rateLimitPerSecond = builder.rateLimitPerSecond;
         this.logLevel = builder.logLevel;
     }
     
@@ -56,7 +56,7 @@ public class ServerConfiguration {
     public int getConnectionTimeout() { return connectionTimeout; }
     public long getHeartbeatIntervalSeconds() { return heartbeatIntervalSeconds; }
     public long getHeartbeatTimeoutSeconds() { return heartbeatTimeoutSeconds; }
-    public int getRateLimitPerMinute() { return rateLimitPerMinute; }
+    public int getRateLimitPerSecond() { return rateLimitPerSecond; }
     public Level getLogLevel() { return logLevel; }
     
     @Override
@@ -68,6 +68,7 @@ public class ServerConfiguration {
                 ", connectionTimeout=" + connectionTimeout + "ms" +
                 ", heartbeatInterval=" + heartbeatIntervalSeconds + "s" +
                 ", heartbeatTimeout=" + heartbeatTimeoutSeconds + "s" +
+                ", rateLimit=" + rateLimitPerSecond + "/s" +
                 ", logLevel=" + logLevel +
                 '}';
     }
@@ -79,7 +80,7 @@ public class ServerConfiguration {
         private int connectionTimeout = 30000; // 30 seconds
         private long heartbeatIntervalSeconds = 10;
         private long heartbeatTimeoutSeconds = 30;
-        private int rateLimitPerMinute = 100;
+        private int rateLimitPerSecond = 1_000;
         private Level logLevel = Level.INFO;
         
         public Builder host(String host) {
@@ -117,9 +118,9 @@ public class ServerConfiguration {
             return this;
         }
 
-        public Builder rateLimitPerMinute(int limit) {
+        public Builder rateLimitPerSecond(int limit) {
             if (limit < 1) throw new IllegalArgumentException("Rate limit must be at least 1");
-            this.rateLimitPerMinute = limit;
+            this.rateLimitPerSecond = limit;
             return this;
         }
         

@@ -99,11 +99,6 @@ public class ClientConnectionHandler implements Runnable {
                     continue;
                 }
 
-                if (!rateLimiter.allowMessage(session.getConnectionId())) {
-                    LOGGER.log(Level.WARNING, "[Session {0}] Message rejected - rate limit", session.getConnectionId());
-                    continue;
-                }
-
                 byte messageType = message.getMessageType();
 
                 if (LOGGER.isLoggable(Level.FINE)) {
@@ -150,7 +145,10 @@ public class ClientConnectionHandler implements Runnable {
                     });
                 }
                 case SessionMessage sessionMessage -> handleSessionMessage(sessionMessage);
-                case ApplicationMessage applicationMessage -> handleApplicationMessage(applicationMessage);
+                case ApplicationMessage applicationMessage -> {
+                    rateLimiter.acquire(session.getConnectionId());
+                    handleApplicationMessage(applicationMessage);
+                }
                 default -> LOGGER.log(Level.WARNING, "[Session {0}] Unhandled message type: {1}", new Object[]{
                         session.getConnectionId(),
                         specificMessage.getClass().getSimpleName()

@@ -39,8 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   --concurrency=N    max parallel REST requests              (default: 200)
  *   --hold=N           seconds to hold TCP connections open    (default: 5)
  *   --ack-sessions=N   parallel sessions for latency test      (default: 10)
- *   --ack-orders=N     orders per session for latency test     (default: 90;
- *                      the server allows 100 messages/min per connection, login included)
+ *   --ack-orders=N     orders per session for latency test     (default: 90)
  *   --mem-orders=N     total orders for memory stability test  (default: 10000)
  *   --skip-tcp         skip Phase 1
  *   --skip-login       skip Phase 2

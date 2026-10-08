@@ -88,7 +88,7 @@ public class CboeServer {
         this.authService = new AuthenticationService(dbManager);
         this.sessionManager = new ClientSessionManager(sessionRepo);
         this.errorHandler = new ErrorHandler();
-        this.rateLimiter = new RateLimiter(config.getRateLimitPerMinute(), Duration.ofMinutes(1));
+        this.rateLimiter = new RateLimiter(config.getRateLimitPerSecond());
         this.healthMetrics = new HealthMetrics();
         this.orderManager = new OrderManager(dbManager);
         this.orderManager.setSessionManager(sessionManager);

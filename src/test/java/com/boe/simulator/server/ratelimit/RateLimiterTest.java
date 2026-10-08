@@ -1,91 +1,104 @@
 package com.boe.simulator.server.ratelimit;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class RateLimiterTest {
 
+    private static final int PERMITS_PER_SECOND = 3;
+    private static final long NANOS_PER_PERMIT = 1_000_000_000L / PERMITS_PER_SECOND;
+
+    private final AtomicLong clock = new AtomicLong();
     private RateLimiter rateLimiter;
-    private final int MAX_MESSAGES = 3;
-    private final Duration WINDOW_DURATION = Duration.ofMillis(100);
 
     @BeforeEach
     void setUp() {
-        rateLimiter = new RateLimiter(MAX_MESSAGES, WINDOW_DURATION);
+        rateLimiter = new RateLimiter(PERMITS_PER_SECOND, clock::get);
     }
 
     @Test
-    void allowMessage_whenWithinLimit_returnsTrue() {
-        int connectionId = 1;
-        assertTrue(rateLimiter.allowMessage(connectionId), "First message should be allowed");
-        assertTrue(rateLimiter.allowMessage(connectionId), "Second message should be allowed");
-        assertTrue(rateLimiter.allowMessage(connectionId), "Third message should be allowed");
+    void reserve_withinBurst_doesNotWait() {
+        assertEquals(0, rateLimiter.reserve(1));
+        assertEquals(0, rateLimiter.reserve(1));
+        assertEquals(0, rateLimiter.reserve(1));
     }
 
     @Test
-    void allowMessage_whenLimitExceeded_returnsFalse() {
-        int connectionId = 2;
-        rateLimiter.allowMessage(connectionId); // 1
-        rateLimiter.allowMessage(connectionId); // 2
-        rateLimiter.allowMessage(connectionId); // 3
-        assertFalse(rateLimiter.allowMessage(connectionId), "Fourth message should be rejected");
+    void reserve_beyondBurst_waitsInsteadOfRejecting() {
+        drain(2);
+
+        long wait = rateLimiter.reserve(2);
+
+        assertTrue(wait > 0, "Message beyond the burst must wait, not be dropped");
+        assertEquals(NANOS_PER_PERMIT, wait, 1);
     }
 
     @Test
-    void allowMessage_whenLimitExceededThenWindowResets_returnsTrue() throws InterruptedException {
-        int connectionId = 3;
-        rateLimiter.allowMessage(connectionId); // 1
-        rateLimiter.allowMessage(connectionId); // 2
-        rateLimiter.allowMessage(connectionId); // 3
-        assertFalse(rateLimiter.allowMessage(connectionId), "Fourth message should be rejected");
+    void reserve_consecutiveOverflow_queuesWaitsInOrder() {
+        drain(3);
 
-        Thread.sleep(WINDOW_DURATION.toMillis() + 10); // Wait for window to reset
+        long first = rateLimiter.reserve(3);
+        long second = rateLimiter.reserve(3);
 
-        assertTrue(rateLimiter.allowMessage(connectionId), "Message after window reset should be allowed");
+        assertEquals(NANOS_PER_PERMIT, first, 1);
+        assertEquals(2 * NANOS_PER_PERMIT, second, 1);
     }
 
     @Test
-    void allowMessage_multipleConnections_areIndependent() {
-        int connectionId1 = 4;
-        int connectionId2 = 5;
+    void reserve_afterRefill_doesNotWait() {
+        drain(4);
 
-        // Fill up connection 1
-        rateLimiter.allowMessage(connectionId1);
-        rateLimiter.allowMessage(connectionId1);
-        rateLimiter.allowMessage(connectionId1);
-        assertFalse(rateLimiter.allowMessage(connectionId1), "Connection 1 should be rate limited");
+        clock.addAndGet(NANOS_PER_PERMIT + 1);
 
-        // Connection 2 should still be allowed
-        assertTrue(rateLimiter.allowMessage(connectionId2), "Connection 2 first message should be allowed");
-        assertTrue(rateLimiter.allowMessage(connectionId2), "Connection 2 second message should be allowed");
+        assertEquals(0, rateLimiter.reserve(4));
     }
 
     @Test
-    void clearConnection_removesRateLimitForConnection() {
-        int connectionId = 6;
-        rateLimiter.allowMessage(connectionId); // 1
-        rateLimiter.allowMessage(connectionId); // 2
-        rateLimiter.allowMessage(connectionId); // 3
-        assertFalse(rateLimiter.allowMessage(connectionId), "Should be rate limited initially");
+    void reserve_refillIsCappedAtBurstSize() {
+        clock.addAndGet(60_000_000_000L); // idle for a minute
+        drain(5);
 
-        rateLimiter.clearConnection(connectionId);
-
-        assertTrue(rateLimiter.allowMessage(connectionId), "Should be allowed after clearing connection");
+        assertTrue(rateLimiter.reserve(5) > 0, "Idle time must not accumulate more than one burst");
     }
 
     @Test
-    void allowMessage_whenWindowDurationIsZero_behavesCorrectly() {
-        RateLimiter zeroWindowRateLimiter = new RateLimiter(MAX_MESSAGES, Duration.ZERO);
-        int connectionId = 7;
+    void reserve_multipleConnections_areIndependent() {
+        drain(6);
 
-        // All messages should be allowed as window resets immediately
-        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
-        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
-        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
-        assertTrue(zeroWindowRateLimiter.allowMessage(connectionId));
+        assertEquals(0, rateLimiter.reserve(7), "Connection 7 has its own bucket");
+    }
+
+    @Test
+    void clearConnection_resetsBucket() {
+        drain(8);
+
+        rateLimiter.clearConnection(8);
+
+        assertEquals(0, rateLimiter.reserve(8));
+    }
+
+    @Test
+    void acquire_beyondBurst_blocksForAboutOnePermit() {
+        RateLimiter realClock = new RateLimiter(100); // 10ms per permit
+        for (int i = 0; i < 100; i++) realClock.acquire(9);
+
+        long t0 = System.nanoTime();
+        realClock.acquire(9);
+        long elapsedMs = (System.nanoTime() - t0) / 1_000_000;
+
+        assertTrue(elapsedMs >= 5, "acquire must block once the burst is used, took " + elapsedMs + "ms");
+    }
+
+    @Test
+    void constructor_rejectsNonPositiveRate() {
+        assertThrows(IllegalArgumentException.class, () -> new RateLimiter(0));
+    }
+
+    private void drain(int connectionId) {
+        for (int i = 0; i < PERMITS_PER_SECOND; i++) assertEquals(0, rateLimiter.reserve(connectionId));
     }
 }
