@@ -33,14 +33,8 @@ public final class OrderRejectedMessage extends ApplicationMessage {
 
     // Reject reason codes (Order Reason Codes p.213)
     public static final byte REASON_DUPLICATE_CLORDID          = (byte) 'D';
-    public static final byte REASON_INVALID_SYMBOL             = (byte) 'S';
-    public static final byte REASON_INVALID_PRICE              = (byte) 'P';
-    public static final byte REASON_INVALID_QUANTITY           = (byte) 'Q';
-    public static final byte REASON_MISSING_REQUIRED_FIELD     = (byte) 'M';
-    public static final byte REASON_UNAUTHORIZED               = (byte) 'U';
-    public static final byte REASON_UNKNOWN_ERROR              = (byte) 'X';
-    public static final byte REASON_INVALID_CAPACITY           = (byte) 'C';
-    public static final byte REASON_RATE_LIMIT_EXCEEDED        = (byte) 'R';
+    public static final byte REASON_ORDER_SIZE_EXCEEDED        = (byte) 'M';
+    public static final byte REASON_SYMBOL_NOT_SUPPORTED       = (byte) 'Y';
     public static final byte REASON_MAX_OPEN_ORDERS_EXCEEDED   = (byte) 'o';
     public static final byte REASON_RECEIVED_DURING_REPLAY     = (byte) 'y';
     public static final byte REASON_UNFORESEEN                 = (byte) 'Z';

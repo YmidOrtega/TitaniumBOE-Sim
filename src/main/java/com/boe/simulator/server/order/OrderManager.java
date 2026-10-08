@@ -153,6 +153,12 @@ public class OrderManager {
             return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, timeInForceError);
         }
 
+        if (message.getOrderQty() > OrderValidator.MAX_ORDER_QTY) {
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_ORDER_SIZE_EXCEEDED,
+                    "OrderQty exceeds the maximum of 999,999");
+        }
+
         // 2. Validate message
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
         if (!validation.isValid()) {
@@ -161,7 +167,7 @@ public class OrderManager {
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
-                    OrderRejectedMessage.REASON_MISSING_REQUIRED_FIELD,
+                    OrderRejectedMessage.REASON_UNFORESEEN,
                     validation.errorMessage()
             );
         }
@@ -175,7 +181,7 @@ public class OrderManager {
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
-                    OrderRejectedMessage.REASON_INVALID_SYMBOL,
+                    OrderRejectedMessage.REASON_SYMBOL_NOT_SUPPORTED,
                     "Invalid or unknown symbol: " + message.getSymbol()
             );
         }
@@ -270,7 +276,7 @@ public class OrderManager {
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
-                    OrderRejectedMessage.REASON_UNKNOWN_ERROR,
+                    OrderRejectedMessage.REASON_UNFORESEEN,
                     "Internal error: " + e.getMessage()
             );
         }

@@ -189,7 +189,7 @@ class OrderManagerTest {
 
         // Assert
         assertTrue(response.isRejected(), "Order should be rejected");
-        assertEquals(OrderRejectedMessage.REASON_MISSING_REQUIRED_FIELD, response.getRejectReason());
+        assertEquals(OrderRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
         assertEquals(errorMessage, response.getRejectText());
         assertEquals(0, orderManager.getTotalOrdersAccepted(), "Total accepted orders should be 0");
         assertEquals(1, orderManager.getTotalOrdersRejected(), "Total rejected orders should be 1");
@@ -713,5 +713,23 @@ class OrderManagerTest {
         assertEquals(OrderState.CANCELLED, response.getOrder().getState());
         assertTrue(orderManager.findByClOrdID("IOC1").isEmpty());
         assertEquals(1, orderManager.getTotalOrdersCancelled());
+    }
+
+    @Test
+    void processNewOrder_unknownSymbol_isRejectedWithY() {
+        lenient().when(orderValidator.validateNewOrder(any(NewOrderMessage.class))).thenReturn(OrderValidator.ValidationResult.valid());
+
+        OrderManager.OrderResponse response = orderManager.processNewOrder(createNewOrderMessage("SYM1", 1, 100.0, 10, "ZZZZ"), clientSession);
+
+        assertEquals(OrderRejectedMessage.REASON_SYMBOL_NOT_SUPPORTED, response.getRejectReason());
+    }
+
+    @Test
+    void processNewOrder_orderQtyAboveTheMaximum_isRejectedWithM() {
+        OrderManager.OrderResponse response = orderManager.processNewOrder(createNewOrderMessage("BIG1", 1, 100.0, 1_000_000, "AAPL"), clientSession);
+
+        assertEquals(OrderRejectedMessage.REASON_ORDER_SIZE_EXCEEDED, response.getRejectReason());
+        assertEquals("OrderQty exceeds the maximum of 999,999", response.getRejectText());
+        verify(matchingEngine, never()).processOrder(any(Order.class));
     }
 }

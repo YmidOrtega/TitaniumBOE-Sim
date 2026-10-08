@@ -18,7 +18,7 @@ public class OrderValidator {
     private static final Logger LOGGER = Logger.getLogger(OrderValidator.class.getName());
 
     // Límites del sistema
-    private static final int MAX_ORDER_QTY = 999999;
+    static final int MAX_ORDER_QTY = 999999;
     private static final int MIN_ORDER_QTY = 1;
 
     // Patrones para validación
