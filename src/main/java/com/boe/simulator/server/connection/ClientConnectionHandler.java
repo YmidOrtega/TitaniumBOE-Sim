@@ -25,6 +25,7 @@ import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.heartbeat.HeartbeatMonitor;
 import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.order.OrderManager;
+import com.boe.simulator.server.order.OrderState;
 import com.boe.simulator.server.ratelimit.IdenticalRequestLimiter;
 import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.BoeSessionState;
@@ -557,8 +558,12 @@ public class ClientConnectionHandler implements Runnable {
 
         OrderManager.OrderResponse response = orderManager.processNewOrder(newOrder, session);
 
-        if (response.isAcknowledged()) sendOrderAcknowledgment(response.getOrder());
-        else {
+        if (response.isAcknowledged()) {
+            sendOrderAcknowledgment(response.getOrder());
+            if (response.getOrder().getState() == OrderState.CANCELLED) {
+                sendOrderCancelled(response.getOrder(), OrderCancelledMessage.REASON_NO_LIQUIDITY);
+            }
+        } else {
             sendOrderRejected(
                     response.getClOrdID(),
                     response.getRejectReason(),

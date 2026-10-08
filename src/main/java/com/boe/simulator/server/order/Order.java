@@ -11,6 +11,7 @@ import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.PutOrCall;
 import com.boe.simulator.protocol.types.RoutingInst;
 import com.boe.simulator.protocol.types.Side;
+import com.boe.simulator.protocol.types.TimeInForce;
 
 public class Order {
 
@@ -27,6 +28,7 @@ public class Order {
     private int cumQty;
     private final BigDecimal price;
     private final OrdType ordType;
+    private final TimeInForce timeInForce;
 
     // Symbology
     private final String symbol;
@@ -76,6 +78,7 @@ public class Order {
         this.cumQty = 0;
         this.price = builder.price;
         this.ordType = builder.ordType;
+        this.timeInForce = builder.timeInForce;
         this.symbol = builder.symbol;
         this.maturityDate = builder.maturityDate;
         this.strikePrice = builder.strikePrice;
@@ -163,6 +166,7 @@ public class Order {
     public int getCumQty() { return cumQty; }
     public BigDecimal getPrice() { return modifiedPrice != null ? modifiedPrice : price; }
     public OrdType getOrdType() { return modifiedOrdType != null ? modifiedOrdType : ordType; }
+    public TimeInForce getTimeInForce() { return timeInForce; }
     public String getSymbol() { return symbol; }
     public Instant getMaturityDate() { return maturityDate; }
     public BigDecimal getStrikePrice() { return strikePrice; }
@@ -238,6 +242,7 @@ public class Order {
         private int orderQty;
         private BigDecimal price;
         private OrdType ordType = OrdType.LIMIT;
+        private TimeInForce timeInForce = TimeInForce.DAY;
         private String symbol;
         private Instant maturityDate;
         private BigDecimal strikePrice;
@@ -294,6 +299,11 @@ public class Order {
 
         public Builder ordType(OrdType ordType) {
             this.ordType = ordType;
+            return this;
+        }
+
+        public Builder timeInForce(TimeInForce timeInForce) {
+            this.timeInForce = timeInForce;
             return this;
         }
 

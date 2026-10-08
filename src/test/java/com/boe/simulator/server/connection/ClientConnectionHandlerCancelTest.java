@@ -27,6 +27,7 @@ import com.boe.simulator.protocol.message.LoginRequestMessage;
 import com.boe.simulator.protocol.message.LoginResponseMessage;
 import com.boe.simulator.protocol.message.MassCancelAcknowledgmentMessage;
 import com.boe.simulator.protocol.message.ModifyOrderMessage;
+import com.boe.simulator.protocol.message.NewOrderMessage;
 import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.types.OrdType;
@@ -50,6 +51,7 @@ class ClientConnectionHandlerCancelTest {
     private static final byte CANCEL_REJECTED = 0x2B;
     private static final byte MASS_CANCEL_ACK = 0x36;
     private static final byte USER_MODIFY_REJECTED = 0x29;
+    private static final byte ORDER_ACKNOWLEDGMENT = 0x25;
 
     private ServerSocket listener;
     private Socket client;
@@ -181,6 +183,29 @@ class ClientConnectionHandlerCancelTest {
         assertEquals("NEW1", text(rejected, 18, 20));
         assertEquals('Z', rejected[38]);
         assertEquals("ORIG1", text(expect(ORDER_CANCELLED), 18, 20));
+    }
+
+    @Test
+    void iocCancelledOnEntry_sendsOrderAcknowledgmentThenOrderCancelledWithN() throws Exception {
+        Order ioc = order("IOC1");
+        ioc.acknowledge();
+        ioc.cancel();
+        when(orderManager.processNewOrder(any(NewOrderMessage.class), any(ClientSession.class)))
+                .thenReturn(OrderManager.OrderResponse.acknowledged(ioc));
+
+        NewOrderMessage msg = new NewOrderMessage();
+        msg.setClOrdID("IOC1");
+        msg.setSide((byte) '1');
+        msg.setOrderQty(1);
+        msg.setSymbol("AAPL");
+        msg.setTimeInForce((byte) '3');
+        msg.setSequenceNumber(++sequence);
+        send(msg.toBytes());
+
+        assertEquals("IOC1", text(expect(ORDER_ACKNOWLEDGMENT), 18, 20));
+        byte[] cancelled = expect(ORDER_CANCELLED);
+        assertEquals("IOC1", text(cancelled, 18, 20));
+        assertEquals(OrderCancelledMessage.REASON_NO_LIQUIDITY, cancelled[38]);
     }
 
     // header(10) + ClOrdID(20) + OrigClOrdID(20) + NumberOfBitfields(1) + bitfield(1) + OrderQty(4) + CancelOrigOnReject(1)

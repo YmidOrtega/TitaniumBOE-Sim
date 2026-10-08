@@ -7,6 +7,7 @@ import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.protocol.message.NewOrderMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
 import com.boe.simulator.protocol.types.BinaryPrice;
+import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.session.ClientSession;
@@ -666,5 +667,51 @@ class OrderManagerTest {
         assertEquals(UserModifyRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
         assertEquals("Maximum of 1,295 modifications reached; the order can only be cancelled", response.getRejectText());
         assertTrue(orderManager.findByClOrdID("M1295").isPresent(), "The order can still be cancelled");
+    }
+
+    @Test
+    void processNewOrder_timeInForceTheSimulatorCannotHonor_isRejectedWithZ() {
+        String[][] cases = {{"1", "GTC"}, {"2", "AT_OPEN"}, {"6", "GTD"}, {"7", "AT_CLOSE"}};
+        for (String[] c : cases) {
+            NewOrderMessage message = createNewOrderMessage("TIF" + c[0], 1, 100.0, 10, "AAPL");
+            message.setTimeInForce((byte) c[0].charAt(0));
+
+            OrderManager.OrderResponse response = orderManager.processNewOrder(message, clientSession);
+
+            assertTrue(response.isRejected());
+            assertEquals(OrderRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
+            assertEquals("TimeInForce " + c[1] + " is not supported by the simulator", response.getRejectText());
+        }
+        verify(matchingEngine, never()).processOrder(any(Order.class));
+    }
+
+    @Test
+    void processNewOrder_unknownTimeInForce_isRejectedWithZ() {
+        NewOrderMessage message = createNewOrderMessage("TIF5", 1, 100.0, 10, "AAPL");
+        message.setTimeInForce((byte) '5');
+
+        OrderManager.OrderResponse response = orderManager.processNewOrder(message, clientSession);
+
+        assertEquals(OrderRejectedMessage.REASON_UNFORESEEN, response.getRejectReason());
+        assertEquals("Invalid TimeInForce '5'", response.getRejectText());
+    }
+
+    @Test
+    void processNewOrder_iocCancelledByTheEngine_isAcknowledgedAndLeavesTheActiveOrders() {
+        NewOrderMessage message = createNewOrderMessage("IOC1", 1, 100.0, 10, "AAPL");
+        message.setTimeInForce((byte) '3');
+        when(orderValidator.validateNewOrder(any(NewOrderMessage.class))).thenReturn(OrderValidator.ValidationResult.valid());
+        when(matchingEngine.processOrder(any(Order.class))).thenAnswer(inv -> {
+            inv.<Order>getArgument(0).cancel();
+            return Collections.emptyList();
+        });
+
+        OrderManager.OrderResponse response = orderManager.processNewOrder(message, clientSession);
+
+        assertTrue(response.isAcknowledged());
+        assertEquals(TimeInForce.IOC, response.getOrder().getTimeInForce());
+        assertEquals(OrderState.CANCELLED, response.getOrder().getState());
+        assertTrue(orderManager.findByClOrdID("IOC1").isEmpty());
+        assertEquals(1, orderManager.getTotalOrdersCancelled());
     }
 }

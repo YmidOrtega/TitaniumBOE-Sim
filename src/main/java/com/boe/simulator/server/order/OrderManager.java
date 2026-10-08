@@ -23,6 +23,7 @@ import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.PutOrCall;
 import com.boe.simulator.protocol.types.RoutingInst;
 import com.boe.simulator.protocol.types.Side;
+import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.protocol.message.OrderCancelledMessage;
 import com.boe.simulator.protocol.message.OrderExecutedMessage;
 import com.boe.simulator.protocol.message.OrderRejectedMessage;
@@ -145,6 +146,13 @@ public class OrderManager {
             return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, message.getFieldError());
         }
 
+        String timeInForceError = timeInForceError(message.getTimeInForce());
+        if (timeInForceError != null) {
+            LOGGER.log(Level.WARNING, "[{0}] Order rejected - {1}", new Object[]{context.getSessionIdentifier(), timeInForceError});
+            totalOrdersRejected.incrementAndGet();
+            return OrderResponse.rejected(message.getClOrdID(), OrderRejectedMessage.REASON_UNFORESEEN, timeInForceError);
+        }
+
         // 2. Validate message
         OrderValidator.ValidationResult validation = orderValidator.validateNewOrder(message);
         if (!validation.isValid()) {
@@ -212,6 +220,7 @@ public class OrderManager {
                     .orderQty(message.getOrderQty())
                     .price(message.getPrice())
                     .ordType(message.getOrdType() != 0 ? OrdType.fromByte(message.getOrdType()) : OrdType.LIMIT)
+                    .timeInForce(TimeInForce.fromByte(message.getTimeInForce()))
                     .symbol(message.getSymbol())
                     .capacity(message.getCapacity() != 0 ? Capacity.fromByte(message.getCapacity()) : Capacity.AGENCY)
                     .openClose(message.getOpenClose() != 0 ? OpenClose.fromByte(message.getOpenClose()) : OpenClose.NONE)
@@ -232,6 +241,12 @@ public class OrderManager {
 
             // 9. Send to matching engine
             List<Trade> trades = matchingEngine.processOrder(order);
+
+            if (order.getState() == OrderState.CANCELLED) {
+                activeOrdersByClOrdID.remove(order.getClOrdID());
+                activeOrdersByOrderID.remove(order.getOrderID());
+                totalOrdersCancelled.incrementAndGet();
+            }
 
             // 10. Enqueue for async persistence — keeps disk I/O off the NewOrder → ACK hot path
             orderRepository.saveAsync(order);
@@ -440,6 +455,19 @@ public class OrderManager {
             LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error cancelling order", e);
             return CancelResponse.rejected(origClOrdID, CancelRejectedMessage.REASON_UNFORESEEN, "Internal error: " + e.getMessage());
         }
+    }
+
+    private static String timeInForceError(byte value) {
+        TimeInForce timeInForce;
+        try {
+            timeInForce = TimeInForce.fromByte(value);
+        } catch (IllegalArgumentException e) {
+            return "Invalid TimeInForce '" + (char) value + "'";
+        }
+        return switch (timeInForce) {
+            case DAY, IOC, FOK -> null;
+            default -> "TimeInForce " + timeInForce + " is not supported by the simulator";
+        };
     }
 
     private long countOpenBoeOrders(String username) {

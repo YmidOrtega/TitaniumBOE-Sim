@@ -282,8 +282,8 @@ class OrderResponseMessagesPhase5Test {
     @Test
     void orderCancelled_cancelReasonAtOffset38() {
         Order order = minimalOrder();
-        byte[] b = OrderCancelledMessage.fromOrder(order, OrderCancelledMessage.REASON_IOC_EXPIRED).toBytes();
-        assertEquals((byte) 'I', b[38], "CancelReason at offset 38");
+        byte[] b = OrderCancelledMessage.fromOrder(order, OrderCancelledMessage.REASON_NO_LIQUIDITY).toBytes();
+        assertEquals((byte) 'N', b[38], "CancelReason at offset 38");
     }
 
     @Test

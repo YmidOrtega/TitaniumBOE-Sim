@@ -3,6 +3,7 @@ package com.boe.simulator.server.matching;
 import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.Side;
+import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.server.order.Order;
 import com.boe.simulator.server.order.OrderRepository;
 
@@ -57,12 +58,19 @@ public class MatchingEngine {
         OrderBook book = orderBooks.computeIfAbsent(symbol, OrderBook::new);
 
         List<Trade> trades = new ArrayList<>();
+        boolean immediate = order.getTimeInForce().isImmediate() || order.getOrdType() == OrdType.MARKET;
+
+        if (order.getTimeInForce() == TimeInForce.FOK && fillableQuantity(order, book) < order.getLeavesQty()) {
+            order.cancel();
+            return trades;
+        }
 
         // If it is a market order or can be matched immediately, attempt matching.
         if (canMatch(order, book)) trades = executeMatching(order, book);
 
-        // If there is an outstanding amount, add it to the book.
-        if (order.getLeavesQty() > 0 && order.isLive()) {
+        if (immediate && order.getLeavesQty() > 0 && order.getState().isCancellable()) {
+            order.cancel();
+        } else if (order.getLeavesQty() > 0 && order.isLive()) {
             book.addOrder(order);
             notifyOrderAdded(order, book);
 
@@ -159,6 +167,26 @@ public class MatchingEngine {
             BigDecimal bestBid = book.getBestBid();
             return bestBid != null && incomingPrice.compareTo(bestBid) <= 0;
         }
+    }
+
+    private int fillableQuantity(Order order, OrderBook book) {
+        int needed = order.getLeavesQty();
+        int available = 0;
+        for (Order resting : book.getOppositeOrders(order.getSide())) {
+            if (!isPriceAcceptable(order, resting.getPrice())) break;
+            if (!resting.getState().isActive()) continue;
+            if (!allowSelfTrade && order.getUsername() != null && order.getUsername().equals(resting.getUsername())) continue;
+            available += resting.getLeavesQty();
+            if (available >= needed) break;
+        }
+        return available;
+    }
+
+    private static boolean isPriceAcceptable(Order incoming, BigDecimal restingPrice) {
+        if (incoming.getOrdType() == OrdType.MARKET) return true;
+        if (incoming.getPrice() == null) return false;
+        int cmp = incoming.getPrice().compareTo(restingPrice);
+        return incoming.getSide() == Side.BUY ? cmp >= 0 : cmp <= 0;
     }
 
     private List<Trade> executeMatching(Order aggressiveOrder, OrderBook book) {

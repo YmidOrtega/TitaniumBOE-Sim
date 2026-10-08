@@ -39,7 +39,7 @@ public final class OrderCancelledMessage extends ApplicationMessage {
     public static final byte REASON_MASS_CANCEL    = (byte) 'M';
     public static final byte REASON_TIMEOUT        = (byte) 'T';
     public static final byte REASON_SUPERVISOR     = (byte) 'S';
-    public static final byte REASON_IOC_EXPIRED    = (byte) 'I';
+    public static final byte REASON_NO_LIQUIDITY   = (byte) 'N';
 
     private byte matchingUnit;
     private int sequenceNumber;

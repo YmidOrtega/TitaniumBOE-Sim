@@ -173,6 +173,18 @@ public class OrderBook {
         }
     }
 
+    public List<Order> getOppositeOrders(Side side) {
+        long stamp = lock.readLock();
+        try {
+            TreeMap<BigDecimal, LinkedList<Order>> opposite = side == Side.BUY ? asks : bids;
+            List<Order> orders = new ArrayList<>();
+            opposite.values().forEach(orders::addAll);
+            return orders;
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
     public Order findOrder(long orderID) {
         return orderIndex.get(orderID);
     }
