@@ -10,6 +10,7 @@ import java.util.concurrent.locks.StampedLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+@SuppressWarnings("java:S3078")
 public class OrderBook {
     private static final Logger LOGGER = Logger.getLogger(OrderBook.class.getName());
 
@@ -32,9 +33,7 @@ public class OrderBook {
     private long nextStopPriority;
 
     private volatile BigDecimal lastTradePrice;
-    @SuppressWarnings("java:S3078")
     private volatile int totalBidQuantity;
-    @SuppressWarnings("java:S3078")
     private volatile int totalAskQuantity;
 
     public OrderBook(String symbol) {

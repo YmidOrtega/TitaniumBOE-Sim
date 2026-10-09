@@ -197,7 +197,6 @@ public class ClientConnectionHandler implements Runnable {
         shutdownInputQuietly();
     }
 
-    @SuppressWarnings("javabugs:S2259")
     private void handleInbound(BoeMessage message, boolean receivedDuringReplay) {
         MessageValidator.ValidationResult validation = MessageValidator.validate(message);
         if (!validation.isValid()) {
@@ -220,6 +219,7 @@ public class ClientConnectionHandler implements Runnable {
         processMessage(message, receivedDuringReplay);
     }
 
+    @SuppressWarnings("javabugs:S2259")
     private void processMessage(BoeMessage message, boolean receivedDuringReplay) {
         byte messageType = message.getMessageType();
 
