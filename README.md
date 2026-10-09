@@ -4,7 +4,7 @@
 
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/)
 [![Maven](https://img.shields.io/badge/Maven-3.9+-blue?logo=apache-maven)](https://maven.apache.org/)
-[![Astro](https://img.shields.io/badge/Astro-5-blueviolet?logo=astro)](https://astro.build/)
+[![Astro](https://img.shields.io/badge/Astro-7-blueviolet?logo=astro)](https://astro.build/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![CI/CD](https://github.com/YmidOrtega/TitaniumBOE-Sim/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/YmidOrtega/TitaniumBOE-Sim/actions)
 [![Code Quality](https://github.com/YmidOrtega/TitaniumBOE-Sim/workflows/Code%20Quality%20%26%20Coverage/badge.svg)](https://github.com/YmidOrtega/TitaniumBOE-Sim/actions)
@@ -28,12 +28,13 @@
 
 ## ✨ Key Features
 
-- 🔌 **Complete BOE Protocol** — 20 message types (7 session + 13 application) with exact binary wire format
-- 🎯 **Matching Engine** — Real-time order matching with price-time priority
+- 🔌 **BOE Protocol, audited against spec v2.11.90** — 27 message types (7 session + 20 application) with the exact binary wire format, return bitfields, sequencing and replay
+- 🎯 **Matching Engine** — Price-time priority; Day, IOC, FOK, GTC and GTD orders; reserve, MinQty and stop orders; self-trade prevention (MTP)
+- 🛡️ **Risk Controls** — Mass cancel, Purge Orders, self-imposed lockouts and Reset Risk
 - 🤖 **Trading Bots** — Market Maker, Trend Follower, Random Trader
 - 🌐 **REST API & WebSocket** — Full market data and trading APIs
 - 📊 **Web Dashboard** — Real-time Astro + Tailwind UI, served directly from the JAR
-- 🗄️ **RocksDB Persistence** — All data persisted and recoverable
+- 🗄️ **RocksDB Persistence** — Users, orders and trades survive a restart; live orders go back into the book
 - 🔐 **Production-grade Security** — BCrypt hashing, rate limiting, validation
 - ⚡ **Low-latency Engine** — StampedLock, async write-behind queue, hot-path optimizations
 - 🚦 **Spec Flow Control** — TCP backpressure at 1,024 / 960 unacknowledged messages and a per-session open-order limit (2,000, the spec's 200,000 scaled ÷100 so it is reachable on a PC)
@@ -215,12 +216,14 @@ TitaniumBOE-Sim/
 │   │   └── config/             # Scalar/Swagger/OpenAPI handlers
 │   ├── bot/                    # Trading bots (MM, Trend, Random)
 │   ├── server/                 # BOE Server core
+│   │   ├── connection/         # TCP sessions, login, replay
 │   │   ├── matching/           # Matching engine (StampedLock)
 │   │   ├── auth/               # Authentication (BCrypt)
-│   │   └── order/              # Order management
-│   ├── protocol/               # BOE message definitions & serialization
-│   └── util/                   # Utilities
-├── docs/                       # Additional documentation
+│   │   ├── order/              # Order management
+│   │   ├── risk/               # Lockouts and risk resets
+│   │   └── persistence/        # RocksDB repositories
+│   └── protocol/               # BOE message definitions & serialization
+├── docs/                       # Architecture, API and BOE spec quick reference
 ├── data/                       # RocksDB storage (runtime)
 ├── Dockerfile
 ├── docker-compose.yml
@@ -242,6 +245,8 @@ mvn clean test jacoco:report
 mvn test -Dtest=MatchingEngineTest
 ```
 
+More than 600 tests, including the hexadecimal examples of the spec as wire-format tests.
+
 ### Load test
 
 `LoadTestRunner` is run manually against a server that is already up, and checks explicit
@@ -256,6 +261,18 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
     --tcp=500 --logins=100 --rest=5000 --ack-sessions=10 --ack-orders=90
 ```
 
+Results on a 16-core machine, three runs with a freshly started server each time (2026-10-08):
+
+| Metric | Result | Target |
+|---|---|---|
+| Concurrent TCP connections | 500, none refused | ≥ 500 |
+| BOE logins | 50–54/s | ≥ 200/s ❌ (BCrypt cost 12, deliberate) |
+| REST throughput | 4,700–10,700 req/s | ≥ 800 req/s |
+| Order Ack P99 (900 orders, 10 sessions, all acknowledged) | 2.8–4.3 ms | < 5 ms |
+| Order Ack P99 on a cold server (latency phase only) | 7.2–13.9 ms | — |
+
+The memory phase measures the client's heap, not the server's, so its result is not meaningful.
+
 ---
 
 ## 🔧 Technologies
@@ -265,7 +282,7 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
 | Runtime | Java 21, Virtual Threads |
 | Build | Maven 3.9, frontend-maven-plugin |
 | REST API | Javalin 6.7 |
-| Frontend | Astro 5, Tailwind CSS |
+| Frontend | Astro 7, Tailwind CSS 3 |
 | Persistence | RocksDB 9.11 |
 | Serialization | Jackson |
 | Security | JBCrypt, rate limiting |
@@ -275,7 +292,7 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
 
 ## 📊 Features Checklist
 
-- [x] Complete BOE protocol (20 message types)
+- [x] BOE protocol audited against spec v2.11.90 (27 message types)
 - [x] Real-time matching engine (StampedLock, optimistic reads)
 - [x] Async write-behind persistence queue
 - [x] Trading bot simulation (MM, Trend, Random)
@@ -291,6 +308,17 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
 ## 📚 Documentation
 
 ### **[📖 Full Documentation on DeepWiki →](https://deepwiki.com/YmidOrtega/TitaniumBOE-Sim/1-overview)**
+
+### In the repository
+
+| Document | Content |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Architecture, matching engine, protocol layer and design decisions |
+| [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md) | REST API and WebSocket |
+| [`docs/BOE Protocol Specification - Quick Reference.md`](<docs/BOE Protocol Specification - Quick Reference.md>) | BOE message reference, with every difference from the spec, its fix and the spec errata found |
+| [`SECURITY.md`](SECURITY.md) | Security policy and known unpatched advisories |
+
+**Not implemented:** auctions, complex orders, crosses and market-maker quotes (answered with the spec's rejects), and option series symbology: the book trades symbols like AAPL.
 
 ### Interactive API Docs
 
