@@ -15,7 +15,7 @@ El protocolo **Binary Order Entry (BOE)** de Cboe es un protocolo binario de baj
 - **Múltiples versiones del protocolo** — cambiar de BOEv2.11 a BOEv3.x requiere reescribir manualmente todo el parser, la serialización y las pruebas.
 - **Flujo de sesión estricto** — Login obligatorio antes de cualquier orden; secuencias por matching unit; heartbeats en ambas direcciones.
 
-TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y testeable del protocolo, un motor de matching real, y una capa de persistencia, REST API y dashboard todo en un único JAR.
+TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y testeable del protocolo, un motor de matching real, y una capa de persistencia y REST API, todo en un único JAR.
 
 ---
 
@@ -73,10 +73,9 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Capa | Tecnología | Justificación |
 |------|-----------|---------------|
 | Runtime | Java 21, Virtual Threads | Un VThread por conexión TCP sin overhead de OS threads; >500 conexiones concurrentes |
-| Build | Maven 3.9, frontend-maven-plugin | Compila Astro y empaqueta el frontend en el JAR — un solo artefacto deployable |
+| Build | Maven 3.9, maven-shade-plugin | Un solo JAR ejecutable con todas las dependencias |
 | Servidor BOE | NIO ServerSocketChannel | No bloqueante en el accept; cada cliente corre en su propio VThread |
 | REST / WebSocket | Javalin 6.7 (Jetty 11) | Ligero, sin reflection en el hot path, compatible con VThreads. Fijado en 6.x: Javalin 7 traería Jetty 12 pero rehace la API de enrutado — ver nota de seguridad abajo |
-| Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
 | Testing | JUnit 5 + Awaitility | 603 tests; pruebas de wire format contra la spec |
@@ -937,8 +936,7 @@ existente. No hace falta migración.
 | Docs | GET | `/api/docs` | No | Scalar UI (OpenAPI) |
 
 > Los filtros `before` registrados son `/api/orders*`, `/api/positions*`, `/api/trades*` y
-> `/api/auth/me`. Las rutas `/api/simulator/*` quedan **sin autenticar** a propósito: el botón
-> «START BOTS» del dashboard las invoca sin credenciales.
+> `/api/auth/me`. Las rutas `/api/simulator/*` quedan **sin autenticar**.
 
 ### 9.2 WebSocket Feed
 
@@ -1156,7 +1154,6 @@ TitaniumBOE-Sim/
 │       ├── protocol/                 # Wire format tests
 │       ├── server/                   # Engine, auth, session tests
 │       └── load/                     # LoadTestRunner (manual)
-├── frontend/                         # Astro 5 + Tailwind (compilado en el JAR)
 ├── docs/
 │   ├── ARCHITECTURE.md               # Este documento
 │   ├── API_DOCUMENTATION.md          # Referencia REST completa

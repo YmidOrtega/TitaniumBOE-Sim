@@ -1,10 +1,9 @@
 # 💹 TitaniumBOE-Sim
 
-> **A comprehensive simulator for the Cboe Titanium U.S. Options Binary Order Entry (BOE) protocol with matching engine, trading bots, REST API, WebSocket streaming, and a web dashboard**
+> **A comprehensive simulator for the Cboe Titanium U.S. Options Binary Order Entry (BOE) protocol with matching engine, trading bots, REST API and WebSocket streaming**
 
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/)
 [![Maven](https://img.shields.io/badge/Maven-3.9+-blue?logo=apache-maven)](https://maven.apache.org/)
-[![Astro](https://img.shields.io/badge/Astro-7-blueviolet?logo=astro)](https://astro.build/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![CI/CD](https://github.com/YmidOrtega/TitaniumBOE-Sim/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/YmidOrtega/TitaniumBOE-Sim/actions)
 [![Code Quality](https://github.com/YmidOrtega/TitaniumBOE-Sim/workflows/Code%20Quality%20%26%20Coverage/badge.svg)](https://github.com/YmidOrtega/TitaniumBOE-Sim/actions)
@@ -14,7 +13,7 @@
 
 ## 📖 Overview
 
-**TitaniumBOE-Sim** is an enterprise-grade simulator of the **Cboe Titanium BOE protocol**, built in Java 21. It provides a complete trading ecosystem with a real-time matching engine, intelligent trading bots, RESTful API, WebSocket streaming and an Astro + Tailwind web dashboard — all packaged as a single self-contained JAR.
+**TitaniumBOE-Sim** is an enterprise-grade simulator of the **Cboe Titanium BOE protocol**, built in Java 21. It provides a complete trading ecosystem with a real-time matching engine, intelligent trading bots, RESTful API with interactive docs and WebSocket streaming — all packaged as a single self-contained JAR.
 
 ### Perfect For
 - 📚 Learning binary financial protocols and market microstructure
@@ -33,7 +32,6 @@
 - 🛡️ **Risk Controls** — Mass cancel, Purge Orders, self-imposed lockouts and Reset Risk
 - 🤖 **Trading Bots** — Market Maker, Trend Follower, Random Trader
 - 🌐 **REST API & WebSocket** — Full market data and trading APIs
-- 📊 **Web Dashboard** — Real-time Astro + Tailwind UI, served directly from the JAR
 - 🗄️ **RocksDB Persistence** — Users, orders and trades survive a restart; live orders go back into the book
 - 🔐 **Production-grade Security** — BCrypt hashing, rate limiting, validation
 - ⚡ **Low-latency Engine** — StampedLock, async write-behind queue, hot-path optimizations
@@ -46,7 +44,6 @@
 ### Prerequisites
 - Java 21+
 - Maven 3.9+
-- Node.js 20+ *(only needed for frontend dev; the Maven build downloads it automatically)*
 
 ### Build & Run
 
@@ -55,7 +52,7 @@
 git clone https://github.com/YmidOrtega/TitaniumBOE-Sim.git
 cd TitaniumBOE-Sim
 
-# Build: compiles Astro frontend + packages everything into one fat JAR
+# Build: packages everything into one fat JAR
 mvn clean package -DskipTests
 
 # Start server
@@ -66,7 +63,6 @@ Once running:
 
 | Interface | URL |
 |---|---|
-| **Web Dashboard** | http://localhost:9091 |
 | **REST API** | http://localhost:9091/api |
 | **WebSocket feed** | ws://localhost:9091/ws/feed |
 | **Interactive API docs** | http://localhost:9091/api/docs |
@@ -75,17 +71,6 @@ Once running:
 **Demo Credentials:**
 - Username: `TRD1` / Password: `Pass1234`
 - Username: `TRD2` / Password: `Pass5678`
-
----
-
-## 🖥️ Web Dashboard
-
-The Astro + Tailwind dashboard is embedded in the JAR and served automatically — no separate web server needed. Open **http://localhost:9091** after starting the server to see:
-
-- Live trade feed via WebSocket
-- Order book depth per symbol
-- System statistics (active orders, total matches, uptime)
-- REST API playground via Scalar
 
 ---
 
@@ -114,8 +99,8 @@ Browser / REST client
 ┌─────────────────────────────────────────────┐
 │           REST API Server (Port 9091)       │
 │  ┌───────────────┐   ┌────────────────────┐ │
-│  │  Astro+TW UI  │   │  REST / WebSocket  │ │
-│  │ (classpath/)  │   │     endpoints      │ │
+│  │ Scalar / docs │   │  REST / WebSocket  │ │
+│  │  (OpenAPI)    │   │     endpoints      │ │
 │  └───────────────┘   └────────────────────┘ │
 └─────────────────────┬───────────────────────┘
                       │
@@ -146,7 +131,7 @@ docker compose up --build
 docker compose down
 ```
 
-The Docker build compiles the Astro frontend and packages it into the JAR automatically. No pre-build step required.
+The Docker build compiles and packages the JAR. No pre-build step required.
 
 Environment variables (via `.env` or `docker compose`):
 
@@ -154,7 +139,7 @@ Environment variables (via `.env` or `docker compose`):
 |---|---|---|
 | `DEMO_MODE` | `true` | Shown in the startup banner; demo users are seeded whenever the user store is empty |
 | `BOE_PORT` | `8081` | BOE binary protocol port |
-| `API_PORT` | `9091` | REST API + dashboard port (`PORT` wins if the platform injects it) |
+| `API_PORT` | `9091` | REST API port (`PORT` wins if the platform injects it) |
 | `ALLOWED_ORIGINS` | localhost dev servers | Comma-separated CORS origins |
 | `DEMO_USER_1` / `DEMO_PASS_1` | `TRD1` / `Pass1234` | First demo account (username max 4 chars) |
 | `DEMO_USER_2` / `DEMO_PASS_2` | `TRD2` / `Pass5678` | Second demo account |
@@ -171,7 +156,7 @@ The RocksDB directory is a JVM system property, not an environment variable:
 
 ## ☁️ Deploying to the Cloud
 
-The entire app — dashboard, API, and matching engine — runs from a single Docker container.
+The entire app — API and matching engine — runs from a single Docker container.
 
 ### Railway (recommended — simplest)
 
@@ -179,7 +164,7 @@ The entire app — dashboard, API, and matching engine — runs from a single Do
 2. New project at [railway.app](https://railway.app) → **Deploy from GitHub repo**
 3. Railway auto-detects the `Dockerfile`
 4. Set env vars: `DEMO_MODE=true`, `API_PORT=9091`
-5. Expose port **9091** — dashboard and API are live
+5. Expose port **9091** — the API and its docs are live
 
 ### Render
 
@@ -208,9 +193,6 @@ docker compose up -d --build
 
 ```
 TitaniumBOE-Sim/
-├── frontend/                   # Astro + Tailwind dashboard
-│   ├── src/pages/              # Dashboard pages
-│   └── dist/                   # Built output (embedded in JAR at build time)
 ├── src/main/java/com/boe/simulator/
 │   ├── api/                    # REST API, WebSocket, static file serving
 │   │   └── config/             # Scalar/Swagger/OpenAPI handlers
@@ -280,9 +262,8 @@ The memory phase measures the client's heap, not the server's, so its result is 
 | Layer | Technology |
 |---|---|
 | Runtime | Java 21, Virtual Threads |
-| Build | Maven 3.9, frontend-maven-plugin |
+| Build | Maven 3.9 |
 | REST API | Javalin 6.7 |
-| Frontend | Astro 7, Tailwind CSS 3 |
 | Persistence | RocksDB 9.11 |
 | Serialization | Jackson |
 | Security | JBCrypt, rate limiting |
@@ -297,7 +278,6 @@ The memory phase measures the client's heap, not the server's, so its result is 
 - [x] Async write-behind persistence queue
 - [x] Trading bot simulation (MM, Trend, Random)
 - [x] REST API & WebSocket
-- [x] Astro + Tailwind web dashboard (embedded in JAR)
 - [x] Position tracking & P&L
 - [x] Persistent storage (RocksDB)
 - [x] Security & validation (BCrypt, rate limiting)
@@ -340,7 +320,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 - **Cboe Global Markets** for the BOE protocol specification
 - **RocksDB Team** for the embedded database
-- **Astro** and **Tailwind CSS** communities
 
 ---
 

@@ -394,7 +394,7 @@ ws.onmessage = (event) => {
 |----------|---------|-------------|
 | `DEMO_MODE` | `true` | Pre-carga usuarios demo y datos de mercado |
 | `BOE_PORT` | `8081` | Puerto del protocolo BOE binario (TCP) |
-| `API_PORT` | `9091` | Puerto REST API + dashboard |
+| `API_PORT` | `9091` | Puerto REST API |
 | `LOG_LEVEL` | `INFO` | Verbosidad de logs (`FINE`, `INFO`, `WARNING`) |
 | `ADMIN_USERNAME` | — | Usuario admin en modo no-demo |
 | `ADMIN_PASSWORD` | — | Contraseña admin |
