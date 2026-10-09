@@ -69,9 +69,10 @@ class UnacknowledgedMessageGateTest {
             }
         });
 
+        assertThrows(TimeoutException.class, () -> reader.get(200, TimeUnit.MILLISECONDS));
         gate.close();
 
-        reader.get(1, TimeUnit.SECONDS);
+        assertDoesNotThrow(() -> reader.get(1, TimeUnit.SECONDS), "close releases the paused reader");
     }
 
     @Test
