@@ -151,19 +151,20 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: '📦 Weekly Dependency Updates Available',
-              body: `## Dependency Update Report
-              
-Major version updates are available. Please review the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.
-
-### What to do:
-1. Review the \`dependency-updates.txt\` artifact
-2. Update dependencies in \`pom.xml\`
-3. Run tests to ensure compatibility
-4. Create a PR with the updates
-
-### Automated Check
-This issue was automatically created by the weekly dependency check workflow.
-              `,
+              body: [
+                '## Dependency Update Report',
+                '',
+                `Major version updates are available. Please review the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.`,
+                '',
+                '### What to do:',
+                '1. Review the `dependency-updates.txt` artifact',
+                '2. Update dependencies in `pom.xml`',
+                '3. Run tests to ensure compatibility',
+                '4. Create a PR with the updates',
+                '',
+                '### Automated Check',
+                'This issue was automatically created by the weekly dependency check workflow.',
+              ].join('\n'),
               labels: ['dependencies', 'maintenance']
             });
           }
