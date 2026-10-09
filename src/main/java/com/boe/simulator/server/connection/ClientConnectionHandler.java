@@ -199,7 +199,7 @@ public class ClientConnectionHandler implements Runnable {
 
     private void handleInbound(BoeMessage message, boolean receivedDuringReplay) {
         MessageValidator.ValidationResult validation = MessageValidator.validate(message);
-        if (!validation.isValid()) {
+        if (message == null || !validation.isValid()) {
             LOGGER.log(Level.WARNING, "[Session {0}] Invalid message: {1}", new Object[]{
                     session.getConnectionId(),
                     validation.getMessage()
@@ -219,7 +219,6 @@ public class ClientConnectionHandler implements Runnable {
         processMessage(message, receivedDuringReplay);
     }
 
-    @SuppressWarnings("javabugs:S2259")
     private void processMessage(BoeMessage message, boolean receivedDuringReplay) {
         byte messageType = message.getMessageType();
 
