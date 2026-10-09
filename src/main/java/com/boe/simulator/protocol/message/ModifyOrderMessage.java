@@ -95,7 +95,7 @@ public final class ModifyOrderMessage extends ApplicationMessage {
     private void parseOptionalFields(ByteBuffer buf) {
         for (int i = 0; i < bitfields.length; i++) {
             for (int bit = 0; bit < 8; bit++) {
-                if ((bitfields[i] & (1 << bit)) == 0) continue;
+                if ((bitfields[i] & 0xFF & (1 << bit)) == 0) continue;
 
                 int length = i < MAX_BITFIELDS ? FIELD_LENGTHS[i][bit] : 0;
                 if (length == 0) {

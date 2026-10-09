@@ -91,7 +91,7 @@ public final class PurgeOrdersMessage extends ApplicationMessage {
     private void parseOptionalFields(ByteBuffer buf) {
         for (int i = 0; i < bitfields.length; i++) {
             for (int bit = 0; bit < 8; bit++) {
-                if ((bitfields[i] & (1 << bit)) == 0) continue;
+                if ((bitfields[i] & 0xFF & (1 << bit)) == 0) continue;
                 int length = i < FIELD_LENGTHS.length ? FIELD_LENGTHS[i][bit] : 0;
                 if (length == 0) {
                     fieldError = "Bitfield " + (i + 1) + " bit " + (1 << bit) + " cannot be specified on Purge Orders";
@@ -156,7 +156,7 @@ public final class PurgeOrdersMessage extends ApplicationMessage {
         int optional = 0;
         for (int i = 0; i < bitfields.length; i++) {
             for (int bit = 0; bit < 8; bit++) {
-                if ((bitfields[i] & (1 << bit)) != 0) optional += FIELD_LENGTHS[i][bit];
+                if ((bitfields[i] & 0xFF & (1 << bit)) != 0) optional += FIELD_LENGTHS[i][bit];
             }
         }
         int total = 12 + bitfields.length + 1 + customGroupIds.size() * 2 + optional;

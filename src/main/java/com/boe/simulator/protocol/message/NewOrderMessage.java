@@ -161,7 +161,7 @@ public final class NewOrderMessage extends ApplicationMessage {
     private void parseOptionalFields(ByteBuffer buffer) {
         for (int i = 0; i < bitfields.length; i++) {
             for (int bit = 0; bit < 8; bit++) {
-                if ((bitfields[i] & (1 << bit)) == 0) continue;
+                if ((bitfields[i] & 0xFF & (1 << bit)) == 0) continue;
 
                 OptionalField field = i < FIELDS.length ? FIELDS[i][bit] : null;
                 if (field == null) {
