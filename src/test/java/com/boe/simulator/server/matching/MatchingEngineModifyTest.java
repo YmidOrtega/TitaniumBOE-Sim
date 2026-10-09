@@ -38,6 +38,7 @@ class MatchingEngineModifyTest {
     void setUp() {
         engine = new MatchingEngine(orderRepository, tradeRepository);
         orderIdSeq = new AtomicLong(1);
+        recordTrades();
     }
 
     private Order order(String clOrdID, Side side, String price, int qty, String username) {
@@ -287,8 +288,7 @@ class MatchingEngineModifyTest {
         return executed;
     }
 
-    @BeforeEach
-    void recordTrades() {
+    private void recordTrades() {
         engine.addEventListener(new MatchingEngine.MatchingEventListener() {
             @Override
             public void onTradeExecuted(Trade trade, OrderBook book) {
