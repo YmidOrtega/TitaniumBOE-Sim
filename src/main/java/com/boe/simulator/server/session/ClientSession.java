@@ -3,7 +3,6 @@ package com.boe.simulator.server.session;
 import com.boe.simulator.protocol.message.SessionState;
 import com.boe.simulator.protocol.message.ReturnBitfields;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -16,19 +15,16 @@ public class ClientSession {
     // Session identifiers
     private String username;
     private String sessionSubID;
-    private byte matchingUnit;
     private volatile ReturnBitfields returnBitfields;
 
     // State management
     private volatile SessionState state;
 
-    // Sequence tracking
-    private final AtomicInteger sentSequenceNumber;
-    private final AtomicInteger receivedSequenceNumber;
-
     // Heartbeat tracking
     private volatile Instant lastHeartbeatSent;
     private volatile Instant lastHeartbeatReceived;
+    private volatile long lastInboundNanos = System.nanoTime();
+    private volatile long lastOutboundNanos = System.nanoTime();
 
     // Statistics
     private final AtomicInteger messagesReceived;
@@ -39,33 +35,9 @@ public class ClientSession {
         this.remoteAddress = remoteAddress;
         this.createdAt = Instant.now();
         this.state = SessionState.CONNECTED;
-        this.matchingUnit = 0;
         this.returnBitfields = ReturnBitfields.empty();
-        this.sentSequenceNumber = new AtomicInteger(1);
-        this.receivedSequenceNumber = new AtomicInteger(0);
         this.messagesReceived = new AtomicInteger(0);
         this.messagesSent = new AtomicInteger(0);
-    }
-
-    // Sequence number management
-    public int getNextSentSequenceNumber() {
-        return sentSequenceNumber.getAndIncrement();
-    }
-
-    public int getCurrentSentSequenceNumber() {
-        return sentSequenceNumber.get();
-    }
-
-    public void updateReceivedSequenceNumber(int seqNum) {
-        receivedSequenceNumber.set(seqNum);
-    }
-
-    public int getLastReceivedSequenceNumber() {
-        return receivedSequenceNumber.get();
-    }
-
-    public boolean isSequenceInOrder(int seqNum) {
-        return seqNum == receivedSequenceNumber.get() + 1;
     }
 
     // Message counters
@@ -85,6 +57,22 @@ public class ClientSession {
         return messagesSent.get();
     }
 
+    public void markInbound() {
+        this.lastInboundNanos = System.nanoTime();
+    }
+
+    public void markOutbound() {
+        this.lastOutboundNanos = System.nanoTime();
+    }
+
+    public long nanosSinceInbound() {
+        return System.nanoTime() - lastInboundNanos;
+    }
+
+    public long nanosSinceOutbound() {
+        return System.nanoTime() - lastOutboundNanos;
+    }
+
     // Heartbeat tracking
     public void updateHeartbeatSent() {
         this.lastHeartbeatSent = Instant.now();
@@ -92,11 +80,6 @@ public class ClientSession {
 
     public void updateHeartbeatReceived() {
         this.lastHeartbeatReceived = Instant.now();
-    }
-
-    public boolean isHeartbeatExpired(long timeoutSeconds) {
-        if (lastHeartbeatReceived == null) return false;
-        return Duration.between(lastHeartbeatReceived, Instant.now()).getSeconds() > timeoutSeconds;
     }
 
     // State management
@@ -120,8 +103,6 @@ public class ClientSession {
     public void setUsername(String username) { this.username = username; }
     public String getSessionSubID() { return sessionSubID; }
     public void setSessionSubID(String sessionSubID) { this.sessionSubID = sessionSubID; }
-    public byte getMatchingUnit() { return matchingUnit; }
-    public void setMatchingUnit(byte matchingUnit) { this.matchingUnit = matchingUnit; }
     public ReturnBitfields getReturnBitfields() { return returnBitfields; }
     public void setReturnBitfields(ReturnBitfields returnBitfields) {
         this.returnBitfields = returnBitfields != null ? returnBitfields : ReturnBitfields.empty();

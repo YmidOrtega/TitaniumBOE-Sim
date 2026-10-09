@@ -3,6 +3,9 @@ package com.boe.simulator.api.config;
 import io.javalin.http.Handler;
 
 public class ScalarHandler {
+
+    private ScalarHandler() {
+    }
     
     public static Handler getHandler() {
         return ctx -> {

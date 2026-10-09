@@ -62,7 +62,7 @@ public final class RandomTraderStrategy implements TradingStrategy {
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error executing RandomTrader for %s".formatted(symbol), e);
+            LOGGER.log(Level.WARNING, e, () -> "Error executing RandomTrader for %s".formatted(symbol));
         }
     }
 

@@ -4,6 +4,9 @@ import io.javalin.http.Context;
 
 public class OpenApiHandler {
 
+    private OpenApiHandler() {
+    }
+
     public static void handle(Context ctx, int port) {
         String spec = """
             {
@@ -33,7 +36,7 @@ public class OpenApiHandler {
                     "required": ["username", "password"],
                     "properties": {
                       "username": {"type": "string", "example": "TRD1", "description": "1-4 alphanumeric chars"},
-                      "password": {"type": "string", "example": "Pass1234!", "description": "6-10 chars"}
+                      "password": {"type": "string", "example": "Pass1234", "description": "6-10 alphanumeric chars"}
                     }
                   },
                   "RegisterRequest": {
@@ -41,7 +44,7 @@ public class OpenApiHandler {
                     "required": ["username", "password"],
                     "properties": {
                       "username": {"type": "string", "example": "MYID", "description": "1-4 alphanumeric chars"},
-                      "password": {"type": "string", "example": "MyPass1!", "description": "6-10 chars"}
+                      "password": {"type": "string", "example": "MyPass12", "description": "6-10 alphanumeric chars"}
                     }
                   },
                   "AuthResponse": {

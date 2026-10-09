@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import com.boe.simulator.api.dto.PositionDTO;
 import com.boe.simulator.server.matching.Trade;
@@ -42,7 +41,7 @@ public class PositionService {
         return positions.values().stream()
                 .filter(p -> p.getNetQuantity() != 0)
                 .map(this::toDTO)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public Optional<PositionDTO> getPosition(String username, String symbol) {

@@ -165,17 +165,17 @@ class ClientSessionManagerTest {
     }
 
     @Test
-    void disconnectAll_shouldStopAllHandlers() {
+    void logoutAll_shouldLogOutEveryHandlerWithTheGivenReason() {
         // Arrange
         sessionManager.registerHandler(mockHandler1);
         sessionManager.registerHandler(mockHandler2);
 
         // Act
-        sessionManager.disconnectAll();
+        sessionManager.logoutAll((byte) 'E', "End of day");
 
         // Assert
-        verify(mockHandler1).stop();
-        verify(mockHandler2).stop();
+        verify(mockHandler1).logoutAndClose((byte) 'E', "End of day");
+        verify(mockHandler2).logoutAndClose((byte) 'E', "End of day");
     }
 
     @Test

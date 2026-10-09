@@ -61,7 +61,7 @@ class BoeMessageFactoryTest {
     @Test
     void createMessage_shouldReturnLoginResponseMessage() {
         // Arrange
-        byte[] data = new LoginResponseMessage((byte) 'A', "text", 1, 1).toBytes();
+        byte[] data = new LoginResponseMessage((byte) 'A', "text", 1, java.util.Map.of(1, 1)).toBytes();
         BoeMessage message = new BoeMessage(data);
 
         // Act
@@ -74,7 +74,7 @@ class BoeMessageFactoryTest {
     @Test
     void createMessage_shouldReturnLogoutResponseMessage() {
         // Arrange
-        byte[] data = new LogoutResponseMessage((byte) 'U', "text", 1, 1).toBytes();
+        byte[] data = new LogoutResponseMessage((byte) 'U', "text", 1, java.util.Map.of(1, 1)).toBytes();
         BoeMessage message = new BoeMessage(data);
 
         // Act

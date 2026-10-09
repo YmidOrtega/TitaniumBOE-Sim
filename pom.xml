@@ -15,7 +15,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <junit.jupiter.version>5.14.4</junit.jupiter.version>
         <mockito.version>5.20.0</mockito.version>
-        <jackson.version>2.21.6</jackson.version>
+        <jackson.version>2.21.7</jackson.version>
         
         <!-- SonarQube properties -->
         <sonar.organization>ymidortega</sonar.organization>
@@ -23,7 +23,7 @@
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.java.source>21</sonar.java.source>
         <sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
-        <sonar.exclusions>**/target/**</sonar.exclusions>
+        <sonar.exclusions>**/target/**,src/main/resources/static/scalar/**,src/main/resources/static/swagger-ui/**</sonar.exclusions>
     </properties>
 
     <dependencies>

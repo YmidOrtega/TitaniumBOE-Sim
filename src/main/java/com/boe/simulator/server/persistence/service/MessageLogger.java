@@ -38,7 +38,7 @@ public class MessageLogger {
                     session.getConnectionId(),
                     session.getUsername(),
                     session.getSessionSubID(),
-                    session.getLastReceivedSequenceNumber(),
+                    sequenceNumberOf(message.getData()),
                     message.getData()
             );
 
@@ -49,7 +49,7 @@ public class MessageLogger {
 
             messageRepository.save(persistedMessage);
 
-            LOGGER.fine("Logged inbound message: " + messageTypeName);
+            LOGGER.fine(() -> "Logged inbound message: " + messageTypeName);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to log inbound message", e);
         }
@@ -75,7 +75,7 @@ public class MessageLogger {
                     session.getConnectionId(),
                     session.getUsername(),
                     session.getSessionSubID(),
-                    session.getCurrentSentSequenceNumber(),
+                    sequenceNumberOf(messageData),
                     messageData
             );
 
@@ -86,10 +86,16 @@ public class MessageLogger {
 
             messageRepository.save(persistedMessage);
 
-            LOGGER.fine("Logged outbound message: " + messageTypeName);
+            LOGGER.fine(() -> "Logged outbound message: " + messageTypeName);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to log outbound message", e);
         }
+    }
+
+    // SequenceNumber: header offset 6, 4 bytes LE
+    private static int sequenceNumberOf(byte[] data) {
+        if (data.length < 10) return 0;
+        return (data[6] & 0xFF) | (data[7] & 0xFF) << 8 | (data[8] & 0xFF) << 16 | (data[9] & 0xFF) << 24;
     }
 
     public MessageStatistics getStatistics() {

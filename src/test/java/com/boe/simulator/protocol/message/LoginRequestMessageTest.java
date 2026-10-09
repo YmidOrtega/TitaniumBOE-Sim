@@ -60,9 +60,9 @@ class LoginRequestMessageTest {
                 0x37,
                 0x01,
                 0x39, 0x30, 0x00, 0x00,
-                'S', '1', ' ', ' ',
+                'S', '1', 0x00, 0x00,
                 'u', 's', 'e', 'r',
-                'p', 'a', 's', 's', ' ', ' ', ' ', ' ', ' ', ' ',
+                'p', 'a', 's', 's', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 0x00
         };
 
@@ -116,5 +116,32 @@ class LoginRequestMessageTest {
 
         assertArrayEquals(new byte[]{0x41}, parsed.getReturnBitfields().maskFor((byte) 0x25));
         assertArrayEquals(new byte[]{0x41, 0x40}, parsed.getReturnBitfields().maskFor((byte) 0x2C));
+    }
+
+    @Test
+    void unitSequences_shouldRoundTripAndEchoRawParamGroups() {
+        UnitSequences units = UnitSequences.of(true, java.util.Map.of(1, 113_482));
+        LoginRequestMessage original = new LoginRequestMessage("user", "pass", "S1", (byte) 0,
+                ReturnBitfields.empty(), units);
+
+        byte[] bytes = original.toBytes();
+        LoginRequestMessage parsed = LoginRequestMessage.parseFromBytes(bytes);
+
+        assertEquals(1, parsed.getNumberOfParamGroups());
+        assertTrue(parsed.getUnitSequences().isPresent());
+        assertTrue(parsed.getUnitSequences().isNoUnspecifiedUnitReplay());
+        assertEquals(java.util.Map.of(1, 113_482), parsed.getUnitSequences().lastReceivedByUnit());
+        // Spec Table 12: length 10 = 2 + 1 + 1 + 1 + one 5-byte pair; type 0x80; flag 0x01
+        assertArrayEquals(new byte[]{0x0A, 0x00, (byte) 0x80, 0x01, 0x01, 0x01, 0x4A, (byte) 0xBB, 0x01, 0x00},
+                parsed.getParamGroupBytes());
+    }
+
+    @Test
+    void unitSequences_shouldBeAbsentWhenNotSent() {
+        LoginRequestMessage parsed = LoginRequestMessage.parseFromBytes(
+                new LoginRequestMessage("user", "pass", "S1", (byte) 0).toBytes());
+
+        assertFalse(parsed.getUnitSequences().isPresent());
+        assertEquals(0, parsed.getParamGroupBytes().length);
     }
 }

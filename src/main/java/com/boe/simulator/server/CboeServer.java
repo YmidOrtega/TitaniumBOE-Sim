@@ -24,6 +24,7 @@ import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.error.ErrorHandler;
 import com.boe.simulator.server.matching.TradeRepositoryService;
+import com.boe.simulator.protocol.message.LogoutResponseMessage;
 import com.boe.simulator.server.metrics.HealthMetrics;
 import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.order.OrderRepository;
@@ -37,6 +38,10 @@ import com.boe.simulator.server.ratelimit.RateLimiter;
 import com.boe.simulator.server.session.ClientSessionManager;
 
 public class CboeServer {
+    // Exchange close, 17:30 ET (spec: Logout Message Fields)
+    static final ZoneId MARKET_ZONE = com.boe.simulator.server.config.TradingDay.MARKET_ZONE;
+    static final LocalTime MARKET_CLOSE = com.boe.simulator.server.config.TradingDay.MARKET_CLOSE;
+
     private static final Logger LOGGER = Logger.getLogger(CboeServer.class.getName());
 
     public static final int DEFAULT_API_PORT = 9091;
@@ -58,6 +63,7 @@ public class CboeServer {
     private final ExecutorService clientExecutor;
     private final AtomicBoolean running;
     private final AtomicInteger activeConnections;
+    private final AtomicInteger connectionIds = new AtomicInteger(0);
     private final RocksDBManager dbManager;
     private final AuthenticationService authService;
     private final ClientSessionManager sessionManager;
@@ -88,10 +94,12 @@ public class CboeServer {
         this.authService = new AuthenticationService(dbManager);
         this.sessionManager = new ClientSessionManager(sessionRepo);
         this.errorHandler = new ErrorHandler();
-        this.rateLimiter = new RateLimiter(config.getRateLimitPerMinute(), Duration.ofMinutes(1));
+        this.rateLimiter = new RateLimiter(config.getRateLimitPerSecond());
         this.healthMetrics = new HealthMetrics();
         this.orderManager = new OrderManager(dbManager);
         this.orderManager.setSessionManager(sessionManager);
+        this.orderManager.setMaxOpenOrdersPerSession(config.getMaxOpenOrdersPerSession());
+        this.orderManager.setPortAttributes(config.getPortAttributes());
 
         // Initialize statistics generator
         this.statisticsGenerator = new StatisticsGeneratorService(
@@ -194,7 +202,8 @@ public class CboeServer {
                 clientSocket.setSoTimeout(config.getConnectionTimeout());
                 clientSocket.setTcpNoDelay(true);
 
-                int connectionId = activeConnections.incrementAndGet();
+                activeConnections.incrementAndGet();
+                int connectionId = connectionIds.incrementAndGet();
                 LOGGER.log(Level.INFO, "✓ New connection accepted [ID: {0}] from {1} (Active: {2}/{3})", new Object[]{
                     connectionId, clientSocket.getRemoteSocketAddress(), activeConnections.get(), config.getMaxConnections()
                 });
@@ -218,7 +227,7 @@ public class CboeServer {
             handler = new ClientConnectionHandler(
                     socket, connectionId, config, authService,
                     sessionManager, errorHandler, rateLimiter,
-                    orderManager
+                    orderManager, healthMetrics
             );
             sessionManager.registerHandler(handler);
             healthMetrics.updatePeakConnections(activeConnections.get());
@@ -226,7 +235,7 @@ public class CboeServer {
 
         } catch (Exception e) {
             errorHandler.handleError(connectionId, "Handler error", e);
-            LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Connection " + connectionId + "] Error in handler");
         } finally {
             if (handler != null) sessionManager.unregisterHandler(handler);
 
@@ -310,9 +319,10 @@ public class CboeServer {
             // Shutdown market simulator
             marketSimulator.shutdown();
 
-            // Disconnect all sessions
+            // Log out all sessions
             try {
-                sessionManager.disconnectAll();
+                orderManager.setMarketClosed(true);
+                sessionManager.logoutAll(LogoutResponseMessage.REASON_ADMIN_LOGOUT, "Server shutting down");
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error disconnecting sessions", e);
             }
@@ -359,16 +369,27 @@ public class CboeServer {
     public void performDailyReset() {
         LOGGER.info("======= DAILY RESET STARTED =======");
         try {
-            orderManager.reset();
+            orderManager.setMarketClosed(true);
+            if (config.getPortAttributes().doneForDayRestatements()) {
+                for (var handler : sessionManager.getAuthenticatedHandlers()) {
+                    handler.sendRestatements(orderManager.persistingOrdersOf(handler.getSession().getUsername()),
+                            com.boe.simulator.server.connection.ClientConnectionHandler.SUB_LIQUIDITY_DONE_FOR_DAY);
+                }
+            }
+            sessionManager.logoutAll(LogoutResponseMessage.REASON_END_OF_DAY, "End of day");
+            orderManager.rollToNextDay();
 
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_MESSAGES);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_TRADES);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_AUDIT);
             dbManager.clearColumnFamily(com.boe.simulator.server.persistence.RocksDBManager.CF_SESSIONS);
+            sessionManager.getSessionStates().clear();
 
-            LOGGER.info("Daily reset complete: orders, trades, audit and sessions cleared. Users and config preserved.");
+            LOGGER.info("Daily reset complete: Day orders expired, GTC/GTD carried; trades, audit and sessions cleared. Users and config preserved.");
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Daily reset failed", e);
+        } finally {
+            orderManager.setMarketClosed(false);
         }
         LOGGER.info("======= DAILY RESET FINISHED =======");
     }
@@ -418,10 +439,20 @@ public class CboeServer {
         return marketSimulator;
     }
 
-    private static long secondsUntilMidnight() {
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
-        ZonedDateTime midnight = now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.of("UTC"));
-        return Duration.between(now, midnight).getSeconds();
+    static long secondsUntilNextClose(ZonedDateTime now) {
+        ZonedDateTime local = now.withZoneSameInstant(MARKET_ZONE);
+        ZonedDateTime close = local.with(MARKET_CLOSE);
+        if (!close.isAfter(local)) close = local.toLocalDate().plusDays(1).atTime(MARKET_CLOSE).atZone(MARKET_ZONE);
+        return Duration.between(now, close).getSeconds();
+    }
+
+    private static void scheduleNextClose(ScheduledExecutorService scheduler, CboeServer server) {
+        long delay = secondsUntilNextClose(ZonedDateTime.now());
+        scheduler.schedule(() -> {
+            server.performDailyReset();
+            scheduleNextClose(scheduler, server);
+        }, delay, TimeUnit.SECONDS);
+        LOGGER.log(Level.INFO, "End of day scheduled in {0}s (17:30 America/New_York)", delay);
     }
 
     public static void main(String[] args) {
@@ -481,13 +512,14 @@ public class CboeServer {
 
             ScheduledExecutorService dailyResetScheduler = Executors.newSingleThreadScheduledExecutor(
                     r -> Thread.ofVirtual().name("daily-reset").unstarted(r));
-            long secondsUntilMidnight = secondsUntilMidnight();
-            dailyResetScheduler.scheduleAtFixedRate(
-                    server::performDailyReset,
-                    secondsUntilMidnight,
-                    TimeUnit.DAYS.toSeconds(1),
-                    TimeUnit.SECONDS);
-            LOGGER.log(Level.INFO, "Daily reset scheduled: first run in {0}s (at midnight UTC)", secondsUntilMidnight);
+            scheduleNextClose(dailyResetScheduler, server);
+            dailyResetScheduler.scheduleAtFixedRate(() -> {
+                try {
+                    server.getOrderManager().expireOrders(com.boe.simulator.protocol.types.BoeTime.nowEpochNanos());
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "GTD expiry sweep failed", e);
+                }
+            }, 1, 1, TimeUnit.SECONDS);
 
             // Keep the main thread alive
             try {

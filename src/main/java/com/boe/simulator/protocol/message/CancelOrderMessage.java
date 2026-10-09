@@ -19,19 +19,22 @@ import java.nio.charset.StandardCharsets;
  *   [31]  CancelOrderBitfield¹        1B (if NumberOfBitfields > 0)
  *   ...   Optional fields
  *
- * Bitfield map (p.175):
- *   Byte 1: 0x01=ClearingFirm(4B,Alpha), 0x02=MassCancelLockout(1B),
- *           0x04=MassCancel(1B), 0x08=RiskRoot(6B,Text),
- *           0x10=MassCancelId(20B,Text), 0x20=RoutingFirmID(4B,Alpha),
- *           0x40=ManualOrderIndicator(1B), 0x80=OperatorId(4B,Alpha)
- *   Byte 2: 0x01=MassCancelInst(16B,Text), 0x02=Symbol(8B,Alpha),
- *           0x04=SymbolSfx(reserved), 0x08=SendTime(8B,Binary)
+ * Input bitfields (p.175) — every other bit is blank or reserved and cannot be specified:
+ *   Byte 1: 0x01=ClearingFirm(4B,Alpha), 0x08=RiskRoot(6B,Text),
+ *           0x10=MassCancelId(20B,Text), 0x20=RoutingFirmID(4B,Alpha)
+ *   Byte 2: 0x01=MassCancelInst(16B,Text), 0x08=SendTime(8B,DateTime) — SendTime is required
  */
 public final class CancelOrderMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x39;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;
     private static final int FIXED_SIZE = 31; // before bitfields/optional
+
+    private static final int MAX_BITFIELDS = 2;
+    private static final int[][] FIELD_LENGTHS = {
+        {4, 0, 0, 6, 20, 4, 0, 0},   // 0 = blank or reserved
+        {16, 0, 0, 8, 0, 0, 0, 0},
+    };
 
     // Header
     private byte matchingUnit;
@@ -46,25 +49,25 @@ public final class CancelOrderMessage extends ApplicationMessage {
 
     // Optional — Byte 1
     private String clearingFirm;         // 4B Alpha
-    private byte massCancelLockout;      // 1B Alphanumeric
-    private byte massCancel;             // 1B Alphanumeric
     private String riskRoot;             // 6B Text
     private String massCancelId;         // 20B Text
     private String routingFirmID;        // 4B Alpha
-    private byte manualOrderIndicator;   // 1B Alphanumeric
-    private String operatorId;           // 4B Alpha
 
     // Optional — Byte 2
     private String massCancelInst;       // 16B Text
-    private String symbol;               // 8B Alphanumeric
-    private long sendTime;               // 8B Binary
+    private long sendTime;               // 8B DateTime
 
-    public CancelOrderMessage() {}
+    private String fieldError;
+    private String charsetError;
 
-    public CancelOrderMessage(String origClOrdID) {
-        this.origClOrdID = origClOrdID;
+    public CancelOrderMessage() {
         this.numberOfBitfields = 0;
         this.bitfields = new byte[0];
+    }
+
+    public CancelOrderMessage(String origClOrdID) {
+        this();
+        this.origClOrdID = origClOrdID;
     }
 
     public static CancelOrderMessage parse(byte[] data) {
@@ -87,35 +90,68 @@ public final class CancelOrderMessage extends ApplicationMessage {
         byte[] origBytes = new byte[20];
         buf.get(origBytes);
         msg.origClOrdID = stripNul(origBytes);
+        msg.charsetError = FieldCharset.TEXT.check("OrigClOrdID", origBytes);
 
         msg.numberOfBitfields = buf.get() & 0xFF;
         msg.bitfields = new byte[msg.numberOfBitfields];
         if (msg.numberOfBitfields > 0) buf.get(msg.bitfields);
 
         msg.parseOptionalFields(buf);
+        if (msg.fieldError == null) msg.fieldError = msg.charsetError;
         return msg;
     }
 
     private void parseOptionalFields(ByteBuffer buf) {
-        if (numberOfBitfields < 1) return;
-        byte bf1 = bitfields[0];
+        for (int i = 0; i < bitfields.length; i++) {
+            for (int bit = 0; bit < 8; bit++) {
+                if ((bitfields[i] & 0xFF & (1 << bit)) == 0) continue;
 
-        if ((bf1 & 0x01) != 0) { byte[] b = new byte[4]; buf.get(b); clearingFirm = stripNul(b); }
-        if ((bf1 & 0x02) != 0) massCancelLockout = buf.get();
-        if ((bf1 & 0x04) != 0) massCancel = buf.get();
-        if ((bf1 & 0x08) != 0) { byte[] b = new byte[6]; buf.get(b); riskRoot = stripNul(b); }
-        if ((bf1 & 0x10) != 0) { byte[] b = new byte[20]; buf.get(b); massCancelId = stripNul(b); }
-        if ((bf1 & 0x20) != 0) { byte[] b = new byte[4]; buf.get(b); routingFirmID = stripNul(b); }
-        if ((bf1 & 0x40) != 0) manualOrderIndicator = buf.get();
-        if ((bf1 & 0x80) != 0) { byte[] b = new byte[4]; buf.get(b); operatorId = stripNul(b); }
+                int length = i < MAX_BITFIELDS ? FIELD_LENGTHS[i][bit] : 0;
+                if (length == 0) {
+                    fieldError = "Bitfield " + (i + 1) + " bit " + (1 << bit) + " cannot be specified on Cancel Order";
+                    return;
+                }
+                if (buf.remaining() < length) {
+                    fieldError = "Cancel Order is too short for its optional fields";
+                    return;
+                }
+                byte[] value = new byte[length];
+                buf.get(value);
+                assign(i, 1 << bit, value);
+            }
+        }
+        if (!hasBit(1, 0x08)) fieldError = "SendTime is required on Cancel Order";
+    }
 
-        if (numberOfBitfields < 2) return;
-        byte bf2 = bitfields[1];
+    private void assign(int bitfield, int bit, byte[] value) {
+        if (bitfield == 0 && charsetError == null) {
+            charsetError = switch (bit) {
+                case 0x01 -> FieldCharset.ALPHA.check("ClearingFirm", value);
+                case 0x08 -> FieldCharset.TEXT.check("RiskRoot", value);
+                case 0x10 -> FieldCharset.TEXT.check("MassCancelID", value);
+                case 0x20 -> FieldCharset.ALPHA.check("RoutingFirmID", value);
+                default -> null;
+            };
+        }
+        if (bitfield == 0) {
+            switch (bit) {
+                case 0x01 -> clearingFirm = stripNul(value);
+                case 0x08 -> riskRoot = stripNul(value);
+                case 0x10 -> massCancelId = stripNul(value);
+                case 0x20 -> routingFirmID = stripNul(value);
+                default -> throw new IllegalStateException("No field for bit " + bit);
+            }
+        } else {
+            switch (bit) {
+                case 0x01 -> massCancelInst = stripNul(value);
+                case 0x08 -> sendTime = ByteBuffer.wrap(value).order(ByteOrder.LITTLE_ENDIAN).getLong();
+                default -> throw new IllegalStateException("No field for bit " + bit);
+            }
+        }
+    }
 
-        if ((bf2 & 0x01) != 0) { byte[] b = new byte[16]; buf.get(b); massCancelInst = stripNul(b); }
-        if ((bf2 & 0x02) != 0) { byte[] b = new byte[8]; buf.get(b); symbol = stripNul(b); }
-        // 0x04 = SymbolSfx (reserved — skip if present; size unknown, assume 0 in practice)
-        if ((bf2 & 0x08) != 0) sendTime = buf.getLong();
+    private boolean hasBit(int bitfield, int bit) {
+        return bitfield < bitfields.length && (bitfields[bitfield] & bit) != 0;
     }
 
     @Override
@@ -137,50 +173,33 @@ public final class CancelOrderMessage extends ApplicationMessage {
         buf.put((byte) numberOfBitfields);
         if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
 
-        writeOptionalFields(buf);
+        if (hasBit(0, 0x01)) putText(buf, clearingFirm, 4);
+        if (hasBit(0, 0x08)) putText(buf, riskRoot, 6);
+        if (hasBit(0, 0x10)) putText(buf, massCancelId, 20);
+        if (hasBit(0, 0x20)) putText(buf, routingFirmID, 4);
+        if (hasBit(1, 0x01)) putText(buf, massCancelInst, 16);
+        if (hasBit(1, 0x08)) buf.putLong(sendTime);
         return buf.array();
     }
 
-    private void writeOptionalFields(ByteBuffer buf) {
-        if (numberOfBitfields < 1) return;
-        byte bf1 = bitfields[0];
-
-        if ((bf1 & 0x01) != 0) putText(buf, clearingFirm, 4);
-        if ((bf1 & 0x02) != 0) buf.put(massCancelLockout);
-        if ((bf1 & 0x04) != 0) buf.put(massCancel);
-        if ((bf1 & 0x08) != 0) putText(buf, riskRoot, 6);
-        if ((bf1 & 0x10) != 0) putText(buf, massCancelId, 20);
-        if ((bf1 & 0x20) != 0) putText(buf, routingFirmID, 4);
-        if ((bf1 & 0x40) != 0) buf.put(manualOrderIndicator);
-        if ((bf1 & 0x80) != 0) putText(buf, operatorId, 4);
-
-        if (numberOfBitfields < 2) return;
-        byte bf2 = bitfields[1];
-
-        if ((bf2 & 0x01) != 0) putText(buf, massCancelInst, 16);
-        if ((bf2 & 0x02) != 0) putText(buf, symbol, 8);
-        if ((bf2 & 0x08) != 0) buf.putLong(sendTime);
+    private int optionalSize() {
+        int size = 0;
+        for (int i = 0; i < Math.min(bitfields.length, MAX_BITFIELDS); i++) {
+            for (int bit = 0; bit < 8; bit++) {
+                if ((bitfields[i] & 0xFF & (1 << bit)) != 0) size += FIELD_LENGTHS[i][bit];
+            }
+        }
+        return size;
     }
 
-    private int optionalSize() {
-        if (numberOfBitfields < 1) return 0;
-        int size = 0;
-        byte bf1 = bitfields[0];
-        if ((bf1 & 0x01) != 0) size += 4;
-        if ((bf1 & 0x02) != 0) size += 1;
-        if ((bf1 & 0x04) != 0) size += 1;
-        if ((bf1 & 0x08) != 0) size += 6;
-        if ((bf1 & 0x10) != 0) size += 20;
-        if ((bf1 & 0x20) != 0) size += 4;
-        if ((bf1 & 0x40) != 0) size += 1;
-        if ((bf1 & 0x80) != 0) size += 4;
-
-        if (numberOfBitfields < 2) return size;
-        byte bf2 = bitfields[1];
-        if ((bf2 & 0x01) != 0) size += 16;
-        if ((bf2 & 0x02) != 0) size += 8;
-        if ((bf2 & 0x08) != 0) size += 8;
-        return size;
+    private void setBit(int bitfield, int bit) {
+        if (bitfields.length <= bitfield) {
+            byte[] grown = new byte[bitfield + 1];
+            System.arraycopy(bitfields, 0, grown, 0, bitfields.length);
+            bitfields = grown;
+            numberOfBitfields = grown.length;
+        }
+        bitfields[bitfield] |= (byte) bit;
     }
 
     // All string fields (Alpha, Alphanumeric, Text) use NUL (0x00) padding per spec p.10
@@ -203,23 +222,14 @@ public final class CancelOrderMessage extends ApplicationMessage {
         return origClOrdID == null || origClOrdID.isBlank();
     }
 
-    public MassCancelType getMassCancelType() {
-        if (massCancelInst == null || massCancelInst.isEmpty()) return MassCancelType.NONE;
-        return switch (massCancelInst.charAt(0)) {
-            case 'F' -> MassCancelType.FIRM;
-            case 'S' -> MassCancelType.SYMBOL;
-            case 'M' -> MassCancelType.MARKETMAKER;
-            case 'C' -> MassCancelType.CUSTOMER;
-            case 'A' -> MassCancelType.ALL;
-            default  -> MassCancelType.NONE;
-        };
+    // MassCancelInst characters (List of Optional Fields, p.204); null when the character is absent
+    public Character massCancelInstChar(int position) {
+        if (massCancelInst == null || massCancelInst.length() < position) return null;
+        return massCancelInst.charAt(position - 1);
     }
 
-    // Lockout instruction = 3rd character of MassCancelInst (per spec p.204)
-    public boolean isLockoutRequested() {
-        return massCancelInst != null && massCancelInst.length() >= 3
-                && massCancelInst.charAt(2) == 'L';
-    }
+    public boolean hasClearingFirm() { return hasBit(0, 0x01); }
+    public boolean hasMassCancelInst() { return hasBit(1, 0x01); }
 
     // Getters
     public byte getMatchingUnit() { return matchingUnit; }
@@ -230,31 +240,24 @@ public final class CancelOrderMessage extends ApplicationMessage {
     public String getMassCancelId() { return massCancelId; }
     public String getMassCancelInst() { return massCancelInst; }
     public String getRoutingFirmID() { return routingFirmID; }
-    public String getOperatorId() { return operatorId; }
-    public String getSymbol() { return symbol; }
     public long getSendTime() { return sendTime; }
+    public String getFieldError() { return fieldError; }
 
     // Setters
     public void setMatchingUnit(byte matchingUnit) { this.matchingUnit = matchingUnit; }
     public void setSequenceNumber(int sequenceNumber) { this.sequenceNumber = sequenceNumber; }
     public void setOrigClOrdID(String origClOrdID) { this.origClOrdID = origClOrdID; }
-    public void setClearingFirm(String clearingFirm) { this.clearingFirm = clearingFirm; }
-    public void setRiskRoot(String riskRoot) { this.riskRoot = riskRoot; }
-    public void setMassCancelId(String massCancelId) { this.massCancelId = massCancelId; }
-    public void setMassCancelInst(String massCancelInst) { this.massCancelInst = massCancelInst; }
-    public void setRoutingFirmID(String routingFirmID) { this.routingFirmID = routingFirmID; }
-    public void setSymbol(String symbol) { this.symbol = symbol; }
-    public void setSendTime(long sendTime) { this.sendTime = sendTime; }
+    public void setClearingFirm(String clearingFirm) { this.clearingFirm = clearingFirm; setBit(0, 0x01); }
+    public void setRiskRoot(String riskRoot) { this.riskRoot = riskRoot; setBit(0, 0x08); }
+    public void setMassCancelId(String massCancelId) { this.massCancelId = massCancelId; setBit(0, 0x10); }
+    public void setRoutingFirmID(String routingFirmID) { this.routingFirmID = routingFirmID; setBit(0, 0x20); }
+    public void setMassCancelInst(String massCancelInst) { this.massCancelInst = massCancelInst; setBit(1, 0x01); }
+    public void setSendTime(long sendTime) { this.sendTime = sendTime; setBit(1, 0x08); }
 
     @Override
     public String toString() {
         if (isMassCancel())
-            return "CancelOrder{MASS: firm='" + clearingFirm + "', root='" + riskRoot
-                    + "', type=" + getMassCancelType() + ", lockout=" + isLockoutRequested() + "}";
+            return "CancelOrder{MASS: firm='" + clearingFirm + "', root='" + riskRoot + "', inst='" + massCancelInst + "'}";
         return "CancelOrder{origClOrdID='" + origClOrdID + "'}";
-    }
-
-    public enum MassCancelType {
-        NONE, FIRM, SYMBOL, MARKETMAKER, CUSTOMER, ALL
     }
 }

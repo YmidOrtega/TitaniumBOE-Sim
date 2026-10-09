@@ -79,7 +79,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | Frontend | Astro 5 + Tailwind CSS | Generación estática en build time; servido desde classpath |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 319 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 603 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -113,6 +113,7 @@ BoeProtocolMessage (sealed abstract)
     ├── UserModifyRejectedMessage (0x29) ← Cboe → Member
     ├── OrderCancelledMessage     (0x2A) ← Cboe → Member
     ├── CancelRejectedMessage     (0x2B) ← Cboe → Member
+    ├── MassCancelAcknowledgmentMessage (0x36) ← Cboe → Member
     ├── OrderExecutedMessage      (0x2C) ← Cboe → Member
     └── OrderRestatedMessage      (0x28) ← Cboe → Member
 ```
@@ -150,7 +151,8 @@ Offset  Len  Campo            Notas
 | `Binary` | variable | LE unsigned | `64 00 00 00` = 100 |
 | `Binary Price` | 8 bytes | LE signed, 4 decimales implícitos | `08 E2 01 00...` = 12.34 (= 123400 / 10000) |
 | `Short Binary Price` | 4 bytes | LE signed, 4 decimales implícitos | `0C 30 00 00` = 1.23 |
-| `DateTime` | 8 bytes | Nanosegundos desde Unix epoch | |
+| `DateTime` | 8 bytes | Nanosegundos desde Unix epoch (UTC) | `1294909373757324000` = 2011-01-13 09:02:53.757324 UTC |
+| `Date` | 4 bytes | LE unsigned, YYYYMMDD como entero | `EF DB 32 01` = 20110319 |
 | `Text` | variable | ASCII, relleno con NUL (0x00) | `"ABC\x00\x00"` |
 | `Alpha` | variable | ASCII, relleno con NUL (0x00) | `"MSFT\x00\x00\x00\x00"` |
 
@@ -166,14 +168,21 @@ Los mensajes como New Order y Modify Order incluyen campos opcionales controlado
 
 **Negociación en login:** el cliente declara via el *Return Bitfields Parameter Group* (`0x81`) qué campos quiere recibir en cada tipo de mensaje de respuesta. El servidor respeta esa negociación durante toda la sesión y cada mensaje de respuesta es auto-descriptivo (incluye sus propios bitfield bytes).
 
-```java
-// Clase ReturnBitfields encapsula la negociación por tipo de mensaje
-public class ReturnBitfields {
-    private final Map<Byte, byte[]> masksByMessageType;
+Todos los mensajes de respuesta (Order Acknowledgment, Rejected, Modified, Restated, User Modify
+Rejected, Cancelled, Cancel Rejected, Execution) usan el mismo codificador:
 
-    public byte[] maskFor(byte messageType) { ... }
-}
-```
+| Pieza | Papel |
+|---|---|
+| `ReturnField` | Catálogo de los 84 campos que la spec permite pedir: byte, bit, longitud y tipo (Tabla 133 y *List of Optional Fields*, p.196) |
+| `ReturnBitfieldRules` | Qué bits permite cada mensaje (*Return Bitfields Per Message*, p.180) |
+| `ReturnFields` | Valores de un mensaje; `select` cruza lo negociado con lo permitido y `writeTo` escribe NumberOfReturnBitfields, los bitfields y los campos en orden byte → bit |
+| `OrderReturnFields` | Rellena los valores desde la orden (o desde el New Order rechazado) |
+
+Reglas (p.111): se envía **exactamente** lo que el cliente pidió para ese tipo de mensaje; un campo
+pedido sin dato va relleno de ceros; si no pidió nada, NumberOfReturnBitfields = 0. Los campos
+informativos del New Order (EchoText, CMTANumber, ClearingOptionalData…) se guardan en bruto en la
+orden y se devuelven tal cual. Antes el ACK y la ejecución enviaban Symbol y Capacity aunque nadie los
+pidiera, Order Modified enviaba siempre su propio conjunto y el resto no enviaba ninguno.
 
 ### 4.5 Binary Price: Implementación
 
@@ -264,13 +273,275 @@ Java 21 Virtual Threads permiten el modelo de programación más simple (blockin
               Envía Logout → cierra socket
 ```
 
-### 5.3 Secuencias y Heartbeats
+### 5.3 Secuencias, Reconexión y Replay
 
-- Mensajes de sesión (Login, Logout, Heartbeat): `SequenceNumber = 0` siempre
-- Mensajes de aplicación Member→Cboe: stream único por sesión, incrementa el cliente
-- Mensajes de aplicación Cboe→Member: por matching unit (independiente por unidad)
-- Heartbeat: si no llega ningún dato en **1 segundo**, el servidor envía `ServerHeartbeat`
-- Timeout: **5 segundos** sin dato → el servidor envía `Logout` y cierra conexión
+El estado de secuencia pertenece a la **sesión BOE** (usuario + SessionSubID), no a la conexión
+TCP: vive en `BoeSessionRegistry` y sobrevive a desconexiones. Se borra con el cierre del día o al
+reiniciar el servidor (equivale a empezar un día nuevo).
+
+| Tráfico | MatchingUnit | SequenceNumber | ¿Replay? |
+|---|---|---|---|
+| Mensajes de sesión (Login Response, Logout, Server Heartbeat, Replay Complete) | 0 | 0 | No |
+| Aplicación sin secuencia (Order Rejected, User Modify Rejected, Cancel Rejected, Mass Cancel Acknowledgment) | 0 | 0 | No |
+| Aplicación secuenciada (Ack, Modified, Cancelled, Execution…) | 1 | 1, 2, 3… por sesión | Sí |
+
+`BoeSessionState` guarda la secuencia saliente, el último número entrante procesado y un **journal**
+con los mensajes secuenciados ya codificados. Las ejecuciones que ocurren con el miembro
+desconectado también se apuntan en el journal.
+
+**Entrada.** Secuencia 0 = sin secuencia (se acepta). Salto adelante: se acepta. Atrás o repetida:
+`Logout` con motivo `!` y se cierra la conexión.
+
+**Login y replay** (todo bajo el lock de la sesión, para que ningún mensaje en vivo se intercale):
+
+```
+LoginRequest (+ grupo 0x80 opcional con el último número recibido por unidad)
+  → LoginResponse  (LastReceivedSequenceNumber, par unidad/secuencia más alta, eco de grupos)
+  → mensajes del journal posteriores al número del cliente
+  → ReplayComplete
+```
+
+- Sin grupo `0x80`: se asume que el miembro no recibió nada y se reenvía todo.
+- `NoUnspecifiedUnitReplay = 1` sin la unidad 1: no se reenvía nada.
+- Número por delante del servidor → login rechazado con `Q`; unidad inexistente con número ≠ 0 → `I`.
+- New Order / Modify recibidos antes de Replay Complete → rechazados con motivo `y`.
+
+**Login Request.** Se valida la estructura antes que nada: longitud mínima, que cada grupo de
+parámetros quepa y coincida con su contenido, un solo grupo `0x80`, un `0x81` por tipo de mensaje,
+NoUnspecifiedUnitReplay `0x00`/`0x01`, ninguna unidad repetida y nada sobrante. Si falla →
+LoginResponse `M` y cierre. Luego se validan los Return Bitfields contra la tabla *Return Bitfields
+Per Message* de la spec (`ReturnBitfieldRules`, p.180+): pedir un campo marcado `-` o en blanco →
+`F` con el byte y el bit en el texto. SessionSubID, Username y Password son Alphanumeric: cualquier
+otro carácter → `M`. Por eso las contraseñas demo y las que se registran por REST son
+alfanuméricas (6-10 caracteres). Cualquier mensaje anterior a un login aceptado, o un segundo Login
+Request en la misma conexión → `Logout` `!` y cierre.
+
+**MatchingUnit entrante** (la spec dice "always 0" pero no qué hacer si no lo es):
+
+| Mensaje con MatchingUnit ≠ 0 | Respuesta |
+|---|---|
+| Login Request (también con secuencia ≠ 0) | LoginResponse `M` y cierre |
+| New Order / Modify / Cancel | Order Rejected / User Modify Rejected / Cancel Rejected con `Z` + texto, y aviso en el log |
+| Client Heartbeat / Logout Request | solo aviso en el log |
+
+**New Order: campos opcionales.** `NewOrderMessage` conoce los 10 bitfields de la tabla *Input
+Bitfields Per Message* (p.171) con la longitud de cada campo (*List of Optional Fields*, p.196), así
+que nunca lee desplazado un campo que no implementa. Cada campo tiene un tratamiento:
+
+| Tratamiento | Campos |
+|---|---|
+| Se lee | ClearingFirm, ClearingAccount, Price, OrdType, TimeInForce, MinQty, MaxFloor, Symbol, Capacity, RoutingInst, Account, PreventMatch, MaturityDate, StrikePrice, PutOrCall, RiskReset, OpenClose, DisplayRange, StopPx, CustomGroupId |
+| Se consume e ignora (informativo; se devuelve si se pide) | CMTANumber, SessionEligibility, AttributedQuote, RoutStrategy, RouteDeliveryMethod, ExDestination, EchoText, RoutingFirmID, ClearingOptionalData, ClientIDAttr, FrequentTraderID, Compression, OrderOrigin, ORS, Held |
+| Rechazo `Z` (cambia la ejecución y no está implementado) | ExpireTime, TargetPartyID, AuctionId, FloorDestination; ExecInst, DisplayIndicator, PriceType y FloorRoutingInst salvo con su valor por defecto |
+| Rechazo (en blanco o reservado en la spec) | el resto de bits, y cualquier bit más allá del bitfield 10 |
+
+**New Order: TimeInForce** (p.212). El simulador no tiene subastas ni sesiones de varios días:
+
+| TimeInForce | Comportamiento |
+|---|---|
+| `0` Day (por defecto) | Lo que no cruza descansa en el libro |
+| `3` IOC | Cruza lo que puede; el resto se cancela: Order Acknowledgment y luego Order Cancelled `N` |
+| `4` FOK | Si la liquidez cruzable (sin contar órdenes propias cuando se previene el autocruce) no cubre toda la orden, se cancela sin ejecutar nada (ACK + Order Cancelled `N`); si la cubre, se ejecuta entera |
+| `1` GTC | Descansa y pasa de un día al siguiente (ver *Cierre del día*) |
+| `6` GTD | Exige ExpireTime futuro (y ExpireTime solo vale con GTD); a esa hora se cancela con Order Cancelled `X` (*Order expired*, barrido cada segundo); mientras tanto pasa de un día a otro como GTC |
+| `2` At the Open, `7` At the Close | Order Rejected `Z` "TimeInForce … is not supported by the simulator" (no hay subastas) |
+| Otro valor | Order Rejected `Z` "Invalid TimeInForce" |
+
+Las órdenes a mercado son IOC implícitas para órdenes simples (la spec lo dice en el valor `3`):
+lo que no ejecuta se cancela igual, en vez de quedarse viva sin estar en el libro.
+
+**Juego de caracteres** (*Data Types*, p.5). `FieldCharset` valida los bytes en bruto de los campos
+de texto que se leen: Alpha (`A-Z`, `a-z`), Alphanumeric (más `0-9`), Text (ASCII imprimible) y
+ClOrdID (ASCII 33-126 salvo `,` `;` `|` `@` `"`). Tras el primer NUL solo puede haber NUL, así que un
+campo rellenado con espacios también se rechaza.
+
+| Mensaje | Campos validados | Respuesta |
+|---|---|---|
+| Login Request | SessionSubID, Username, Password (Alphanumeric) | LoginResponse `M` |
+| New Order | ClOrdID; ClearingFirm (Alpha); Symbol (Alphanumeric); ClearingAccount, Account, RoutingInst (Text) | Order Rejected `Z` |
+| Cancel Order | OrigClOrdID, RiskRoot, MassCancelID (Text); ClearingFirm, RoutingFirmID (Alpha) | Cancel Rejected `Z` |
+| Modify Order | ClOrdID; OrigClOrdID (Text); ClearingFirm, RoutingFirmID (Alpha) | User Modify Rejected `Z` |
+
+Un campo no soportado tiene prioridad sobre un error de caracteres en el texto del rechazo.
+
+**Cancel Order.** `CancelOrderMessage` solo admite los campos de la tabla *Input Bitfields Per
+Message* (ClearingFirm, RiskRoot, MassCancelID, RoutingFirmID, MassCancelInst y SendTime, este
+obligatorio); cualquier otro bit o un mensaje más corto que sus campos → Cancel Rejected `Z`.
+
+| Caso | Respuesta |
+|---|---|
+| Cancel de una orden inexistente, terminada o de otro usuario | Cancel Rejected `O` |
+| Orden en un estado que ya no se puede cancelar | Cancel Rejected `J` |
+| Mass cancel (OrigClOrdID vacío) inválido según *MassCancelInst* (p.204) | Cancel Rejected `Z` con el motivo |
+| Lockout (`L` en el carácter 3) sin filtro `F` y ClearingFirm | Cancel Rejected `Z` |
+| RiskRoot que no es un símbolo del simulador | Cancel Rejected `Z` "Invalid RiskRoot" |
+| Más de 10 mass cancels idénticos por segundo en la conexión | Cancel Rejected `K` |
+
+En un mass cancel válido el carácter 1 elige el filtro de firma (`A` todas, `F` la ClearingFirm del
+mensaje), RiskRoot filtra siempre por símbolo si viene, y el carácter 4 `C` (solo complejas) no
+cancela nada porque no hay órdenes complejas. El estilo de confirmación (carácter 2) decide la
+respuesta: `M` (por defecto) un Order Cancelled por orden, `S` un único Mass Cancel Acknowledgment
+(`0x36`, sin secuencia) con el número de órdenes, `B` ambos. `S`/`B` exigen MassCancelID y `M` lo
+exige vacío. "Idénticos" son los que coinciden en RiskRoot, ClearingFirm y los filtros de lockout,
+instrumento y GTC (`IdenticalRequestLimiter`, ventana deslizante de 1 s).
+
+**Purge Orders** (`0x47`, Tabla 50). Comparte la lógica del mass cancel (`MassCancelRequest`) con
+estas diferencias: filtra también por una lista de hasta 10 CustomGroupID (no compatible con
+RiskRoot), acepta MassCancelID con el estilo `M`, el campo MatchingUnit solo admite 0 o 1 y no se
+combina con RiskRoot, y añade dos estilos:
+
+| Estilo | Respuesta |
+|---|---|
+| `M` / `S` / `B` | como en el mass cancel |
+| `A` | Mass Cancel Acknowledgment + Purge Notification (`0x63`) con el recuento, la ClearingFirm, el RiskRoot y si hubo lockout |
+| `I` | Un Mass Cancel Acknowledgment por unidad (SourceMatchingUnit 1) y el final con 0 |
+
+Rechazos → Purge Rejected (`0x48`, sin secuencia): `Z` con el motivo, `K` con más de 10 purges
+idénticos por segundo (mismos CustomGroupID, símbolo, ClearingFirm, MatchingUnit y filtros).
+
+**Lockouts y Reset Risk.** `L` en el carácter 3 de un mass cancel o un purge (exige filtro `F` con
+ClearingFirm) bloquea las órdenes nuevas del usuario con esa ClearingFirm, a nivel de RiskRoot si
+venía, de cada CustomGroupID si venían, o de toda la ClearingFirm (`RiskLockouts`). Una orden
+bloqueada → Order Rejected `s` (RiskRoot) o `f` (ClearingFirm o CustomGroupID). Se desbloquea con
+**Reset Risk** (`0x56`) o con el campo RiskReset de un New Order: `S`/`T` RiskRoot, `F`/`E`/`G`
+ClearingFirm, `C` CustomGroupID. Sin contadores de riesgo, `S`=`T` y `F`=`E`; sin grupos de EFID,
+`G` actúa como `F`. La respuesta es Risk Reset Acknowledgment (`0x57`, sin secuencia):
+
+| Resultado | Caso |
+|---|---|
+| `Y` | Aplicado |
+| `E` | RiskReset vacío o con valores desconocidos; `C` sin CustomGroupID |
+| `U` | `S`/`T` sin RiskRoot o con uno que no existe |
+| `c` | `F`/`E`/`G`/`C` sin ClearingFirm |
+| `M` | TargetMatchingUnit distinto de 0 y 1, o MatchingUnit de cabecera ≠ 0 |
+| `y` | Recibido durante el replay |
+| espacio | Ignorado: otro reset del mismo tipo y destino en menos de 100 ms |
+
+El reset diario borra los lockouts junto con las órdenes.
+
+**Códigos de motivo del Order Rejected** (*Order Reason Codes*, p.213):
+
+| Caso | Código |
+|---|---|
+| OrderQty mayor que 999.999 | `M` *Order size exceeded* |
+| Símbolo fuera de la lista del simulador | `Y` *Symbol not supported* |
+| ClOrdID de otra orden viva | `D` |
+| Máximo de órdenes abiertas | `o` |
+| Recibido durante el replay | `y` |
+| Cualquier otra validación, campo no soportado o error interno | `Z` *Unforeseen reason* + texto |
+
+Order Cancelled usa `U` (petición del usuario, también en los mass cancel) y `N` (IOC/FOK sin
+liquidez). El campo opcional Subreason (p.215) solo va en Order Cancelled, si la sesión lo pide:
+`A` / `B` / `C` en los mass cancel y purges (nivel EFID, símbolo o CustomGroupID) y `J` en Cancel on
+Disconnect. Order Rejected no lo envía, tampoco en los rechazos `f` / `s` por lockout: la spec no dice
+qué Subreason los acompaña.
+
+**Mensajes que el simulador no procesa.** La spec solo dice que una violación del protocolo acaba en
+`Logout` `!`; nunca se deja un mensaje sin respuesta:
+
+| Mensaje recibido | Respuesta |
+|---|---|
+| Quote Update (`0x55`) / Quote Update (Short) (`0x59`) | Quote Update Rejected (`0x58`, sin secuencia) `F` *Not enabled for quotes* con el QuoteUpdateID; la sesión sigue |
+| Otro tipo de la Tabla 134 sin implementar (New Order Cross, complejas…) | `Logout` `!` "Unsupported message type 0x41 (NEW_ORDER_CROSS)" y cierre |
+| Un tipo que solo envía Cboe (Tabla 135) | `Logout` `!` "Cboe-only message type …" y cierre |
+| Un tipo que no existe | `Logout` `!` "Unknown message type 0x7F" y cierre |
+| Un tipo implementado que no se puede parsear | `Logout` `!` "Malformed message type …" y cierre |
+
+**Orden de las respuestas.** El ACK (o el Order Modified) sale **antes** que las ejecuciones que
+provoca la propia orden, y una IOC/FOK termina con su Order Cancelled. Las ejecuciones del agresor
+se construyen en el momento del cruce (con su `LeavesQty` de ese instante), `OrderManager` las
+aparca y viajan en la respuesta para que `ClientConnectionHandler` las envíe tras el ACK. En
+general, mientras se procesa una petición todo lo que va al **mismo usuario** (sus ejecuciones, las
+de una Stop suya elegida por ese trade, cancelaciones `V` o recargas `L` de sus otras órdenes) se
+aparca en el orden en que se genera y sale después de la respuesta; lo de otros usuarios sale en el
+acto.
+
+**Reserva, MinQty y Stop** (List of Optional Fields, p.200-211):
+
+| Campo | Comportamiento |
+|---|---|
+| MaxFloor | Solo se muestra (y se cruza) esa parte; el libro publicado suma lo visible. Al agotarse se recarga desde la reserva, pasa al final del nivel (lo visible de las demás va antes) y se envía Order Restated `L`. Prohibido en clases propietarias (DJX, RUT, SPX, XSP, VIX) |
+| DisplayRange | Cada recarga muestra un valor aleatorio entre MaxFloor − DisplayRange y MaxFloor + DisplayRange, en lotes de un contrato. Exige MaxFloor y debe ser menor que él |
+| MinQty | En una IOC, si la liquidez cruzable no llega a MinQty, se cancela sin ejecutar (`N`); en otras órdenes se ignora. No puede superar OrderQty |
+| OrdType `3` Stop / `4` Stop Limit | Exigen StopPx (Stop sin Price, Stop Limit con Price) y TimeInForce Day/GTC/GTD. Esperan fuera del libro; un trade nuevo con última venta ≥ StopPx (compra) o ≤ StopPx (venta) los elige, por orden de entrada, y las elecciones encadenan. Elegida, una Stop actúa como orden a mercado y una Stop Limit como limitada a Price. Se pueden cancelar y modificar (StopPx, MaxFloor) antes de elegirse |
+
+**Cierre del día y apagado.** A las **17:30 America/New_York** (horario de verano incluido; la tarea se
+reprograma cada día): con Done For Day Restatements activo, cada sesión conectada recibe un Order
+Acknowledgment no solicitado (`A` + `D`) por cada GTC/GTD suya que pasa al día siguiente; después
+todas reciben `Logout` `E` *End of day*, las Day caducan (sin mensaje), las GTC/GTD siguen en el libro
+marcadas como *carried*, los lockouts se levantan y se borran trades y estado de secuencia. Con
+Carried Order Restatements activo, el primer login del día recibe, tras el Login Response, un Order
+Acknowledgment (`A` + `C`) por cada orden arrastrada. Con cualquiera de los dos activo, un login que
+no pida BaseLiquidityIndicator y SubLiquidityIndicator del Order Acknowledgment se rechaza con `F`. Al
+apagar el servidor cada sesión recibe `Logout` `A` *Server shutting down* antes del cierre. Al
+arrancar, las GTC/GTD de la base de datos vuelven al libro (o a la lista de stops) como carried, las
+Day de un día anterior caducan y el generador de OrderID sigue tras el mayor recuperado.
+
+**Heartbeats** (por defecto 1 s / 5 s, como la spec; configurables). `HeartbeatMonitor` revisa cada
+200 ms dos marcas de tiempo de `ClientSession`:
+
+- **Salida:** si no se ha enviado *nada* durante el intervalo, envía un Server Heartbeat. Con
+  tráfico fluyendo no se envía ninguno.
+- **Entrada:** cualquier mensaje recibido cuenta como señal de vida, no solo los Client Heartbeat. El
+  reloj arranca en el login. Si pasan 5 s sin recibir nada → `Logout` (`!`, *Heartbeat timeout*) y
+  cierre.
+
+Tras el login se quita el `soTimeout` del socket: antes, un timeout de lectura de 30 s cerraba la
+conexión en silencio, sin Logout, compitiendo con el monitor.
+
+### 5.4 Control de Flujo y Límites por Puerto
+
+Cada conexión tiene **dos hilos virtuales**: uno lee el socket y otro procesa, unidos por una cola.
+Sigue habiendo un único procesador por conexión, así que el orden por sesión, el login-primero y el
+chequeo de ClOrdID no cambian.
+
+```
+socket ──► lector ──► cola ──► procesador ──► RateLimiter ──► OrderManager ──► respuesta
+             │                     │
+             └── pausa si hay       └── cada mensaje procesado = 1 confirmado
+                 > 1.024 sin confirmar; reanuda con < 960
+```
+
+Cuando el lector se pausa nadie vacía el buffer TCP: el buffer de envío del cliente se llena y el
+cliente se frena. Ningún mensaje se descarta.
+
+| Límite | Spec v2.11.90 | Simulador (defecto) | Escala | Configuración |
+|--------|---------------|---------------------|--------|---------------|
+| Mensajes sin confirmar → pausar lectura | > 1.024 | > 1.024 | 1:1 | `flowControl(1024, 960)` |
+| Reanudar lectura | < 960 | < 960 | 1:1 | `flowControl(1024, 960)` |
+| Órdenes abiertas por puerto BOE | 200.000 | **2.000** | **÷100** | `maxOpenOrdersPerSession(2000)` |
+| Port / Symbol Order Rate Threshold | 5.000 msg/s | 5.000 msg/s | 1:1 | `PortAttributes.withOrderRateThresholds` |
+| Mensajes de aplicación por conexión (contrapresión) | — | desactivado (0) | propio del simulador | `rateLimitPerSecond(n)` |
+
+**Por qué se escala el límite de órdenes abiertas.** El valor de la spec está pensado para la
+infraestructura de un exchange real; en un simulador que corre en un PC nunca se alcanzaría y el
+comportamiento no se podría observar. Se divide entre 100 para reflejar cómo funciona en un
+escenario **práctico, no real**: al llegar a 2.000 órdenes abiertas en una sesión BOE, los New Order
+se rechazan con `OrderRejected` y motivo `o` (*Max open orders count exceeded*, Order Reason Codes
+p.213) hasta que alguna se llena o se cancela. Solo cuentan las órdenes enviadas por sesiones BOE;
+las de la API REST y los bots no consumen el cupo.
+
+Los umbrales 1.024/960 **no se escalan**: son por conexión y no dependen de la potencia del
+servidor.
+
+**Atributos de puerto** (*BOE Port Attributes*, p.218-221). `PortAttributes` (en `ServerConfiguration`)
+lleva los que el simulador modela, con los valores por defecto de la spec:
+
+| Atributo | Defecto | Efecto |
+|---|---|---|
+| Cancel on Disconnect | All | Al cerrarse una sesión con login se cancelan sus órdenes BOE (`Day` = solo las Day, `None` = ninguna) con Order Cancelled `U` + Subreason `J`, que queda en el journal para el replay. No aplica al cierre del día ni al apagado |
+| Maximum Order Size | 25.000 | OrderQty mayor en New Order o Modify → `M` |
+| Port / Symbol Order Rate Threshold | 5.000/s | Ventana de 1 s desde el primer mensaje no de sesión; por encima: New Order → `K`, Modify → se procesa como Cancel, Cancel → se procesa |
+| Default MTP Value | ninguno | Sin él solo hay autocruce si las dos órdenes traen PreventMatch |
+| Done For Day / Carried Order Restatements | No | Ver *Cierre del día* |
+| Cancel on Reject | No | Si se activa, un Modify rechazado sin CancelOrigOnReject cancela la original |
+| EFID Risk Reset | Disabled | Reset Risk `F`/`G` → `D`; `E` sigue levantando lockouts autoimpuestos |
+| Allowed Clearing Executing Firm IDs | todos | ClearingFirm fuera de la lista → `Z` |
+| Default Account / Executing Firm ID / ClearingOptionalData | ninguno | Valor que se aplica si el New Order no lo trae |
+
+Solo afectan a las sesiones BOE: las órdenes de la API REST y de los bots no pasan por un puerto. El
+token bucket de 1.000 msg/s ya no está activo por defecto, porque el límite de la spec es el
+threshold.
 
 ---
 
@@ -293,6 +564,10 @@ Dentro de cada nivel de precio: las órdenes se mantienen en una `List<Order>` e
 ```
 processOrder(Order incoming)
     │
+    ├── Stop / Stop Limit sin elegir → a la lista de stops del libro, sin trades
+    ├── FOK y la liquidez cruzable < leavesQty → cancel(), sin trades
+    ├── IOC con MinQty y la liquidez cruzable < MinQty → cancel(), sin trades
+    │
     ├── ¿Puede cruzar? (canMatch)
     │    ├── MARKET → siempre sí
     │    ├── BUY LIMIT → sí si price >= bestAsk
@@ -300,15 +575,38 @@ processOrder(Order incoming)
     │
     ├── SÍ → executeMatching (loop):
     │         ├── Obtiene la mejor contrapartida (FIFO en ese nivel)
-    │         ├── Verifica self-trade (misma username → cancela pasiva)
+    │         ├── Match Trade Prevention (PreventMatch o defecto de puerto, ver abajo)
     │         ├── fillQty = min(aggressiveLeavesQty, passiveLeavesQty)
     │         ├── execPrice = precio de la pasiva (price-time priority)
-    │         ├── Crea Trade, actualiza leavesQty en ambas órdenes
+    │         ├── Crea Trade (aggressorSide = lado de la orden que entra), actualiza leavesQty en ambas
     │         ├── Si pasiva completada → removeOrder(passive)
     │         └── Notifica listeners (WebSocket broadcast)
     │
-    └── Si leavesQty > 0 y order.isLive() → addOrder(book)
+    ├── IOC, FOK o MARKET con leavesQty > 0 → cancel()
+    ├── Si no, leavesQty > 0 y order.isLive() → addOrder(book) (con la parte visible si es reserva)
+    └── Si hubo trades → electStops: elige las stops con la nueva última venta, en cascada
 ```
+
+En cada Order Execution, `BaseLiquidityIndicator` es `R` para el lado `aggressorSide` del trade y `A`
+para la orden que estaba en el libro, compre o venda.
+
+**Match Trade Prevention** (PreventMatch, p.207). Dos órdenes del mismo usuario no se cruzan si las
+dos tienen instrucción MTP con el mismo nivel (`F` = usuario, `M` = usuario y ClearingFirm) y, si
+ambas lo traen, el mismo Trading Group. Una orden sin PreventMatch usa el **defecto de puerto**
+`O`+`F` (cancelar la más antigua); con `allowSelfTrade=true` no hay defecto. Manda el modificador de
+la orden que entra:
+
+| Modificador | Efecto |
+|---|---|
+| `N` | Se cancela la entrante |
+| `O` | Se cancela la que estaba en el libro y la entrante sigue |
+| `B` | Se cancelan las dos |
+| `S` | Se cancela la menor; si son iguales, las dos |
+| `D` / `d` | Se cancela la menor y la mayor baja en esa cantidad (`D` OrderQty y LeavesQty, `d` solo LeavesQty); iguales → las dos. Si la entrante pide decremento y la del libro es mayor sin pedirlo, se cancelan las dos |
+
+Cada orden cancelada recibe Order Cancelled `V` (*Would wash*) y cada decremento Order Restated `W`;
+si afecta a la orden que entra, su aviso va después de su ACK. Una FOK que choca con una propia que
+no sea `O` se cancela sin ejecutar. PreventMatch inválido → Order Rejected `Z`.
 
 ### 6.3 Sincronización — dos capas con propósitos distintos
 
@@ -366,15 +664,42 @@ el lock y frena el matching de ese símbolo. Debería encolarse y emitirse fuera
 El Modify Order requiere un orden específico para mantener la integridad del OrderBook:
 
 ```
-1. removeOrder(book)        // ANTES de cambiar el precio (TreeMap key)
-2. Calcular delta:
+1. Calcular delta:
      delta        = newOrderQty - order.getEffectiveOrderQty()
      newLeavesQty = order.getLeavesQty() + delta
-3. Si newLeavesQty <= 0 → order.cancel() → retorna []
-4. order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty)
-5. Intentar matching al nuevo precio
-6. Si leavesQty > 0 → addOrder(book) al nuevo precio
+2. Si el modify solo baja la cantidad, cambia MaxFloor y/o cambia StopPx de una Stop sin elegir
+   (mismo precio y OrdType, sin subir la cantidad, newLeavesQty > 0)
+     → book.updateInPlace (o la Stop sigue en su sitio de la lista): conserva la prioridad → retorna []
+3. removeOrder(book)        // ANTES de cambiar el precio (TreeMap key)
+4. Si newLeavesQty <= 0 → order.cancel() → retorna []
+5. order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty)
+6. Intentar matching al nuevo precio
+7. Si leavesQty > 0 → addOrder(book) al final del nivel (pierde la prioridad)
 ```
+
+Si el modify cruza y llena la orden entera, la respuesta es Order Modified seguido de las
+ejecuciones; Order Cancelled se reserva para el caso 4.
+
+Cualquier otro cambio, o un modify sin cambios, pierde la prioridad (p.77). Un MaxFloor o un StopPx
+iguales a los actuales no cuentan como cambio. Si cambia MaxFloor, la parte visible se recalcula.
+Las Stops pendientes tienen su propio orden de entrada en el libro: una Stop modificada que pierde la
+prioridad vuelve a entrar al final.
+
+**Validación en `OrderManager.processModifyOrder`:**
+
+| Caso | Respuesta |
+|---|---|
+| OrigClOrdID inexistente, terminado o de otro usuario | User Modify Rejected `O` |
+| Orden en un estado no modificable | `J` |
+| Campo no permitido en la tabla de la p.176 (Side, FrequentTraderID, bits en blanco o reservados, bitfield ≥ 3) | `Z` |
+| ExecInst, MaxFloor o StopPx con valor distinto del de por defecto | `Z` "*X is not supported by the simulator*" |
+| Falta OrderQty, o Price en una orden limitada; OrdType Stop o desconocido | `Z` |
+| ClOrdID nuevo igual al de otra orden viva | `D` |
+| ClOrdID reutilizado (igual a OrigClOrdID) sin que el modify solo baje la cantidad | `D` |
+| Modificación número 1.296 de la misma orden | `Z`; solo queda cancelarla |
+
+Con `CancelOrigOnReject = Y`, si el modify se rechaza (salvo por `O` o `J`) también se cancela la
+orden original: User Modify Rejected seguido de Order Cancelled.
 
 **Por qué este orden:** `OrderBook` usa `TreeMap<BigDecimal, List<Order>>` donde el precio es la clave. Si se actualizara el precio *antes* de remover la orden, el `removeOrder` buscaría en el nivel de precio *nuevo* y no encontraría la orden (todavía está en el nivel *viejo*).
 
@@ -641,8 +966,8 @@ Authorization: Basic base64(username:password)
 ```
 
 Credenciales demo (modo `DEMO_MODE=true`):
-- `TRD1` / `Pass1234!`
-- `TRD2` / `Pass5678!`
+- `TRD1` / `Pass1234`
+- `TRD2` / `Pass5678`
 
 ---
 
@@ -711,28 +1036,31 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-347 tests distribuidos en 33 clases (cifras de `mvn test`, no estimadas):
+603 tests distribuidos en 65 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
-| Wire format (`protocol/message/`) | 173 | Parseo y serialización byte a byte contra la spec |
-| Session layer (`server/session/`) | 35 | Login, logout, estadísticas de sesión |
-| Order management (`server/order/`) | 31 | Validación, ciclo de vida, estados |
-| **Matching engine (`server/matching/`)** | **29** | Prioridad precio-tiempo, self-trade, Modify, concurrencia |
+| Wire format (`protocol/message/`) | 253 | Parseo y serialización byte a byte contra la spec, juego de caracteres de cada tipo de dato |
+| Session layer (`server/session/`) | 35 | Login, logout, estadísticas, estado de secuencia por sesión |
+| Order management (`server/order/`) | 84 | Validación, ciclo de vida, estados, límite de órdenes abiertas, TimeInForce, cancel, mass cancel y modify |
+| **Matching engine (`server/matching/`)** | **70** | Prioridad precio-tiempo, self-trade y PreventMatch, Modify, IOC/FOK/mercado, lado agresor, concurrencia |
 | Auth (`server/auth/`) | 15 | BCrypt, resultados de autenticación |
-| Tipos del protocolo (`protocol/types/`) | 15 | `BinaryPrice`, enums de dominio |
+| Tipos del protocolo (`protocol/types/`) | 21 | `BinaryPrice`, `BoeTime`, enums de dominio |
 | Serialización (`protocol/serialization/`) | 14 | `BoeMessageSerializer` |
 | Config (`server/config/`) | 8 | Construcción y validación de `ServerConfiguration` |
 | Error handling (`server/error/`) | 6 | Mapeo de errores del protocolo |
-| Rate limiting (`server/ratelimit/`) | 6 | Ventana fija por conexión |
-| Validación de mensajes (`server/validation/`) | 5 | Campos obligatorios y rangos |
+| Rate limiting (`server/ratelimit/`) | 16 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
+| Conexión (`server/connection/`) | 56 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel, Modify e IOC, orden ACK → ejecuciones, Quote Update Rejected y Logout `!` por mensajes no soportados, y métricas con sockets reales |
+| WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
+| Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
+| Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
 | Métricas (`server/metrics/`) | 5 | Contadores de salud |
 | Load test | manual | `LoadTestRunner` (5 fases, fuera del suite de CI) |
 
 ### 12.2 Cobertura del Motor de Matching
 
-Repartida en cuatro clases, cubre las invariantes que hacen correcto a un motor de órdenes:
+Repartida en siete clases, cubre las invariantes que hacen correcto a un motor de órdenes:
 
 **`MatchingEnginePriorityTest`** — prioridad precio-tiempo:
 FIFO dentro de un nivel de precio, mejor precio primero entre niveles, precio de ejecución
@@ -743,11 +1071,26 @@ fills parciales que dejan remanente en el libro, órdenes MARKET, y aislamiento 
 la orden pasiva propia se cancela y la agresiva continúa contra la siguiente contrapartida
 ajena; con `allowSelfTrade=true` el cruce sí se ejecuta.
 
+**`MatchingEngineMtpTest`** — PreventMatch: defecto de puerto con aviso `V`, `N`, `B`, `S` (también
+iguales), `D` con la entrante mayor y con la del libro mayor, `D` contra una mayor sin decremento, `d`,
+nivel `M` con distinta ClearingFirm, Trading Group distinto, sin defecto de puerto y FOK.
+
 **`MatchingEngineModifyTest`** — Modify Order (§6.4):
 el reprecio mueve la orden entre niveles sin dejar fantasmas y **la orden sigue siendo
 cancelable después**, que es la regresión concreta que aparecería si se actualizara el precio
 antes de removerla del `TreeMap`. Cubre también la lógica de delta sobre `leavesQty` en ambos
-sentidos, la auto-cancelación cuando el delta la deja en cero, y el reprecio agresivo que cruza.
+sentidos, la auto-cancelación cuando el delta la deja en cero, el reprecio agresivo que cruza y la
+prioridad temporal: bajar la cantidad, cambiar MaxFloor o el StopPx de una Stop sin elegir (solos o combinados) la conservan; aumentar la cantidad, reprecio, combinarlos con otros cambios o un modify sin cambios la pierden.
+
+**`MatchingEngineTimeInForceTest`** — TimeInForce y lado agresor:
+IOC con resto cancelado y sin contrapartida, FOK que no ejecuta nada si no hay liquidez para toda la
+orden (sin contar las propias) y que barre varios niveles si la hay, orden a mercado como IOC
+implícita, Day que descansa, y `aggressorSide` del trade igual al lado de la orden entrante.
+
+**`MatchingEngineReserveStopTest`** — reserva (solo se publica MaxFloor, recarga con `L`, lo visible
+de las demás va antes, DisplayRange), MinQty en IOC, Stop de compra elegida por la última venta que
+opera como mercado, Stop Limit de venta que se queda en el libro, Stop elegida sin liquidez (`N`),
+cascada de elecciones, que solo un trade nuevo elija, y cancelar/modificar una Stop pendiente.
 
 **`MatchingEngineConcurrencyTest`** — las dos capas de bloqueo (§6.3):
 símbolos distintos procesados en paralelo mantienen sus libros aislados; agresores concurrentes
@@ -775,7 +1118,7 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
 | 2 — BOE Login | Login rate | ≥ 200 logins/seg |
 | 3 — REST API | Throughput | ≥ 800 req/seg |
 | 4 — Order Ack Latency | P99 | < 5ms (usando `NewOrderMessage` spec-compliant) |
-| 5 — Memory Stability | Heap growth | < 200 MB por 10,000 órdenes |
+| 5 — Memory Stability | Heap growth | < 200 MB por 10,000 órdenes (repartidas en sesiones de ≤ `--max-open`, 2.000 por defecto) |
 
 ---
 

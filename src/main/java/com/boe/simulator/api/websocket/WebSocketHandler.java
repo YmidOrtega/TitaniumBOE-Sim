@@ -42,6 +42,7 @@ public class WebSocketHandler {
         ws.onMessage(ctx -> {
             String sessionId = ctx.attribute("sessionId");
             String message = ctx.message();
+            webSocketService.recordActivity(sessionId);
 
             try {
                 @SuppressWarnings("unchecked")
@@ -76,7 +77,7 @@ public class WebSocketHandler {
 
         ws.onError(ctx -> {
             String sessionId = ctx.attribute("sessionId");
-            LOGGER.log(Level.SEVERE, "WebSocket error for session: " + sessionId, ctx.error());
+            LOGGER.log(Level.SEVERE, ctx.error(), () -> "WebSocket error for session: " + sessionId);
         });
     }
 

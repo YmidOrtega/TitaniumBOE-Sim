@@ -29,15 +29,13 @@ jobs:
 
     - name: Coverage Quality Gate (Maven-based)
       run: |
-        echo "Checking code coverage with JaCoCo Maven Plugin..."
-        mvn jacoco:check \
-          -Drules.bundle.coveredratio.minimum=0.70 \
-          || {
-            echo "❌ Coverage below 70% threshold"
-            echo "Run 'mvn jacoco:report' locally and check target/site/jacoco/index.html"
-            exit 1
-          }
-        echo "✅ Coverage meets quality gate (≥70%)"
+        echo "Checking code coverage against the JaCoCo rule in pom.xml..."
+        mvn jacoco:check || {
+          echo "❌ Coverage below the minimum configured in pom.xml"
+          echo "Run 'mvn jacoco:report' locally and check target/site/jacoco/index.html"
+          exit 1
+        }
+        echo "✅ Coverage meets the minimum configured in pom.xml"
 
     - name: Generate Coverage Badge Data
       if: always()
@@ -66,10 +64,10 @@ jobs:
 
     - name: Test Quality Gate
       run: |
-        if [ -f target/surefire-reports/TEST-*.xml ]; then
-          FAILURES=$(grep -o 'failures="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-          ERRORS=$(grep -o 'errors="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-          TESTS=$(grep -o 'tests="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+        if compgen -G "target/surefire-reports/TEST-*.xml" > /dev/null; then
+          FAILURES=$(grep -ho 'failures="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          ERRORS=$(grep -ho 'errors="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          TESTS=$(grep -ho 'tests="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
           
           # Default to 0 if empty
           FAILURES=${FAILURES:-0}
@@ -163,14 +161,13 @@ jobs:
             const color = process.env.BADGE_COLOR;
             const emoji = color === 'brightgreen' ? '🎉' : color === 'green' ? '✅' : color === 'yellow' ? '⚠️' : '❌';
             
-            const comment = `## ${emoji} Code Coverage Report
-            
-**Coverage:** ${coverage}%
-
-${coverage >= 70 ? '✅ Coverage meets quality gate (≥70%)' : '❌ Coverage below quality gate (≥70%)'}
-
-[View detailed report in artifacts](${context.payload.pull_request.html_url}/checks)
-            `;
+            const comment = [
+              `## ${emoji} Code Coverage Report`,
+              '',
+              `**Coverage:** ${coverage}%`,
+              '',
+              `[View detailed report in artifacts](${context.payload.pull_request.html_url}/checks)`,
+            ].join('\n');
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,

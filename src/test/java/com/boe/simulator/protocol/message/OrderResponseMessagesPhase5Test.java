@@ -1,6 +1,5 @@
 package com.boe.simulator.protocol.message;
 
-import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.order.Order;
@@ -37,7 +36,7 @@ class OrderResponseMessagesPhase5Test {
     private static Trade minimalTrade() {
         return new Trade(9999L, "SPX", 42L, "ORD001", "user",
                 43L, "ORD002", "user2",
-                50, new BigDecimal("1.50"), Instant.now(), (byte) 1, "");
+                50, new BigDecimal("1.50"), Instant.now(), (byte) 1, "", Side.BUY);
     }
 
     private static ReturnBitfields fullAckBitfields() {
@@ -105,13 +104,13 @@ class OrderResponseMessagesPhase5Test {
     @Test
     void orderRejected_wireSize() {
         // FIXED_SIZE = 101, no optional fields
-        byte[] b = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_INVALID_SYMBOL, "bad symbol").toBytes();
+        byte[] b = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_SYMBOL_NOT_SUPPORTED, "bad symbol").toBytes();
         assertEquals(101, b.length);
     }
 
     @Test
     void orderRejected_somAndMessageType() {
-        byte[] b = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_INVALID_SYMBOL, "").toBytes();
+        byte[] b = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_SYMBOL_NOT_SUPPORTED, "").toBytes();
         assertEquals((byte) 0xBA, b[0]);
         assertEquals((byte) 0xBA, b[1]);
         assertEquals((byte) 0x26, b[4]);
@@ -126,7 +125,7 @@ class OrderResponseMessagesPhase5Test {
     @Test
     void orderRejected_unsequencedHeaderZero() {
         // MatchingUnit=0 at [5], SequenceNumber=0 at [6-9]
-        byte[] b = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_UNKNOWN_ERROR, "").toBytes();
+        byte[] b = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_UNFORESEEN, "").toBytes();
         assertEquals(0x00, b[5], "MatchingUnit must be 0 (unsequenced)");
         assertEquals(0x00, b[6]);
         assertEquals(0x00, b[7]);
@@ -136,10 +135,10 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void orderRejected_fromBytesRoundtrip() {
-        byte[] bytes = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_INVALID_PRICE, "bad px").toBytes();
+        byte[] bytes = new OrderRejectedMessage("ORD001", OrderRejectedMessage.REASON_UNFORESEEN, "bad px").toBytes();
         OrderRejectedMessage parsed = OrderRejectedMessage.fromBytes(bytes);
         assertEquals("ORD001", parsed.getClOrdID());
-        assertEquals(OrderRejectedMessage.REASON_INVALID_PRICE, parsed.getOrderRejectReason());
+        assertEquals(OrderRejectedMessage.REASON_UNFORESEEN, parsed.getOrderRejectReason());
         assertEquals("bad px", parsed.getText());
     }
 
@@ -167,10 +166,11 @@ class OrderResponseMessagesPhase5Test {
     }
 
     @Test
-    void orderModified_wireSize_minimalOrder() {
-        // fixed(48) + bitfields(5) + Price(8)+OrdType(1)+Symbol(8)+LeavesQty(4) = 74
+    void orderModified_wireSize_withoutNegotiatedFields() {
+        // fixed(48) with NumberOfReturnBitfields = 0: nothing is returned unless requested at login
         byte[] b = OrderModifiedMessage.fromOrder(minimalOrder(), (byte) 1, 2).toBytes();
-        assertEquals(74, b.length);
+        assertEquals(48, b.length);
+        assertEquals(0, b[47]);
     }
 
     @Test
@@ -233,7 +233,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void userModifyRejected_somAndMessageType() {
-        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNKNOWN, "").toBytes();
+        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNFORESEEN, "").toBytes();
         assertEquals((byte) 0xBA, b[0]);
         assertEquals((byte) 0xBA, b[1]);
         assertEquals((byte) 0x29, b[4]);
@@ -241,7 +241,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void userModifyRejected_unsequencedHeaderZero() {
-        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNKNOWN, "").toBytes();
+        byte[] b = new UserModifyRejectedMessage("ORD001", UserModifyRejectedMessage.REASON_UNFORESEEN, "").toBytes();
         assertEquals(0x00, b[5], "MatchingUnit must be 0 (unsequenced)");
         assertEquals(0x00, b[6]);
         assertEquals(0x00, b[9], "SequenceNumber must be 0 (unsequenced)");
@@ -282,8 +282,8 @@ class OrderResponseMessagesPhase5Test {
     @Test
     void orderCancelled_cancelReasonAtOffset38() {
         Order order = minimalOrder();
-        byte[] b = OrderCancelledMessage.fromOrder(order, OrderCancelledMessage.REASON_IOC_EXPIRED).toBytes();
-        assertEquals((byte) 'I', b[38], "CancelReason at offset 38");
+        byte[] b = OrderCancelledMessage.fromOrder(order, OrderCancelledMessage.REASON_NO_LIQUIDITY).toBytes();
+        assertEquals((byte) 'N', b[38], "CancelReason at offset 38");
     }
 
     @Test
@@ -296,13 +296,13 @@ class OrderResponseMessagesPhase5Test {
     @Test
     void orderCancelled_fromBytesRoundtrip() {
         Order order = minimalOrder();
-        OrderCancelledMessage orig = OrderCancelledMessage.fromOrder(order, OrderCancelledMessage.REASON_MASS_CANCEL);
+        OrderCancelledMessage orig = OrderCancelledMessage.fromOrder(order, OrderCancelledMessage.REASON_USER_REQUESTED);
         orig.setMatchingUnit((byte) 1);
         orig.setSequenceNumber(7);
         byte[] bytes = orig.toBytes();
         OrderCancelledMessage parsed = OrderCancelledMessage.fromBytes(bytes);
         assertEquals("ORD001", parsed.getClOrdID());
-        assertEquals(OrderCancelledMessage.REASON_MASS_CANCEL, parsed.getCancelReason());
+        assertEquals(OrderCancelledMessage.REASON_USER_REQUESTED, parsed.getCancelReason());
     }
 
     // -----------------------------------------------------------------------
@@ -322,7 +322,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void cancelRejected_somAndMessageType() {
-        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_ALREADY_FILLED, "").toBytes();
+        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_TOO_LATE_TO_CANCEL, "").toBytes();
         assertEquals((byte) 0xBA, b[0]);
         assertEquals((byte) 0xBA, b[1]);
         assertEquals((byte) 0x2B, b[4]);
@@ -330,7 +330,7 @@ class OrderResponseMessagesPhase5Test {
 
     @Test
     void cancelRejected_unsequencedHeaderZero() {
-        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_UNKNOWN, "").toBytes();
+        byte[] b = new CancelRejectedMessage("ORD001", CancelRejectedMessage.REASON_UNFORESEEN, "").toBytes();
         assertEquals(0x00, b[5], "MatchingUnit must be 0 (unsequenced)");
         assertEquals(0x00, b[6]);
         assertEquals(0x00, b[9], "SequenceNumber must be 0 (unsequenced)");

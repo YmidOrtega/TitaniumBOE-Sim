@@ -10,7 +10,7 @@ class MessageValidatorTest {
     @Test
     void validate_shouldReturnValid_forValidMessage() {
         // Arrange
-        BoeMessage message = new BoeMessage(new byte[]{(byte) 0xBA, (byte) 0xBA, 0x02, 0x00});
+        BoeMessage message = new BoeMessage(new byte[]{(byte) 0xBA, (byte) 0xBA, 0x08, 0x00, 0x03, 0, 0, 0, 0, 0});
 
         // Act
         MessageValidator.ValidationResult result = MessageValidator.validate(message);
@@ -63,9 +63,30 @@ class MessageValidatorTest {
     }
 
     @Test
+    void validate_shouldReturnInvalid_forMessageShorterThanHeader() {
+        BoeMessage message = new BoeMessage(new byte[]{(byte) 0xBA, (byte) 0xBA, 0x02, 0x00});
+
+        MessageValidator.ValidationResult result = MessageValidator.validate(message);
+
+        assertFalse(result.isValid());
+        assertTrue(result.getMessage().startsWith("Message too short"));
+    }
+
+    @Test
+    void validate_shouldAcceptLengthFieldAbove32K() {
+        byte[] data = new byte[2 + 0x9000];
+        data[0] = (byte) 0xBA;
+        data[1] = (byte) 0xBA;
+        data[2] = 0x00;
+        data[3] = (byte) 0x90;
+
+        assertTrue(MessageValidator.validate(new BoeMessage(data)).isValid());
+    }
+
+    @Test
     void validate_shouldReturnInvalid_forLengthFieldMismatch() {
         // Arrange
-        BoeMessage message = new BoeMessage(new byte[]{(byte) 0xBA, (byte) 0xBA, 0x05, 0x00, 0x01});
+        BoeMessage message = new BoeMessage(new byte[]{(byte) 0xBA, (byte) 0xBA, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0});
 
         // Act
         MessageValidator.ValidationResult result = MessageValidator.validate(message);

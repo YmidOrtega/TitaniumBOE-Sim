@@ -90,7 +90,7 @@ public final class TrendFollowerStrategy implements TradingStrategy {
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error executing TrendFollower for %s".formatted(symbol), e);
+            LOGGER.log(Level.WARNING, e, () -> "Error executing TrendFollower for %s".formatted(symbol));
         }
     }
 
@@ -106,8 +106,8 @@ public final class TrendFollowerStrategy implements TradingStrategy {
         if (bidQty == 0) return Trend.DOWNWARD;
 
         // 1.2x imbalance threshold
-        if ((double) bidQty > askQty * 1.2) return Trend.UPWARD;
-        if ((double) askQty > bidQty * 1.2) return Trend.DOWNWARD;
+        if (bidQty > askQty * 1.2) return Trend.UPWARD;
+        if (askQty > bidQty * 1.2) return Trend.DOWNWARD;
 
         return Trend.NEUTRAL;
     }
@@ -133,7 +133,7 @@ public final class TrendFollowerStrategy implements TradingStrategy {
             else return Trend.NEUTRAL;
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error analyzing trade trend for %s".formatted(symbol), e);
+            LOGGER.log(Level.WARNING, e, () -> "Error analyzing trade trend for %s".formatted(symbol));
             return Trend.NEUTRAL;
         }
     }

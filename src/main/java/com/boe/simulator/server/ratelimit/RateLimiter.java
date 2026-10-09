@@ -1,68 +1,74 @@
 package com.boe.simulator.server.ratelimit;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class RateLimiter {
     private static final Logger LOGGER = Logger.getLogger(RateLimiter.class.getName());
-    
-    private final ConcurrentHashMap<Integer, ConnectionRateLimit> limits;
-    private final int maxMessagesPerWindow;
-    private final Duration windowDuration;
-    
-    public RateLimiter(int maxMessagesPerWindow, Duration windowDuration) {
-        this.limits = new ConcurrentHashMap<>();
-        this.maxMessagesPerWindow = maxMessagesPerWindow;
-        this.windowDuration = windowDuration;
+
+    private final ConcurrentHashMap<Integer, TokenBucket> buckets;
+    private final int permitsPerSecond;
+    private final LongSupplier nanoClock;
+
+    public RateLimiter(int permitsPerSecond) {
+        this(permitsPerSecond, System::nanoTime);
     }
 
-    public boolean allowMessage(int connectionId) {
-        ConnectionRateLimit limit = limits.computeIfAbsent(
-            connectionId, 
-            k -> new ConnectionRateLimit(maxMessagesPerWindow, windowDuration)
-        );
-        
-        boolean allowed = limit.tryAcquire();
-        
-        if (!allowed) LOGGER.log(Level.WARNING, "[Session {0}] Rate limit exceeded - message rejected", connectionId);
-        
-        return allowed;
+    RateLimiter(int permitsPerSecond, LongSupplier nanoClock) {
+        if (permitsPerSecond < 0) throw new IllegalArgumentException("Rate limit must not be negative");
+        this.buckets = new ConcurrentHashMap<>();
+        this.permitsPerSecond = permitsPerSecond;
+        this.nanoClock = nanoClock;
+    }
+
+    // 0 permits per second = no limit
+    public void acquire(int connectionId) {
+        if (permitsPerSecond == 0) return;
+        long waitNanos = reserve(connectionId);
+        if (waitNanos <= 0) return;
+
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.log(Level.FINE, "[Session {0}] Rate limit reached - pausing reads for {1}μs",
+                    new Object[]{connectionId, TimeUnit.NANOSECONDS.toMicros(waitNanos)});
+        }
+        try {
+            TimeUnit.NANOSECONDS.sleep(waitNanos);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    long reserve(int connectionId) {
+        return buckets.computeIfAbsent(connectionId, k -> new TokenBucket(permitsPerSecond, nanoClock.getAsLong()))
+                .reserve(nanoClock.getAsLong());
     }
 
     public void clearConnection(int connectionId) {
-        limits.remove(connectionId);
+        buckets.remove(connectionId);
     }
 
-    private static class ConnectionRateLimit {
-        private final int maxMessages;
-        private final Duration window;
-        private int messageCount;
-        private Instant windowStart;
-        
-        ConnectionRateLimit(int maxMessages, Duration window) {
-            this.maxMessages = maxMessages;
-            this.window = window;
-            this.messageCount = 0;
-            this.windowStart = Instant.now();
+    private static final class TokenBucket {
+        private final double capacity;
+        private final double permitsPerNano;
+        private double tokens;
+        private long lastRefillNanos;
+
+        TokenBucket(int permitsPerSecond, long nowNanos) {
+            this.capacity = permitsPerSecond;
+            this.permitsPerNano = permitsPerSecond / 1_000_000_000.0;
+            this.tokens = permitsPerSecond;
+            this.lastRefillNanos = nowNanos;
         }
-        
-        synchronized boolean tryAcquire() {
-            Instant now = Instant.now();
-            
-            // Reset window if expired
-            if (Duration.between(windowStart, now).compareTo(window) > 0) {
-                messageCount = 0;
-                windowStart = now;
-            }
-            
-            // Check limit
-            if (messageCount >= maxMessages) return false;
-        
-            messageCount++;
-            return true;
+
+        synchronized long reserve(long nowNanos) {
+            tokens = Math.min(capacity, tokens + (nowNanos - lastRefillNanos) * permitsPerNano);
+            lastRefillNanos = nowNanos;
+
+            tokens -= 1;
+            return tokens >= 0 ? 0 : (long) Math.ceil(-tokens / permitsPerNano);
         }
     }
 }

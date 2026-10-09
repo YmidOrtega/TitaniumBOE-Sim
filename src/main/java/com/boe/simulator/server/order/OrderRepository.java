@@ -19,7 +19,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import org.rocksdb.RocksDBException;
 
@@ -57,7 +56,7 @@ public class OrderRepository {
             dbManager.put(CF_ORDERS, key.getBytes(), value);
             LOGGER.log(Level.FINE, "Saved order: {0}", order.getClOrdID());
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to save order: " + order.getClOrdID(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save order: " + order.getClOrdID());
             throw new RuntimeException("Failed to save order", e);
         }
     }
@@ -128,7 +127,7 @@ public class OrderRepository {
             LOGGER.log(Level.SEVERE, "Batch flush failed, falling back to individual saves", e);
             for (Order o : orders) {
                 try { save(o); } catch (Exception ex) {
-                    LOGGER.log(Level.SEVERE, "Individual save failed for " + o.getClOrdID(), ex);
+                    LOGGER.log(Level.SEVERE, ex, () -> "Individual save failed for " + o.getClOrdID());
                 }
             }
         }
@@ -146,7 +145,7 @@ public class OrderRepository {
             PersistedOrder persistedOrder = serializer.deserialize(data, PersistedOrder.class);
             return Optional.of(persistedOrder.toOrder());
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find order: " + clOrdID, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find order: " + clOrdID);
             return Optional.empty();
         }
     }
@@ -162,7 +161,7 @@ public class OrderRepository {
 
             return Optional.empty();
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find order by OrderID: " + orderID, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find order by OrderID: " + orderID);
             return empty();
         }
     }
@@ -177,7 +176,7 @@ public class OrderRepository {
         try {
             allData = dbManager.getAll(CF_ORDERS);
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find orders by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find orders by username: " + username);
             return new ArrayList<>();
         }
 
@@ -215,7 +214,7 @@ public class OrderRepository {
                 if (order.isLive()) activeOrders.add(order);
             } catch (Exception e) {
                 String key = new String(entry.getKey(), StandardCharsets.UTF_8);
-                LOGGER.log(Level.WARNING, "Failed to deserialize order: " + key + ", skipping...", e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to deserialize order: " + key + ", skipping...");
             }
         }
 
@@ -226,13 +225,13 @@ public class OrderRepository {
     public List<Order> findActiveOrdersByClearingFirm(String clearingFirm) {
         return findActiveOrders().stream()
                 .filter(o -> clearingFirm.equals(o.getClearingFirm()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public List<Order> findActiveOrdersBySymbol(String symbol) {
         return findActiveOrders().stream()
                 .filter(o -> symbol.equals(o.getSymbol()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public void delete(String clOrdID) {
@@ -241,7 +240,7 @@ public class OrderRepository {
             dbManager.delete(CF_ORDERS, key.getBytes());
             LOGGER.log(Level.INFO, "Deleted order: {0}", clOrdID);
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to delete order: " + clOrdID, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to delete order: " + clOrdID);
             throw new RuntimeException("Failed to delete order", e);
         }
     }
@@ -251,7 +250,7 @@ public class OrderRepository {
             String key = buildKey(clOrdID);
             return dbManager.exists(CF_ORDERS, key.getBytes());
         } catch (RocksDBException | IllegalArgumentException e) {
-            LOGGER.log(Level.WARNING, "Failed to check if order exists: " + clOrdID, e);
+            LOGGER.log(Level.WARNING, e, () -> "Failed to check if order exists: " + clOrdID);
             return false;
         }
     }
@@ -299,7 +298,17 @@ public class OrderRepository {
             @JsonProperty("lastModified") String lastModified,
             @JsonProperty("routingInst") byte routingInst,
             @JsonProperty("receivedSequence") int receivedSequence,
-            @JsonProperty("lastSentSequence") int lastSentSequence
+            @JsonProperty("lastSentSequence") int lastSentSequence,
+            @JsonProperty("timeInForce") byte timeInForce,
+            @JsonProperty("expireTime") long expireTime,
+            @JsonProperty("preventMatch") String preventMatch,
+            @JsonProperty("customGroupId") int customGroupId,
+            @JsonProperty("minQty") int minQty,
+            @JsonProperty("maxFloor") int maxFloor,
+            @JsonProperty("displayRange") int displayRange,
+            @JsonProperty("stopPx") String stopPx,
+            @JsonProperty("stopElected") boolean stopElected,
+            @JsonProperty("notional") String notional
     ) {
 
         @JsonCreator
@@ -313,7 +322,7 @@ public class OrderRepository {
                     order.getSessionSubID(),
                     order.getUsername(),
                     order.getSide().wireValue(),
-                    order.getOrderQty(),
+                    order.getEffectiveOrderQty(),
                     order.getLeavesQty(),
                     order.getCumQty(),
                     order.getPrice() != null ? order.getPrice().toString() : null,
@@ -332,7 +341,17 @@ public class OrderRepository {
                     order.getLastModified().toString(),
                     order.getRoutingInst() != null ? order.getRoutingInst().wireValue() : RoutingInst.BOOK_ONLY.wireValue(),
                     order.getReceivedSequence(),
-                    order.getLastSentSequence()
+                    order.getLastSentSequence(),
+                    order.getTimeInForce().wireValue(),
+                    order.getExpireTime(),
+                    order.getPreventMatch() != null ? new String(order.getPreventMatch().toBytes(), java.nio.charset.StandardCharsets.US_ASCII) : null,
+                    order.getCustomGroupId(),
+                    order.getMinQty(),
+                    order.getMaxFloor(),
+                    order.getDisplayRange(),
+                    order.getStopPx() != null ? order.getStopPx().toString() : null,
+                    order.isStopElected(),
+                    order.getAvgPx() != null ? order.getAvgPx().multiply(BigDecimal.valueOf(order.getCumQty())).toString() : null
             );
         }
 
@@ -352,7 +371,15 @@ public class OrderRepository {
                     .clearingAccount(clearingAccount)
                     .openClose(openClose != 0 ? OpenClose.fromByte(openClose) : OpenClose.NONE)
                     .routingInst(RoutingInst.fromByte(routingInst))
-                    .receivedSequence(receivedSequence);
+                    .receivedSequence(receivedSequence)
+                    .timeInForce(timeInForce != 0 ? com.boe.simulator.protocol.types.TimeInForce.fromByte(timeInForce) : com.boe.simulator.protocol.types.TimeInForce.DAY)
+                    .expireTime(expireTime)
+                    .customGroupId(customGroupId)
+                    .minQty(minQty)
+                    .maxFloor(maxFloor)
+                    .displayRange(displayRange);
+            if (preventMatch != null) builder.preventMatch(com.boe.simulator.protocol.types.PreventMatch.fromBytes(preventMatch.getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+            if (stopPx != null) builder.stopPx(new BigDecimal(stopPx));
 
             if (price != null) builder.price(new BigDecimal(price));
 
@@ -381,11 +408,22 @@ public class OrderRepository {
                 cumQtyField.setAccessible(true);
                 cumQtyField.set(order, cumQty);
 
+                java.lang.reflect.Field createdAtField = Order.class.getDeclaredField("createdAt");
+                createdAtField.setAccessible(true);
+                createdAtField.set(order, Instant.parse(createdAt));
+
                 java.lang.reflect.Field lastModifiedField = Order.class.getDeclaredField("lastModified");
                 lastModifiedField.setAccessible(true);
                 lastModifiedField.set(order, Instant.parse(lastModified));
 
                 order.setLastSentSequence(lastSentSequence);
+
+                if (stopElected) order.elect();
+                if (notional != null) {
+                    java.lang.reflect.Field notionalField = Order.class.getDeclaredField("notional");
+                    notionalField.setAccessible(true);
+                    notionalField.set(order, new BigDecimal(notional));
+                }
             } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException | SecurityException e) {
                 LOGGER.log(Level.WARNING, "Failed to restore order state", e);
             }

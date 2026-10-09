@@ -91,37 +91,52 @@ See *Input Bitfields Per Message* (p. 171) and *Return Bitfields Per Message* (p
 
 ### 5.2 Application Messages — Member to Cboe
 
-| Message Type | Code | Description |
-|---|---|---|
-| New Order | `0x38` | Submit a new order |
-| New Order (Short) | `0x39` | Abbreviated new order |
-| New Order Cross | `0x3A` | Cross order (C1/EDGX) |
-| New Complex Instrument | `0x3C` | Define complex instrument (C1/C2/EDGX) |
-| New Complex Order | `0x3D` | Multi-leg order (C1/EDGX/C2) |
-| New Complex Order Short | `0x3E` | Abbreviated complex order |
-| New Order Cross Multileg | `0x3F` | Cross multileg (C1/EDGX) |
-| Cancel Order | `0x45` | Cancel a live order |
-| Mass Cancel Order | `0x46` | Cancel multiple orders |
-| Modify Order | `0x4A` | Modify a live order |
-| Quote Update | `0x59` | Quote update |
-| Purge Orders | `0x62` | Purge orders by criteria |
-| Reset Risk | `0x63` | Risk reset |
+Source: spec v2.11.90, Table 134 (p.216).
+
+| Message Type | Code | Sequenced | Description |
+|---|---|---|---|
+| New Order | `0x38` | Yes | Submit a new order |
+| Cancel Order | `0x39` | Yes | Cancel a live order (a blank OrigClOrdID with MassCancelInst makes it a mass cancel) |
+| Modify Order | `0x3A` | Yes | Modify a live order |
+| New Order Cross | `0x41` | Yes | Cross order |
+| Purge Orders | `0x47` | Yes | Purge orders by criteria |
+| New Complex Order | `0x4B` | Yes | Multi-leg order |
+| New Complex Instrument | `0x4C` | Yes | Define complex instrument |
+| Quote Update | `0x55` | Yes | Quote update |
+| Reset Risk | `0x56` | Yes | Risk reset |
+| Quote Update (Short) | `0x59` | Yes | Abbreviated quote update |
+| New Order Cross Multileg | `0x5A` | Yes | Cross multileg |
 
 ### 5.3 Application Messages — Cboe to Member
 
-| Message Type | Code | Description |
-|---|---|---|
-| Order Acknowledgment | `0x25` | Order accepted and working |
-| Order Rejected | `0x26` | Order rejected with reason |
-| Order Modified | `0x27` | Modification confirmed |
-| Order Restated | `0x28` | Order restated (e.g., done-for-day) |
-| User Modify Rejected | `0x29` | Modification rejected |
-| Order Cancelled | `0x2A` | Cancellation confirmed |
-| Cancel Rejected | `0x2B` | Cancellation rejected |
-| Order Execution | `0x2C` | Trade fill |
-| Trade Cancel or Correct | `0x2D` | Trade bust/correction |
-| Mass Cancel Acknowledgment | `0x99` | Mass cancel confirmed |
-| Purge Notification | `0x9B` | Purge confirmed |
+Source: spec v2.11.90, Table 135 (p.216). Unsequenced application messages are sent with
+MatchingUnit = 0 and SequenceNumber = 0 and are **not** included in replay.
+
+| Message Type | Code | Sequenced | Description |
+|---|---|---|---|
+| Order Acknowledgment | `0x25` | Yes | Order accepted and working |
+| Order Rejected | `0x26` | **No** | Order rejected with reason |
+| Order Modified | `0x27` | Yes | Modification confirmed |
+| Order Restated | `0x28` | Yes | Order restated |
+| User Modify Rejected | `0x29` | **No** | Modification rejected |
+| Order Cancelled | `0x2A` | Yes | Cancellation confirmed |
+| Cancel Rejected | `0x2B` | **No** | Cancellation rejected |
+| Order Execution | `0x2C` | Yes | Trade fill |
+| Trade Cancel or Correct | `0x2D` | Yes | Trade bust/correction |
+| Mass Cancel Acknowledgment | `0x36` | **No** | Mass cancel confirmed |
+| Cross Order Acknowledgment | `0x43` | Yes | Cross order accepted |
+| Cross Order Rejected | `0x44` | **No** | Cross order rejected |
+| Cross Order Cancelled | `0x46` | Yes | Cross order cancelled |
+| Purge Rejected | `0x48` | **No** | Purge rejected |
+| Complex Instrument Accepted | `0x4D` | Yes | Complex instrument accepted |
+| Complex Instrument Rejected | `0x4E` | **No** | Complex instrument rejected |
+| Quote Update Acknowledgment | `0x51` | Yes | Quote accepted |
+| Quote Restated | `0x52` | Yes | Quote restated |
+| Quote Cancelled | `0x53` | Yes | Quote cancelled |
+| Quote Execution | `0x54` | Yes | Quote fill |
+| Risk Reset Acknowledgment | `0x57` | **No** | Risk reset confirmed |
+| Quote Update Rejected | `0x58` | **No** | Quote rejected |
+| Purge Notification | `0x63` | **No** | Orders cancelled by a purge with style A (not listed in Table 135) |
 
 ---
 
@@ -586,16 +601,74 @@ Remaining differences between this spec and the current TitaniumBOE-Sim implemen
 
 | Area | Spec (v2.11.90) | Simulator (current) | Status |
 |------|----------------|---------------------|--------|
-| Cancel / Modify message codes | `0x45` = Cancel, `0x4A` = Modify | `0x39` = Cancel, `0x3A` = Modify (contiguous with `0x38` New Order) | Open — internally consistent, but a real BOE client would not interoperate on these two messages |
-| String padding | NUL (`0x00`) | Space (`0x20`) in `LoginRequestMessage` and `OrderAcknowledgmentMessage` | Open |
-| Heartbeat timing | send after 1 s idle, timeout at 5 s | defaults of 10 s / 30 s in `ServerConfiguration` (configurable via builder) | Open — deliberately relaxed so a GC pause or a debugger breakpoint does not drop the session |
-| Heartbeat sequencing | Server Heartbeat does **not** increment the outbound sequence | `HeartbeatMonitor` calls `getNextSentSequenceNumber()` | Open |
+| Source IP filtering | unknown source IP ranges are blocked | any IP is accepted | Won't fix — out of scope for a simulator; network access control belongs to the deployment |
 | Session message codes | `0x37`/`0x24`/`0x09`/`0x13` | matches the spec | ✅ Fixed |
 | New Order code | `0x38` | `0x38` | ✅ Fixed |
 | `Side` wire values | `'1'` = Buy, `'2'` = Sell (ASCII) | `'1'`/`'2'`; `fromByte` also accepts legacy `1`/`2` and `'B'`/`'S'` for records already in RocksDB | ✅ Fixed |
 | `OrdType` wire values | `'1'` = Market, `'2'` = Limit (ASCII) | `'1'`/`'2'` | ✅ Fixed |
 | `Capacity` `'C'` | Customer (`0x43`) is a valid value | present in the `Capacity` enum | ✅ Fixed |
 | `OrderAcknowledgmentMessage` | MessageType = `0x25` (1 byte) | `0x25`, encoded as 1 byte | ✅ Fixed |
+| String padding | NUL (`0x00`) for Alpha, Alphanumeric and Text | NUL in every encoder; inbound text fields must be NUL-padded (a space-padded Alpha field is rejected, see *Character sets*) | ✅ Fixed |
+| Character sets | Alpha = A-Z, a-z; Alphanumeric = plus 0-9; Text = printable ASCII; ClOrdID = ASCII 33-126 except `,` `;` `\|` `@` `"` | checked byte by byte on every text field the simulator reads, and only NUL may follow the first NUL. Login (SessionSubID, Username, Password) → Login Response `M`; New Order / Cancel / Modify → Order Rejected / Cancel Rejected / User Modify Rejected `Z` "Invalid character 0x.. in Field (...)". Demo and REST-registered passwords are alphanumeric so they can log in over BOE. Previously any byte was accepted | ✅ Fixed |
+| `DateTime` | nanoseconds past the UNIX epoch (UTC) | `BoeTime.nowEpochNanos()` (previously `System.nanoTime()`, which has an arbitrary origin) | ✅ Fixed |
+| `Date` (MaturityDate) | YYYYMMDD as a 4-byte integer | `BoeTime.toYyyymmdd()` in New Order and Order Acknowledgment (New Order previously sent days since 1970) | ✅ Fixed |
+| Load handling | never drop member messages; stop reading the socket above 1,024 unacknowledged, resume below 960 | per-connection reader + single processor; the reader pauses above 1,024 and resumes below 960 (same values as the spec). An optional token bucket (`rateLimitPerSecond`, off by default) can slow the processor; session messages are not counted (previously excess messages were silently dropped at 100/min) | ✅ Fixed |
+| Cancel / Modify message codes | `0x39` = Cancel, `0x3A` = Modify (Table 134) | `0x39` / `0x3A` — matches. An earlier version of this document listed `0x45` / `0x4A` by mistake | ✅ Matches |
+| Session messages unsequenced | Login Response, Logout, Server Heartbeat, Replay Complete: MatchingUnit = 0, SequenceNumber = 0 | all four sent with 0 / 0 (previously they consumed outbound sequence numbers and echoed the client's MatchingUnit) | ✅ Fixed |
+| Unsequenced application messages | Order Rejected, User Modify Rejected, Cancel Rejected, Mass Cancel Acknowledgment: SequenceNumber = 0, not replayed | sent with 0 / 0 and kept out of the replay journal | ✅ Fixed |
+| Outbound MatchingUnit | the unit that created the message; 0 only for session traffic | sequenced application messages use unit **1** (the simulator's single matching engine); the client's inbound MatchingUnit is ignored | ✅ Fixed |
+| Inbound sequencing | gap forward ignored; backward or repeated → Logout and drop; 0 = unsequenced | `BoeSessionState.checkInbound`: Logout with reason `!` and the connection is closed | ✅ Fixed |
+| Sequence state per session | outbound sequence and last processed inbound belong to username + SessionSubID, not to the TCP connection | `BoeSessionRegistry` keeps them across reconnects (in memory; cleared by the daily reset and on server restart) | ✅ Fixed |
+| Replay | Unit Sequences group (`0x80`) in Login Request; replay missed sequenced messages, then Replay Complete; orders received during replay rejected (`y`) | implemented, including executions that happened while the member was disconnected | ✅ Fixed |
+| Login Response format | unit/sequence pair for every unit, binary NoUnspecifiedUnitReplay, echoed parameter groups | implemented; Logout also carries the unit pairs | ✅ Fixed |
+| Concurrent sessions per user | one connection per username **+ SessionSubID** | one connection per **username** (stricter: executions are routed by username) | Open — deliberate |
+| Heartbeat timing | Server Heartbeat after 1 s with nothing sent; Logout after 5 s with nothing received | 1 s / 5 s by default (`heartbeatIntervalSeconds` / `heartbeatTimeoutSeconds`). Previously 10 s / 30 s and sent at a fixed rate even with traffic flowing | ✅ Fixed |
+| Heartbeat timeout | any inbound data counts; timeout ends with a Logout | any inbound message resets the timer, which starts at login; on expiry a Logout (`!`, "Heartbeat timeout") is sent before closing. Previously only Client Heartbeats counted, the timer never started if the client sent none, and the connection was dropped without a Logout | ✅ Fixed |
+| Login Request structure | invalid structure → Login Response `M` | length, parameter-group lengths, one `0x80` group at most, one `0x81` group per message type, NoUnspecifiedUnitReplay `0x00`/`0x01`, no repeated unit and no trailing bytes are checked; the echoed NumberOfParamGroups is the received one, so unknown groups are echoed consistently; failure → `M` with the reason, then the connection is closed. Previously a malformed login got no response at all | ✅ Fixed |
+| Returned optional fields | exactly the fields requested at login for that message; requested but unfilled → binary zero; nothing requested → none | one encoder (`ReturnField` catalogue of the 84 requestable fields + `ReturnFields`) for every response message; informational New Order fields are echoed back raw. Previously Order Acknowledgment / Execution sent Symbol and Capacity unrequested and supported only a few fields, Order Modified sent a fixed set and Cancelled / Rejected / Restated sent none | ✅ Fixed |
+| Subreason | Order and Quote Subreason Codes (p.215) Order Cancelled carries it when requested: `A` (EFID level), `B` (symbol level, RiskRoot given) or `C` (CustomGroupID level) on a mass cancel or purge, `J` on Cancel on Disconnect. `E`/`K`/`T` (Trade Desk, ME disconnect), `L`, `S` and the "by rule" `f`/`s`/`+` are never produced (no Trade Desk, market makers or risk counters). Order Rejected `f`/`s` (lockout) carries no Subreason: the spec does not say which one applies | ✅ Fixed |
+| Match Trade Prevention | PreventMatch (p.207): modifiers N/O/B/S/D/d, levels F/M, Trading Group; or the port default | per-order PreventMatch plus a port default of `O`+`F` (off with `allowSelfTrade`); cancels → Order Cancelled `V`, decrements → Order Restated `W` (after the ACK for the inbound order). Previously the resting own order was always cancelled with no message and stayed live in the caches, and PreventMatch was rejected | ✅ Fixed |
+| Return bitfields at login | invalid return bitfields → Login Response `F` naming the byte and bit | checked against the *Return Bitfields Per Message* tables (`ReturnBitfieldRules`). Note: the spec's own Table 14/20 examples request Order Execution byte 5 bit 64 and byte 7 bit 1, which those tables mark "-"; the examples are "for illustrative purposes only" and the simulator follows the tables | ✅ Fixed |
+| Login Request first | the Login Request must be the first message | anything else before a successful login, or a second Login Request on the same connection → Logout `!` and close. Previously orders were rejected and the connection stayed open | ✅ Fixed |
+| Inbound MatchingUnit | always 0 for Member → Cboe messages (the spec does not say what to do otherwise) | Login Request with MatchingUnit or SequenceNumber ≠ 0 → `M`; New Order / Modify / Cancel with MatchingUnit ≠ 0 → Order Rejected / User Modify Rejected / Cancel Rejected with reason `Z` and the text "MatchingUnit must be 0 for inbound messages", plus a log warning; Client Heartbeat / Logout Request with a non-zero header → log warning only. Purge Orders and Reset Risk target a unit through a body field, not the header | ✅ Fixed |
+| End of day | Logout `E` to every connected port when the exchange shuts down, scheduled 17:30 ET | at 17:30 America/New_York (DST-aware) every connected session gets Logout `E` "End of day" before the daily reset clears orders, trades and session state. Previously the reset ran at midnight UTC with sessions still connected and no Logout | ✅ Fixed |
+| Server shutdown | (not covered by the spec) | every connected session gets Logout `A` "Server shutting down" before the connection is closed; previously connections were dropped silently | ✅ Simulator choice |
+| Logout example (Table 22) | — | the example has two typos: MessageLength `55 00` (85) does not match the Table 21 offsets (84 for two units), and LastReceived `54 5A 02 00` is 154,196, not the 150,100 in its note (`54 4A 02 00`, as in Table 20). The simulator follows Table 21 | ℹ️ Spec errata |
+| New Order Bitfield 1 | bit 8 = ExecInst, bit 16 = OrdType, bit 32 = TimeInForce (Table 132) | matches. Previously OrdType was read from bit 8 and TimeInForce from bit 16, so a spec client's Market order was booked as a Limit order | ✅ Fixed |
+| New Order optional fields | every field the table allows may be sent; blank fields are rejected | every field of Table 132 is known with its length (List of Optional Fields). Supported fields are read; informational ones (EchoText, CMTANumber, RoutStrategy, ClientIDAttr…) are consumed and ignored; fields that would change execution and are not implemented (MinQty, ExpireTime, StopPx, PreventMatch, DisplayRange, AuctionId, TargetPartyID, FloorDestination; ExecInst/MaxFloor/DisplayIndicator/PriceType/FloorRoutingInst unless default) → Order Rejected `Z` naming the field; blank or reserved bits → rejected. Previously unsupported fields were not consumed and every following field was misread | ✅ Fixed |
+| OrdType / Price | Price required for Limit, rejected on Market; Stop requires StopPx | Market with Price → rejected; an unknown OrdType is rejected instead of leaving the order unanswered | ✅ Fixed |
+| Stop / Stop Limit | OrdType 3/4 with StopPx, TimeInForce Day/GTC/GTD; elected off last sale (p.211) | held outside the book and elected by a new trade (last sale ≥ StopPx for buys, ≤ for sells), in entry order and cascading; an elected Stop trades as a market order (IOC until drill-through exists), a Stop Limit as a limit order. Cancel and Modify (StopPx) work before election. Previously rejected | ✅ Fixed |
+| Reserve orders | MaxFloor = displayed portion, reloaded from reserve; DisplayRange = random replenishment (p.200, 205) | only the displayed portion trades and is published; on depletion it reloads (MaxFloor ± DisplayRange, one-contract lots), goes to the back of the level and sends Order Restated `L`; MaxFloor rejected for proprietary classes. Previously rejected | ✅ Fixed |
+| MinQty | minimum fill for IOC orders; ignored otherwise (p.205) | an IOC whose crossable liquidity is below MinQty is cancelled without trading (`N`). Previously rejected | ✅ Fixed |
+| Market order handling | p.212: market orders are implicitly IOC; p.19: Day market orders drill through and rest | the simulator follows p.212 until drill-through (NBBO) is implemented | ℹ️ Spec inconsistency |
+| Cancel Order fields | only the Table 36 bitfield fields; SendTime required | ClearingFirm, RiskRoot, MassCancelID, RoutingFirmID, MassCancelInst and SendTime are read; any other bit, a missing SendTime or a message shorter than its fields → Cancel Rejected `Z`. Previously SendTime was optional and blank bits (MassCancelLockout, MassCancel, Symbol, OperatorId…) were accepted | ✅ Fixed |
+| Cancel rejected | Cancel Rejected with the reason | unknown, terminated or another user's order → `O`; no longer cancellable → `J`. Previously a rejected cancel got no response at all | ✅ Fixed |
+| Mass cancel filters | Clearing Firm Filter `A`/`F`, RiskRoot always applied, Instrument Type Filter, Lockout | `A`/`F` and RiskRoot applied together; `C` (complex only) cancels nothing because the simulator has no complex orders; Lockout `L` is applied (see *Lockouts*); invalid MassCancelInst values or an unknown RiskRoot → `Z`. Previously the Table 38 example (`FSLB`, RiskRoot MSFT) cancelled every order of firm TEST and ignored the lockout | ✅ Fixed |
+| Mass cancel acknowledgment | Acknowledgement Style `M` = one Order Cancelled per order, `S` = one Mass Cancel Acknowledgment (`0x36`), `B` = both; MassCancelID required for `S`/`B`, blank for `M` | implemented; Mass Cancel Acknowledgment is unsequenced. Previously the client received nothing | ✅ Fixed |
+| Purge Orders | `0x47` with CustomGroupIDs, MassCancelInst (styles M/S/B/A/I, lockout), RiskRoot, MatchingUnit; SendTime required; 10 identical per second per port | implemented on top of the mass cancel logic; style A sends Mass Cancel Acknowledgment + Purge Notification (`0x63`), style I one acknowledgment per unit + the final one with unit 0; rejects → Purge Rejected (`0x48`) `Z`, or `K` above 10 identical per second. With Clearing Firm Filter F the ClearingFirm must be an allowed EFID of the port; a blank one is rejected without an allowed list, and with a list it cancels (and locks out) every allowed EFID. Previously Logout `!` | ✅ Fixed |
+| Lockouts and Reset Risk | MassCancelInst `L` locks out new orders of the ClearingFirm (and RiskRoot / CustomGroupIDs); released by Reset Risk (`0x56`) or the New Order RiskReset field | locked orders → Order Rejected `s` (risk root) or `f` (EFID / CustomGroupID); Reset Risk answered with Risk Reset Acknowledgment (`0x57`): Y, E, U, c, M, y, or space when the same reset arrives within 100 ms (one per type and target: RiskRoot for S/T, ClearingFirm for F/E and G, ClearingFirm + CustomGroupID for C; a partly ignored reset uses none of them). TargetMatchingUnit is ignored for risk root resets. No risk counters or EFID groups: S=T, F=E, G acts as F. Previously lockout was rejected and Reset Risk got Logout `!` | ✅ Fixed |
+| Reset Risk / Purge examples (Tables 109, 113) | — | Table 109 shows RiskResetResult `00` with the note "Y = Success" (Y is `59`). Table 113 has a one-byte StartOfMessage, MessageLength `38 00` (56, the total size; it should be 54) and MassCancelLockOut `31` with the note "Y". Purge Notification (`0x63`) is missing from Table 135. Table 55 sends RiskReset `SF` (risk root level) with a blank RiskRoot, which the field description does not allow; the simulator answers `U` | ℹ️ Spec errata |
+| Identical mass cancels | more than 10 identical mass cancels per second per port are rejected | per connection, 1 s sliding window; identical = same RiskRoot, ClearingFirm and Lockout / Instrument Type / GTC filters → Cancel Rejected `K` | ✅ Fixed |
+| Cancel Order examples (Tables 37, 38) | — | MessageLength `2A 00` (42) and `54 00` (84) are one byte short: the fields listed add up to 43 and 85. A client sending them verbatim desynchronises the stream; the simulator frames by MessageLength, as the spec says | ℹ️ Spec errata |
+| Mass Cancel Acknowledgment example (Table 111) | — | MessageLength `29 00` (41) does not match the Table 110 offsets, which add up to 42; the simulator follows Table 110 | ℹ️ Spec errata |
+| Carried GTC/GTD orders | GTC/GTD orders are carried to the next session (p.14-16, 218) | at 17:30 ET Day orders expire and GTC/GTD stay in the book as carried; Done For Day (`A`+`D`) and Carried (`A`+`C`) restatements are sent when those port attributes are on, and the login is rejected with `F` if the Order Acknowledgment return bitfields lack Base/SubLiquidityIndicator. At startup GTC/GTD orders are restored into the book. Previously every order was cleared, restarted orders were not put back in the book, createdAt was lost and OrderIDs restarted | ✅ Fixed |
+| Port attributes | BOE Port Attributes with their defaults (p.218-221) | `PortAttributes` with the spec defaults: Cancel on Disconnect All (Order Cancelled U + Subreason J, journaled), Maximum Order Size 25,000 (`M`), Port/Symbol Order Rate Threshold 5,000/s (`K`, modifies become cancels), no Default MTP, restatements off, Cancel on Reject off, EFID Risk Reset disabled (`D`), allowed EFIDs, default Account / EFID / ClearingOptionalData. The simulator's 1,000 msg/s token bucket is now off by default | ✅ Fixed |
+| Modify Order fields | only the p.176 fields; Side and FrequentTraderID are `-` | ClearingFirm, OrderQty, Price, OrdType, CancelOrigOnReject, RoutingFirmID read; ExecInst / MaxFloor / StopPx → User Modify Rejected `Z` unless default; Side, FrequentTraderID, blank or reserved bits and bitfields ≥ 3 → `Z`. Previously Side was accepted and a reserved bit desynchronised every following field | ✅ Fixed |
+| Modify time priority | kept on an OrderQty decrease, a StopPx change on an unelected stop and/or a MaxFloor change, with no other change; lost on any other change or on no change | the order keeps its place in the queue (or in the stop list) and a new MaxFloor recalculates the displayed quantity; otherwise it goes to the back of the price level / stop list. Unchanged MaxFloor or StopPx values are not a change. Previously every modify lost priority, then only a pure OrderQty decrease kept it, and stops were always elected by OrderID | ✅ Fixed |
+| Modify ClOrdID | new ClOrdID unique; reuse allowed only on a pure OrderQty decrease | another live order's ClOrdID, or reuse with any other change → `D`. Previously a chain A → B → C left B live in the cache, so a Cancel with B cancelled the order | ✅ Fixed |
+| CancelOrigOnReject | `Y` = cancel the original order if the modify fails | User Modify Rejected followed by Order Cancelled. Previously read and ignored | ✅ Fixed |
+| Modifications per order | 1,295 per order per trading day, then only Cancel | the 1,296th → `Z` | ✅ Fixed |
+| Modify reject reasons | — | another user's order → `O` (as for Cancel); unforeseen → `Z` instead of `X` (Order expired); an unknown OrdType no longer escapes as an exception | ✅ Fixed |
+| Quote Update / Quote Update (Short) | `0x55` / `0x59`, Bulk Quoting ports and Market Makers only; a rejected block gets Quote Update Rejected (`0x58`, unsequenced) | no Bulk Quoting ports: every Quote Update is answered with Quote Update Rejected `F` (*Not enabled for quotes*) echoing the QuoteUpdateID, and the session stays open. Previously it was logged and ignored | ✅ Fixed (rejected) |
+| Unsupported or unknown messages | protocol violations end with Logout `!` | other unimplemented Table 134 types, Cboe-only (Table 135) types, unknown types and implemented types that cannot be parsed → Logout `!` naming the type, then close. Previously they were logged and the member got no answer | ✅ Fixed |
+| Response order | Order Acknowledgment, then the Order Executions it causes | the aggressor's executions are built at match time and sent after the ACK / Order Modified (then Order Cancelled for IOC/FOK); the resting side's executions go out immediately. Previously the aggressor saw its execution before its ACK. A modify that crossed and filled the whole order was answered with Order Cancelled; now Order Modified + executions | ✅ Fixed |
+| Order reason codes | Order Reason Codes, p.213 | Order Rejected: `M` only for OrderQty > 999,999, `Y` for an unsupported symbol, `Z` + text for any other validation failure or internal error (previously `M`, `S` and `X`, which mean Order size exceeded, nothing and Order expired). Order Cancelled: `U` and `N` only (the undeclared `M`/`T`/`S` were removed). Order Rejected sends no Subreason (p.215) | ✅ Fixed |
+| Quote Update examples (Tables 43, 44) | — | Table 43 shows CMTANumber `31 32 33 34` with the note "1234" (ASCII), but the field is 4-byte Binary. Table 44 gives the Short OrderQty 2 bytes while saying "System limit is 999,999 contracts", which does not fit in 2 bytes | ℹ️ Spec errata |
+| Quote Update examples (Tables 41-45) | — | Tables 41 and 42 are the same table and disagree on how to delete a quote (size 0 vs price 0). The Table 45 (Short) example repeats MessageLength `91 00` (145) from the long format; with two quotes the fields add up to 83 bytes, so it should be `51 00` (81) | ℹ️ Spec errata |
+| TimeInForce | Day, GTC, At the Open, IOC, FOK, GTD, At the Close; market orders are implicitly IOC | Day rests; IOC cancels the unfilled part and FOK cancels the whole order unless the crossable liquidity (excluding own orders when self-trade is prevented) covers it — both answered with Order Acknowledgment then Order Cancelled `N` (*Ran out of liquidity*); market orders behave as IOC. GTC rests across days; GTD needs a future ExpireTime and is cancelled with `X` when it passes; At the Open and At the Close → Order Rejected `Z` "not supported by the simulator" (no auctions); unknown values → `Z`. Previously every order behaved as Day and an unfilled market order stayed live outside the book | ✅ Fixed |
+| Liquidity indicator | BaseLiquidityIndicator `A` = added (resting), `R` = removed (incoming) | `R` for the side of the incoming order (`Trade.aggressorSide`), `A` for the resting one. Previously the buyer was always `R` | ✅ Fixed |
+| Max open orders | 200,000 per BOE port; reject reason `o` | **2,000 per BOE session (scaled ÷100** so the limit is reachable on a PC); reject reason `o`. REST and bot orders are not counted | ✅ Fixed (scaled) |
+| Outbound sequencing | strictly increasing on the wire | sequence assigned and written under one lock (`sendSequenced`); before, executions and heartbeats from other threads could reorder it. A sequenced message without a logged-in session state throws `IllegalStateException` instead of going out with sequence 0 | ✅ Fixed |
 
 ---
 

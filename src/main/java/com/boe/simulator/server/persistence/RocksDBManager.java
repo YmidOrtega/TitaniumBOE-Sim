@@ -269,6 +269,25 @@ public class RocksDBManager {
         public WriteBatchOperation(OperationType type, String columnFamily, byte[] key) {
             this(type, columnFamily, key, null);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof WriteBatchOperation(OperationType otherType, String otherColumnFamily, byte[] otherKey, byte[] otherValue)
+                    && type == otherType
+                    && java.util.Objects.equals(columnFamily, otherColumnFamily)
+                    && java.util.Arrays.equals(key, otherKey) && java.util.Arrays.equals(value, otherValue);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * (31 * java.util.Objects.hash(type, columnFamily) + java.util.Arrays.hashCode(key)) + java.util.Arrays.hashCode(value);
+        }
+
+        @Override
+        public String toString() {
+            return "WriteBatchOperation[type=" + type + ", columnFamily=" + columnFamily
+                    + ", key=" + java.util.Arrays.toString(key) + ", value=" + java.util.Arrays.toString(value) + "]";
+        }
     }
 
     public enum OperationType {

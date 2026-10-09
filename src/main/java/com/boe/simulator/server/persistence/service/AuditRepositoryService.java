@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class AuditRepositoryService implements AuditRepository {
     private static final Logger LOGGER = Logger.getLogger(AuditRepositoryService.class.getName());
@@ -32,9 +31,9 @@ public class AuditRepositoryService implements AuditRepository {
             // Save indexes for efficient querying
             saveIndexes(event);
 
-            LOGGER.fine("Saved audit event: " + event.eventId());
+            LOGGER.fine(() -> "Saved audit event: " + event.eventId());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save audit event: " + event.eventId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save audit event: " + event.eventId());
             throw new RuntimeException("Failed to save audit event", e);
         }
     }
@@ -68,7 +67,7 @@ public class AuditRepositoryService implements AuditRepository {
     @Override
     public Optional<AuditEvent> findById(String eventId) {
         try {
-            String key = String.format("audit:%s", eventId);
+            String key = "audit:" + eventId;
             byte[] data = dbManager.get(RocksDBManager.CF_AUDIT, key.getBytes());
 
             if (data == null) return Optional.empty();
@@ -76,7 +75,7 @@ public class AuditRepositoryService implements AuditRepository {
             AuditEvent event = serializer.deserialize(data, AuditEvent.class);
             return Optional.of(event);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find audit event: " + eventId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find audit event: " + eventId);
             return Optional.empty();
         }
     }
@@ -113,10 +112,10 @@ public class AuditRepositoryService implements AuditRepository {
     @Override
     public List<AuditEvent> findByType(AuditEvent.EventType eventType) {
         try {
-            String prefix = String.format("audit-type:%s:", eventType.name());
+            String prefix = "audit-type:" + eventType.name() + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find events by type: " + eventType, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by type: " + eventType);
             return new ArrayList<>();
         }
     }
@@ -125,16 +124,16 @@ public class AuditRepositoryService implements AuditRepository {
     public List<AuditEvent> findByType(AuditEvent.EventType eventType, Instant start, Instant end) {
         return findByType(eventType).stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<AuditEvent> findByUsername(String username) {
         try {
-            String prefix = String.format("audit-user:%s:", username);
+            String prefix = "audit-user:" + username + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find events by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by username: " + username);
             return new ArrayList<>();
         }
     }
@@ -143,16 +142,16 @@ public class AuditRepositoryService implements AuditRepository {
     public List<AuditEvent> findByUsername(String username, Instant start, Instant end) {
         return findByUsername(username).stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<AuditEvent> findBySeverity(AuditEvent.EventSeverity severity) {
         try {
-            String prefix = String.format("audit-severity:%s:", severity.name());
+            String prefix = "audit-severity:" + severity.name() + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find events by severity: " + severity, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by severity: " + severity);
             return new ArrayList<>();
         }
     }
@@ -161,7 +160,7 @@ public class AuditRepositoryService implements AuditRepository {
     public List<AuditEvent> findBySeverity(AuditEvent.EventSeverity severity, Instant start, Instant end) {
         return findBySeverity(severity).stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -169,24 +168,24 @@ public class AuditRepositoryService implements AuditRepository {
         return findAll().stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
                 .sorted(Comparator.comparing(AuditEvent::timestamp))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<AuditEvent> findByConnectionId(int connectionId) {
         return findAll().stream()
                 .filter(e -> e.connectionId() != null && e.connectionId() == connectionId)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public void delete(String eventId) {
         try {
-            String key = String.format("audit:%s", eventId);
+            String key = "audit:" + eventId;
             dbManager.delete(RocksDBManager.CF_AUDIT, key.getBytes());
-            LOGGER.fine("Deleted audit event: " + eventId);
+            LOGGER.fine(() -> "Deleted audit event: " + eventId);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to delete audit event: " + eventId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to delete audit event: " + eventId);
             throw new RuntimeException("Failed to delete audit event", e);
         }
     }
@@ -203,11 +202,11 @@ public class AuditRepositoryService implements AuditRepository {
                 delete(event.eventId());
                 deleted++;
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to delete old event: " + event.eventId(), e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to delete old event: " + event.eventId());
             }
         }
 
-        LOGGER.info("Deleted " + deleted + " audit events older than " + cutoffDate);
+        LOGGER.log(Level.INFO, "Deleted {0} audit events older than {1}", new Object[]{deleted, cutoffDate});
         return deleted;
     }
 
@@ -231,7 +230,7 @@ public class AuditRepositoryService implements AuditRepository {
         return findAll().stream()
                 .sorted(Comparator.comparing(AuditEvent::timestamp).reversed())
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -242,50 +241,50 @@ public class AuditRepositoryService implements AuditRepository {
         if (criteria.eventType() != null) {
             results = results.stream()
                     .filter(e -> e.eventType() == criteria.eventType())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.severity() != null) {
             results = results.stream()
                     .filter(e -> e.severity() == criteria.severity())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.username() != null) {
             results = results.stream()
                     .filter(e -> criteria.username().equals(e.username()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.connectionId() != null) {
             results = results.stream()
                     .filter(e -> e.connectionId() != null &&
                             e.connectionId().equals(criteria.connectionId()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.startDate() != null) {
             results = results.stream()
                     .filter(e -> !e.timestamp().isBefore(criteria.startDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.endDate() != null) {
             results = results.stream()
                     .filter(e -> !e.timestamp().isAfter(criteria.endDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         // Sort by timestamp descending
         results = results.stream()
                 .sorted(Comparator.comparing(AuditEvent::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
 
         // Apply limit
         if (criteria.limit() != null && criteria.limit() > 0) {
             results = results.stream()
                     .limit(criteria.limit())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return results;
@@ -308,6 +307,6 @@ public class AuditRepositoryService implements AuditRepository {
 
         return events.stream()
                 .sorted(Comparator.comparing(AuditEvent::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
     }
 }

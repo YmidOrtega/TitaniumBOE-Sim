@@ -3,7 +3,6 @@ package com.boe.simulator.api.service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import com.boe.simulator.api.dto.TradeDTO;
 import com.boe.simulator.server.matching.TradeRepository;
@@ -18,13 +17,13 @@ public class TradeService {
     public List<TradeDTO> getRecentTrades(int limit) {
         return tradeRepository.findLatest(limit).stream()
                 .map(TradeDTO::fromTrade)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public List<TradeDTO> getTradesBySymbol(String symbol, int limit) {
         return tradeRepository.findLatestBySymbol(symbol, limit).stream()
                 .map(TradeDTO::fromTrade)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public List<TradeDTO> getUserTrades(String username, int limit) {
@@ -35,6 +34,6 @@ public class TradeService {
                 .sorted((t1, t2) -> t2.getExecutionTime().compareTo(t1.getExecutionTime()))
                 .limit(limit)
                 .map(TradeDTO::fromTrade)
-                .collect(Collectors.toList());
+                .toList();
     }
 }

@@ -35,7 +35,7 @@ class ReturnBitfieldsPhase7Test {
     private static Trade trade() {
         return new Trade(9999L, "SPX", 42L, "ORD001", "user",
                 43L, "ORD002", "user2",
-                50, new BigDecimal("1.50"), Instant.now(), (byte) 1, "");
+                50, new BigDecimal("1.50"), Instant.now(), (byte) 1, "", Side.BUY);
     }
 
     @Test
@@ -55,15 +55,12 @@ class ReturnBitfieldsPhase7Test {
     }
 
     @Test
-    void orderAck_usesDefaultMinimumWhenNoNegotiationExists() {
+    void orderAck_withoutNegotiation_returnsNoOptionalFields() {
         OrderAcknowledgmentMessage ack = OrderAcknowledgmentMessage.fromOrder(richOrder(), (byte) 1, 1, ReturnBitfields.empty());
 
-        assertArrayEquals(new byte[]{0x00, 0x41, 0x00, 0x00}, ack.getBitfields());
-
-        OrderAcknowledgmentMessage parsed = OrderAcknowledgmentMessage.fromBytes(ack.toBytes());
-        assertEquals("SPX", parsed.getSymbol());
-        assertEquals(0, parsed.getOrderQty());
-        assertEquals(61, ack.toBytes().length);
+        assertArrayEquals(new byte[0], ack.getBitfields());
+        assertEquals(48, ack.toBytes().length);
+        assertEquals(0, ack.toBytes()[47], "NumberOfReturnBitfields");
     }
 
     @Test
@@ -82,15 +79,13 @@ class ReturnBitfieldsPhase7Test {
     }
 
     @Test
-    void orderExecution_usesDefaultMinimumWhenNoNegotiationExists() {
+    void orderExecution_withoutNegotiation_returnsNoOptionalFields() {
         OrderExecutedMessage execution = OrderExecutedMessage.fromTrade(trade(), richOrder(), true, ReturnBitfields.empty());
         OrderExecutedMessage parsed = OrderExecutedMessage.fromBytes(execution.toBytes());
 
-        assertArrayEquals(new byte[]{0x00, 0x41, 0x00}, execution.getBitfields());
-        assertEquals("SPX", parsed.getSymbol());
-        assertEquals(Capacity.CUSTOMER.wireValue(), parsed.getCapacity());
+        assertArrayEquals(new byte[0], execution.getBitfields());
         assertEquals(OrderExecutedMessage.LIQUIDITY_REMOVED, parsed.getBaseLiquidityIndicator());
-        assertEquals(82, execution.toBytes().length);
+        assertEquals(70, execution.toBytes().length);
     }
 
     @Test

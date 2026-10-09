@@ -28,9 +28,9 @@ public class UserRepositoryService implements UserRepository {
             String key = buildKey(user.username());
             byte[] value = serializer.serialize(user);
             dbManager.put(RocksDBManager.CF_USERS, key.getBytes(), value);
-            LOGGER.fine("Saved user: " + user.username());
+            LOGGER.fine(() -> "Saved user: " + user.username());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save user: " + user.username(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save user: " + user.username());
             throw new RuntimeException("Failed to save user", e);
         }
     }
@@ -45,7 +45,7 @@ public class UserRepositoryService implements UserRepository {
             PersistedUser user = serializer.deserialize(data, PersistedUser.class);
             return Optional.of(user);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find user: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find user: " + username);
             return Optional.empty();
         }
     }
@@ -61,7 +61,7 @@ public class UserRepositoryService implements UserRepository {
                 users.add(user);
             }
 
-            LOGGER.fine("Found " + users.size() + " users");
+            LOGGER.fine(() -> "Found " + users.size() + " users");
             return users;
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to find all users", e);
@@ -81,9 +81,9 @@ public class UserRepositoryService implements UserRepository {
         try {
             String key = buildKey(username);
             dbManager.delete(RocksDBManager.CF_USERS, key.getBytes());
-            LOGGER.info("Deleted user: " + username);
+            LOGGER.info(() -> "Deleted user: " + username);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to delete user: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to delete user: " + username);
             throw new RuntimeException("Failed to delete user", e);
         }
     }
@@ -94,7 +94,7 @@ public class UserRepositoryService implements UserRepository {
             String key = buildKey(username);
             return dbManager.exists(RocksDBManager.CF_USERS, key.getBytes());
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to check if user exists: " + username, e);
+            LOGGER.log(Level.WARNING, e, () -> "Failed to check if user exists: " + username);
             return false;
         }
     }
@@ -110,9 +110,9 @@ public class UserRepositoryService implements UserRepository {
         if (userOpt.isPresent()) {
             PersistedUser updatedUser = userOpt.get().withLogin();
             save(updatedUser);
-            LOGGER.fine("Updated last login for user: " + username);
+            LOGGER.fine(() -> "Updated last login for user: " + username);
         } else {
-            LOGGER.warning("Cannot update last login: user not found: " + username);
+            LOGGER.warning(() -> "Cannot update last login: user not found: " + username);
         }
     }
 

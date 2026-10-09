@@ -10,6 +10,7 @@ import java.util.concurrent.locks.StampedLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+@SuppressWarnings("java:S3078")
 public class OrderBook {
     private static final Logger LOGGER = Logger.getLogger(OrderBook.class.getName());
 
@@ -24,6 +25,12 @@ public class OrderBook {
 
     // Index for quick search by OrderID — ConcurrentHashMap, no lock needed
     private final Map<Long, Order> orderIndex;
+
+    // Stop and Stop Limit orders waiting for election; not part of the displayed book
+    private final List<Order> stops = new ArrayList<>();
+    // Entry order of the stops: a modify that loses priority re-enters with a new number
+    private final Map<Order, Long> stopPriority = new IdentityHashMap<>();
+    private long nextStopPriority;
 
     private volatile BigDecimal lastTradePrice;
     private volatile int totalBidQuantity;
@@ -47,7 +54,7 @@ public class OrderBook {
 
         BigDecimal price = order.getPrice();
         if (price == null) {
-            LOGGER.warning("Cannot add market order to book: " + order.getClOrdID());
+            LOGGER.warning(() -> "Cannot add market order to book: " + order.getClOrdID());
             return;
         }
 
@@ -90,6 +97,23 @@ public class OrderBook {
         } finally {
             lock.unlockWrite(stamp);
         }
+    }
+
+    public void updateInPlace(Order order, Runnable change) {
+        long stamp = lock.writeLock();
+        try {
+            boolean resting = orderIndex.containsKey(order.getOrderID());
+            if (resting) adjustTotal(order, -order.getLeavesQty());
+            change.run();
+            if (resting) adjustTotal(order, order.getLeavesQty());
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    private void adjustTotal(Order order, int qty) {
+        if (order.getSide() == Side.BUY) totalBidQuantity += qty;
+        else totalAskQuantity += qty;
     }
 
     public BigDecimal getBestBid() {
@@ -156,6 +180,76 @@ public class OrderBook {
         }
     }
 
+    public void addStop(Order order) {
+        long stamp = lock.writeLock();
+        try {
+            stops.add(order);
+            stopPriority.put(order, nextStopPriority++);
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    public boolean removeStop(Order order) {
+        long stamp = lock.writeLock();
+        try {
+            stopPriority.remove(order);
+            return stops.remove(order);
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    public boolean hasStop(Order order) {
+        long stamp = lock.readLock();
+        try {
+            return stops.contains(order);
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
+    /** Removes and returns, in entry order, the stops elected by a last sale at {@code lastPrice}. */
+    public List<Order> takeElectedStops(BigDecimal lastPrice) {
+        long stamp = lock.writeLock();
+        try {
+            List<Order> elected = new ArrayList<>();
+            for (Order stop : stops) {
+                int cmp = lastPrice.compareTo(stop.getStopPx());
+                if (stop.getSide() == Side.BUY ? cmp >= 0 : cmp <= 0) elected.add(stop);
+            }
+            elected.sort(Comparator.comparingLong(stopPriority::get));
+            stops.removeAll(elected);
+            elected.forEach(stopPriority::remove);
+            return elected;
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    /** Moves a resting order to the back of its price level, keeping the side totals. */
+    public void requeue(Order order) {
+        long stamp = lock.writeLock();
+        try {
+            LinkedList<Order> level = (order.getSide() == Side.BUY ? bids : asks).get(order.getPrice());
+            if (level != null && level.remove(order)) level.addLast(order);
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+    }
+
+    public List<Order> getOppositeOrders(Side side) {
+        long stamp = lock.readLock();
+        try {
+            TreeMap<BigDecimal, LinkedList<Order>> opposite = side == Side.BUY ? asks : bids;
+            List<Order> orders = new ArrayList<>();
+            opposite.values().forEach(orders::addAll);
+            return orders;
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
     public Order findOrder(long orderID) {
         return orderIndex.get(orderID);
     }
@@ -183,14 +277,14 @@ public class OrderBook {
             int count = 0;
             for (Map.Entry<BigDecimal, LinkedList<Order>> entry : bids.entrySet()) {
                 if (count++ >= depth) break;
-                int totalQty = entry.getValue().stream().mapToInt(Order::getLeavesQty).sum();
+                int totalQty = entry.getValue().stream().mapToInt(Order::getDisplayQty).sum();
                 bidLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
             }
 
             count = 0;
             for (Map.Entry<BigDecimal, LinkedList<Order>> entry : asks.entrySet()) {
                 if (count++ >= depth) break;
-                int totalQty = entry.getValue().stream().mapToInt(Order::getLeavesQty).sum();
+                int totalQty = entry.getValue().stream().mapToInt(Order::getDisplayQty).sum();
                 askLevels.add(new PriceLevel(entry.getKey(), totalQty, entry.getValue().size()));
             }
 
@@ -229,19 +323,5 @@ public class OrderBook {
             List<PriceLevel> asks,
             BigDecimal lastTradePrice
     ) {
-        public void print() {
-            System.out.println("\n=== Order Book: " + symbol + " ===");
-            System.out.println("Last Trade: " + lastTradePrice);
-            System.out.println("\nASKS:");
-            for (int i = asks.size() - 1; i >= 0; i--) {
-                System.out.println("  " + asks.get(i));
-            }
-            System.out.println("-------------------");
-            System.out.println("BIDS:");
-            for (PriceLevel bid : bids) {
-                System.out.println("  " + bid);
-            }
-            System.out.println("===================\n");
-        }
     }
 }

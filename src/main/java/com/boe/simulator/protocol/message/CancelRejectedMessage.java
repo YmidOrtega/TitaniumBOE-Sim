@@ -1,5 +1,6 @@
 package com.boe.simulator.protocol.message;
 
+import com.boe.simulator.protocol.types.BoeTime;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -24,26 +25,23 @@ import java.nio.charset.StandardCharsets;
  *         Optional fields…
  */
 public final class CancelRejectedMessage extends ApplicationMessage {
-    private static final byte MESSAGE_TYPE = 0x2B;
+    public static final byte MESSAGE_TYPE = 0x2B;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;
     private static final int FIXED_SIZE = 101;
 
     // CancelRejectReason codes (Order Reason Codes p.213)
     public static final byte REASON_TOO_LATE_TO_CANCEL  = (byte) 'J';
+    public static final byte REASON_RATE_THRESHOLD      = (byte) 'K';
     public static final byte REASON_ORDER_NOT_FOUND     = (byte) 'O';
-    public static final byte REASON_ALREADY_CANCELLED   = (byte) 'C';
-    public static final byte REASON_ALREADY_FILLED      = (byte) 'F';
-    public static final byte REASON_NOT_AUTHORIZED      = (byte) 'U';
-    public static final byte REASON_UNKNOWN             = (byte) 'X';
+    public static final byte REASON_UNFORESEEN          = (byte) 'Z';
 
     private long transactTime;
     private String clOrdID;
     private byte cancelRejectReason;
     private String text;
 
-    private int numberOfBitfields;
-    private byte[] bitfields;
+    private ReturnFields returnFields = new ReturnFields();
 
     public CancelRejectedMessage() {}
 
@@ -51,9 +49,7 @@ public final class CancelRejectedMessage extends ApplicationMessage {
         this.clOrdID = clOrdID;
         this.cancelRejectReason = reason;
         this.text = text;
-        this.transactTime = System.nanoTime();
-        this.numberOfBitfields = 0;
-        this.bitfields = new byte[0];
+        this.transactTime = BoeTime.nowEpochNanos();
     }
 
     @Override
@@ -61,7 +57,7 @@ public final class CancelRejectedMessage extends ApplicationMessage {
 
     @Override
     public byte[] toBytes() {
-        int totalSize = FIXED_SIZE + numberOfBitfields;
+        int totalSize = FIXED_SIZE - 1 + returnFields.encodedSize();
 
         ByteBuffer buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN);
 
@@ -75,8 +71,7 @@ public final class CancelRejectedMessage extends ApplicationMessage {
         buf.put(cancelRejectReason);
         putText(buf, text, 60);
         buf.put((byte) 0x00);            // ReservedInternal
-        buf.put((byte) numberOfBitfields);
-        if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
+        returnFields.writeTo(buf);
 
         return buf.array();
     }
@@ -91,6 +86,12 @@ public final class CancelRejectedMessage extends ApplicationMessage {
     }
 
     public String getClOrdID() { return clOrdID; }
+    public ReturnFields getReturnFields() { return returnFields; }
+
+    public CancelRejectedMessage withReturnFields(ReturnFields returnFields) {
+        this.returnFields = returnFields;
+        return this;
+    }
     public byte getCancelRejectReason() { return cancelRejectReason; }
     public String getText() { return text; }
 

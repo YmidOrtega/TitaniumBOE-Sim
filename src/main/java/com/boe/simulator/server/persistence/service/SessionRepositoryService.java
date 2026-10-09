@@ -36,7 +36,7 @@ public class SessionRepositoryService implements SessionRepository {
             
             LOGGER.log(Level.FINE, "Saved session: {0}", session.sessionId());
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to save session: " + session.sessionId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save session: " + session.sessionId());
             throw new RuntimeException("Failed to save session", e);
         }
     }
@@ -49,7 +49,7 @@ public class SessionRepositoryService implements SessionRepository {
                     .filter(s -> s.sessionId().equals(sessionId))
                     .findFirst();
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find session: " + sessionId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find session: " + sessionId);
             return Optional.empty();
         }
     }
@@ -75,7 +75,7 @@ public class SessionRepositoryService implements SessionRepository {
             LOGGER.log(Level.FINE, "Found {0} sessions for user: {1}", new Object[]{sessions.size(), username});
             return sessions;
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find sessions for user: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find sessions for user: " + username);
             return new ArrayList<>();
         }
     }
@@ -168,7 +168,7 @@ public class SessionRepositoryService implements SessionRepository {
             
             return sessions;
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find sessions by date: " + date, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find sessions by date: " + date);
             return new ArrayList<>();
         }
     }

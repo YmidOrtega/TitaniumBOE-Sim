@@ -79,7 +79,7 @@ public final class MarketMakerStrategy implements TradingStrategy {
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error executing MarketMaker for %s".formatted(symbol), e);
+            LOGGER.log(Level.WARNING, e, () -> "Error executing MarketMaker for %s".formatted(symbol));
         }
     }
 

@@ -50,7 +50,7 @@ We take security seriously and appreciate your effort in responsibly disclosing 
 ### Network Security
 - Configurable connection limits
 - Socket timeouts to prevent resource exhaustion
-- Rate limiting on BOE protocol (100 messages/minute per connection)
+- Rate limiting on BOE protocol (1,000 application messages/second per connection, token bucket). Excess traffic is slowed down by pausing socket reads (TCP backpressure), never dropped
 - CORS configuration support
 
 ### Data Security

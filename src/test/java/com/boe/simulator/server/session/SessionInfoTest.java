@@ -49,7 +49,7 @@ class SessionInfoTest {
     }
 
     @Test
-    void getDurationSeconds_shouldReturnPositiveValue() throws InterruptedException {
+    void getDurationSeconds_shouldReturnPositiveValue() {
         // Arrange
         when(mockSession.getCreatedAt()).thenReturn(Instant.now().minusSeconds(10));
         sessionInfo = SessionInfo.from(mockSession);

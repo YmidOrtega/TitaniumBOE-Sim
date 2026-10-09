@@ -5,10 +5,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.boe.simulator.protocol.types.BinaryPrice;
+import com.boe.simulator.protocol.types.BoeTime;
 
 /**
  * New Order (0x38) — Member to Cboe.
@@ -19,8 +20,9 @@ import com.boe.simulator.protocol.types.BinaryPrice;
  *     bit 0 = ClearingFirm      (4 bytes Alphanumeric)
  *     bit 1 = ClearingAccount   (4 bytes Alphanumeric)
  *     bit 2 = Price             (8 bytes Binary Price)
- *     bit 3 = OrdType           (1 byte Alphanumeric)
- *     bit 4 = TimeInForce       (1 byte Alphanumeric)
+ *     bit 3 = ExecInst          (1 byte, not supported)
+ *     bit 4 = OrdType           (1 byte Alphanumeric)
+ *     bit 5 = TimeInForce       (1 byte Alphanumeric)
  *   Bitfield 2 (index 1):
  *     bit 0 = Symbol            (8 bytes Alphanumeric)
  *     bit 6 = Capacity          (1 byte Alphanumeric)
@@ -28,12 +30,15 @@ import com.boe.simulator.protocol.types.BinaryPrice;
  *   Bitfield 3 (index 2):
  *     bit 0 = Account           (16 bytes Alphanumeric)
  *   Bitfield 4 (index 3):
- *     bit 0 = MaturityDate      (4 bytes Binary)
+ *     bit 0 = MaturityDate      (4 bytes Date, YYYYMMDD)
  *     bit 1 = StrikePrice       (8 bytes Binary Price)
  *     bit 2 = PutOrCall         (1 byte Alphanumeric)
  *     bit 4 = OpenClose         (1 byte Alphanumeric)
  *
  * Optional fields appear in order: first bitfield first, lowest bit first.
+ * Every field permitted by "Input Bitfields Per Message" (p.171) is listed in FIELDS with its
+ * length from "List of Optional Fields" (p.196), so unsupported fields are consumed, never
+ * misaligning the fields after them.
  * Required optional fields (must always be enabled via bitfield):
  *   Symbol, Price (for limit orders), Capacity.
  */
@@ -41,6 +46,42 @@ public final class NewOrderMessage extends ApplicationMessage {
     private static final byte MESSAGE_TYPE = 0x38;
     private static final byte START_OF_MESSAGE_1 = (byte) 0xBA;
     private static final byte START_OF_MESSAGE_2 = (byte) 0xBA;
+
+    private enum Handling { READ, IGNORE, REJECT }
+
+    private record OptionalField(String name, int length, Handling handling, String acceptedDefault) {
+        static OptionalField read(String name, int length) { return new OptionalField(name, length, Handling.READ, null); }
+        static OptionalField ignore(String name, int length) { return new OptionalField(name, length, Handling.IGNORE, null); }
+        static OptionalField reject(String name, int length) { return new OptionalField(name, length, Handling.REJECT, null); }
+        static OptionalField rejectUnless(String name, int length, String acceptedDefault) {
+            return new OptionalField(name, length, Handling.REJECT, acceptedDefault);
+        }
+    }
+
+    // [bitfield][bit]; null = blank or reserved in the spec table, cannot be specified
+    private static final OptionalField[][] FIELDS = {
+        { OptionalField.read("ClearingFirm", 4), OptionalField.read("ClearingAccount", 4), OptionalField.read("Price", 8),
+          OptionalField.rejectUnless("ExecInst", 1, "00"), OptionalField.read("OrdType", 1), OptionalField.read("TimeInForce", 1),
+          OptionalField.read("MinQty", 4), OptionalField.read("MaxFloor", 4) },
+        { OptionalField.read("Symbol", 8), null, null, null, null, null,
+          OptionalField.read("Capacity", 1), OptionalField.read("RoutingInst", 4) },
+        { OptionalField.read("Account", 16), OptionalField.rejectUnless("DisplayIndicator", 1, "56"), null, null, null,
+          OptionalField.read("PreventMatch", 3), null, OptionalField.read("ExpireTime", 8) },
+        { OptionalField.read("MaturityDate", 4), OptionalField.read("StrikePrice", 8), OptionalField.read("PutOrCall", 1),
+          OptionalField.read("RiskReset", 8), OptionalField.read("OpenClose", 1), OptionalField.ignore("CMTANumber", 4),
+          OptionalField.reject("TargetPartyID", 4), null },
+        { OptionalField.ignore("SessionEligibility", 1), OptionalField.ignore("AttributedQuote", 1), null, null, null, null, null, null },
+        { OptionalField.read("DisplayRange", 4), OptionalField.read("StopPx", 8), OptionalField.ignore("RoutStrategy", 6),
+          OptionalField.ignore("RouteDeliveryMethod", 3), OptionalField.ignore("ExDestination", 1), OptionalField.ignore("EchoText", 64),
+          OptionalField.reject("AuctionId", 8), OptionalField.ignore("RoutingFirmID", 4) },
+        { null, OptionalField.read("CustomGroupId", 2), null, null, null, null, null, null },
+        { null, null, OptionalField.ignore("ClearingOptionalData", 16), OptionalField.ignore("ClientIDAttr", 4),
+          OptionalField.ignore("FrequentTraderID", 6), OptionalField.ignore("Compression", 1),
+          OptionalField.reject("FloorDestination", 4), OptionalField.rejectUnless("FloorRoutingInst", 1, "00,45") },
+        { OptionalField.ignore("OrderOrigin", 3), OptionalField.ignore("ORS", 1), OptionalField.rejectUnless("PriceType", 1, "32"),
+          null, null, null, null, null },
+        { OptionalField.ignore("Held", 1), null, null, null, null, null, null, null },
+    };
 
     // Header / fixed fields
     private byte matchingUnit;
@@ -67,6 +108,18 @@ public final class NewOrderMessage extends ApplicationMessage {
     private BigDecimal strikePrice; // 8 bytes Binary Price
     private byte putOrCall;         // '0'=Put, '1'=Call
     private byte openClose;         // 'O', 'C', 'N'
+    private byte[] preventMatch;
+    private String riskReset;
+    private int minQty;
+    private long expireTime;
+    private int maxFloor;
+    private int displayRange;
+    private BigDecimal stopPx;
+    private int customGroupId;
+
+    private String fieldError;      // first unsupported or invalid optional field, if any
+    private final Map<String, byte[]> rawFields = new LinkedHashMap<>();
+    private String charsetError;
 
     public NewOrderMessage() {
     }
@@ -91,6 +144,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         byte[] clOrdIDBytes = new byte[20];
         buffer.get(clOrdIDBytes);
         msg.clOrdID = new String(clOrdIDBytes, StandardCharsets.US_ASCII).trim();
+        msg.charsetError = FieldCharset.CLORDID.check("ClOrdID", clOrdIDBytes);
 
         msg.side = buffer.get();
         msg.orderQty = buffer.getInt();
@@ -100,60 +154,89 @@ public final class NewOrderMessage extends ApplicationMessage {
         buffer.get(msg.bitfields);
 
         msg.parseOptionalFields(buffer);
+        if (msg.fieldError == null) msg.fieldError = msg.charsetError;
         return msg;
     }
 
     private void parseOptionalFields(ByteBuffer buffer) {
-        if (numberOfBitfields == 0) return;
+        for (int i = 0; i < bitfields.length; i++) {
+            for (int bit = 0; bit < 8; bit++) {
+                if ((bitfields[i] & 0xFF & (1 << bit)) == 0) continue;
 
-        // --- Bitfield 1 (index 0) ---
-        if (bitfields.length >= 1) {
-            byte bf1 = bitfields[0];
-            if ((bf1 & 0x01) != 0) clearingFirm = readFixedString(buffer, 4);
-            if ((bf1 & 0x02) != 0) clearingAccount = readFixedString(buffer, 4);
-            if ((bf1 & 0x04) != 0) price = BinaryPrice.fromBytes(buffer.array(), buffer.position()).toPrice();
-            if ((bf1 & 0x04) != 0) buffer.position(buffer.position() + 8);
-            if ((bf1 & 0x08) != 0) ordType = buffer.get();
-            if ((bf1 & 0x10) != 0) timeInForce = buffer.get();
-        }
+                OptionalField field = i < FIELDS.length ? FIELDS[i][bit] : null;
+                if (field == null) {
+                    fieldError = "Bitfield " + (i + 1) + " bit " + (1 << bit) + " cannot be specified on New Order";
+                    return;
+                }
+                if (buffer.remaining() < field.length()) {
+                    fieldError = "Message too short for " + field.name();
+                    return;
+                }
+                byte[] value = new byte[field.length()];
+                buffer.get(value);
+                rawFields.put(field.name(), value);
 
-        // --- Bitfield 2 (index 1) ---
-        if (bitfields.length >= 2) {
-            byte bf2 = bitfields[1];
-            if ((bf2 & 0x01) != 0) symbol = readFixedString(buffer, 8);
-            if ((bf2 & 0x40) != 0) capacity = buffer.get();
-            if ((bf2 & 0x80) != 0) {
-                byte[] riBytes = new byte[4];
-                buffer.get(riBytes);
-                routingInst = riBytes[0];
+                switch (field.handling()) {
+                    case READ -> assign(field.name(), value);
+                    case IGNORE -> { }
+                    case REJECT -> {
+                        if (fieldError == null && !isAcceptedDefault(field, value)) {
+                            fieldError = field.name() + " is not supported by the simulator";
+                        }
+                    }
+                }
             }
-        }
-
-        // --- Bitfield 3 (index 2) ---
-        if (bitfields.length >= 3) {
-            byte bf3 = bitfields[2];
-            if ((bf3 & 0x01) != 0) account = readFixedString(buffer, 16);
-        }
-
-        // --- Bitfield 4 (index 3) ---
-        if (bitfields.length >= 4) {
-            byte bf4 = bitfields[3];
-            if ((bf4 & 0x01) != 0) {
-                maturityDate = Instant.ofEpochMilli((buffer.getInt() & 0xFFFFFFFFL) * 86400_000L);
-            }
-            if ((bf4 & 0x02) != 0) {
-                strikePrice = BinaryPrice.fromBytes(buffer.array(), buffer.position()).toPrice();
-                buffer.position(buffer.position() + 8);
-            }
-            if ((bf4 & 0x04) != 0) putOrCall = buffer.get();
-            if ((bf4 & 0x10) != 0) openClose = buffer.get();
         }
     }
 
-    private static String readFixedString(ByteBuffer buffer, int length) {
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        return new String(bytes, StandardCharsets.US_ASCII).trim();
+    private static boolean isAcceptedDefault(OptionalField field, byte[] value) {
+        if (field.acceptedDefault() == null) return false;
+        StringBuilder hex = new StringBuilder();
+        for (byte b : value) hex.append(String.format("%02X", b));
+        for (String accepted : field.acceptedDefault().split(",")) {
+            if (accepted.contentEquals(hex)) return true;
+        }
+        return false;
+    }
+
+    private void assign(String name, byte[] value) {
+        FieldCharset charset = switch (name) {
+            case "ClearingFirm" -> FieldCharset.ALPHA;
+            case "Symbol" -> FieldCharset.ALPHANUMERIC;
+            case "ClearingAccount", "Account", "RoutingInst" -> FieldCharset.TEXT;
+            default -> null;
+        };
+        if (charset != null && charsetError == null) charsetError = charset.check(name, value);
+
+        ByteBuffer v = ByteBuffer.wrap(value).order(ByteOrder.LITTLE_ENDIAN);
+        switch (name) {
+            case "ClearingFirm" -> clearingFirm = text(value);
+            case "ClearingAccount" -> clearingAccount = text(value);
+            case "Price" -> price = BinaryPrice.fromBytes(value).toPrice();
+            case "OrdType" -> ordType = value[0];
+            case "TimeInForce" -> timeInForce = value[0];
+            case "Symbol" -> symbol = text(value);
+            case "Capacity" -> capacity = value[0];
+            case "RoutingInst" -> routingInst = value[0];
+            case "Account" -> account = text(value);
+            case "MaturityDate" -> maturityDate = BoeTime.fromYyyymmdd(v.getInt());
+            case "StrikePrice" -> strikePrice = BinaryPrice.fromBytes(value).toPrice();
+            case "PutOrCall" -> putOrCall = value[0];
+            case "OpenClose" -> openClose = value[0];
+            case "PreventMatch" -> preventMatch = value;
+            case "RiskReset" -> riskReset = text(value);
+            case "MinQty" -> minQty = v.getInt();
+            case "ExpireTime" -> expireTime = v.getLong();
+            case "MaxFloor" -> maxFloor = v.getInt();
+            case "DisplayRange" -> displayRange = v.getInt();
+            case "StopPx" -> stopPx = BinaryPrice.fromBytes(value).toPrice();
+            case "CustomGroupId" -> customGroupId = v.getShort() & 0xFFFF;
+            default -> throw new IllegalStateException("No field mapping for " + name);
+        }
+    }
+
+    private static String text(byte[] value) {
+        return new String(value, StandardCharsets.US_ASCII).trim();
     }
 
     @Override
@@ -193,8 +276,8 @@ public final class NewOrderMessage extends ApplicationMessage {
             if ((bf1 & 0x01) != 0) buffer.put(toAlphaPaddedBytes(clearingFirm, 4));
             if ((bf1 & 0x02) != 0) buffer.put(toAlphaPaddedBytes(clearingAccount, 4));
             if ((bf1 & 0x04) != 0) BinaryPrice.fromPrice(price).putInto(buffer);
-            if ((bf1 & 0x08) != 0) buffer.put(ordType);
-            if ((bf1 & 0x10) != 0) buffer.put(timeInForce);
+            if ((bf1 & 0x10) != 0) buffer.put(ordType);
+            if ((bf1 & 0x20) != 0) buffer.put(timeInForce);
         }
 
         // Bitfield 2
@@ -218,11 +301,7 @@ public final class NewOrderMessage extends ApplicationMessage {
         // Bitfield 4
         if (bitfields.length >= 4) {
             byte bf4 = bitfields[3];
-            if ((bf4 & 0x01) != 0) {
-                LocalDate epoch = LocalDate.of(1970, 1, 1);
-                LocalDate date = maturityDate.atZone(ZoneId.of("America/New_York")).toLocalDate();
-                buffer.putInt((int) java.time.temporal.ChronoUnit.DAYS.between(epoch, date));
-            }
+            if ((bf4 & 0x01) != 0) buffer.putInt(BoeTime.toYyyymmdd(maturityDate));
             if ((bf4 & 0x02) != 0) BinaryPrice.fromPrice(strikePrice).putInto(buffer);
             if ((bf4 & 0x04) != 0) buffer.put(putOrCall);
             if ((bf4 & 0x10) != 0) buffer.put(openClose);
@@ -237,8 +316,8 @@ public final class NewOrderMessage extends ApplicationMessage {
             if ((bf1 & 0x01) != 0) size += 4;
             if ((bf1 & 0x02) != 0) size += 4;
             if ((bf1 & 0x04) != 0) size += 8;
-            if ((bf1 & 0x08) != 0) size += 1;
             if ((bf1 & 0x10) != 0) size += 1;
+            if ((bf1 & 0x20) != 0) size += 1;
         }
         if (bitfields.length >= 2) {
             byte bf2 = bitfields[1];
@@ -271,13 +350,13 @@ public final class NewOrderMessage extends ApplicationMessage {
     public void setOrdType(byte ordType) {
         this.ordType = ordType;
         ensureBitfield(0);
-        bitfields[0] |= 0x08;
+        bitfields[0] |= 0x10;
     }
 
     public void setTimeInForce(byte timeInForce) {
         this.timeInForce = timeInForce;
         ensureBitfield(0);
-        bitfields[0] |= 0x10;
+        bitfields[0] |= 0x20;
     }
 
     public void setClearingFirm(String clearingFirm) {
@@ -363,10 +442,9 @@ public final class NewOrderMessage extends ApplicationMessage {
         return result;
     }
 
-    // Space-padded for Alphanumeric fields (Symbol, Account, etc.)
+    // NUL-padded for Alphanumeric fields (Symbol, Account, etc.)
     private static byte[] toAlphaPaddedBytes(String str, int length) {
         byte[] result = new byte[length];
-        java.util.Arrays.fill(result, (byte) 0x20);
         if (str != null && !str.isEmpty()) {
             byte[] src = str.getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(src, 0, result, 0, Math.min(src.length, length));
@@ -400,6 +478,16 @@ public final class NewOrderMessage extends ApplicationMessage {
     public String getClearingAccount() { return clearingAccount; }
     public byte getOrdType() { return ordType; }
     public byte getTimeInForce() { return timeInForce; }
+    public String getFieldError() { return fieldError; }
+    public String getRiskReset() { return riskReset; }
+    public int getMinQty() { return minQty; }
+    public long getExpireTime() { return expireTime; }
+    public int getMaxFloor() { return maxFloor; }
+    public int getDisplayRange() { return displayRange; }
+    public BigDecimal getStopPx() { return stopPx; }
+    public int getCustomGroupId() { return customGroupId; }
+    public byte[] getPreventMatch() { return preventMatch != null ? preventMatch.clone() : null; }
+    public Map<String, byte[]> getRawFields() { return Map.copyOf(rawFields); }
 
     @Override
     public String toString() {

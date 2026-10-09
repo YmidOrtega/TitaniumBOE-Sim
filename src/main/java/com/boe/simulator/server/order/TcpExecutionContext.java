@@ -3,6 +3,8 @@ package com.boe.simulator.server.order;
 import com.boe.simulator.server.session.ClientSession;
 
 public final class TcpExecutionContext implements OrderExecutionContext {
+    public static final String SESSION_PREFIX = "TCP-";
+
     private final ClientSession session;
 
     public TcpExecutionContext(ClientSession session) {
@@ -16,7 +18,7 @@ public final class TcpExecutionContext implements OrderExecutionContext {
 
     @Override
     public String getSessionIdentifier() {
-        return "TCP-" + session.getConnectionId();
+        return SESSION_PREFIX + session.getConnectionId();
     }
 
     @Override

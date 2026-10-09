@@ -13,7 +13,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,10 +23,10 @@ class AuthenticationServiceTest {
 
     private AuthenticationService authenticationService;
 
-    private final String TEST_USERNAME = "testUser";
-    private final String TEST_PASSWORD = "testPass";
-    private final String TEST_SESSION_ID = "session123";
-    private final String TEST_PASSWORD_HASH = PasswordHasher.hash(TEST_PASSWORD);
+    private static final String TEST_USERNAME = "testUser";
+    private static final String TEST_PASSWORD = "testPass";
+    private static final String TEST_SESSION_ID = "session123";
+    private static final String TEST_PASSWORD_HASH = PasswordHasher.hash(TEST_PASSWORD);
 
     @BeforeEach
     void setUp() {

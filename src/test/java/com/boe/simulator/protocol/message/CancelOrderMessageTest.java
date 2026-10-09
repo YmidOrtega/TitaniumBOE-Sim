@@ -201,11 +201,11 @@ class CancelOrderMessageTest {
     void testBf1RoutingFirmId_NulPadded() {
         // BF1 = 0x20 → RoutingFirmID 4B Alpha (NUL-padded per spec p.10)
         ByteBuffer opt = ByteBuffer.allocate(4);
-        putAlpha(opt, "RT01", 4);
+        putAlpha(opt, "RTFM", 4);
         byte[] raw = buildRaw("ORD1", 1, new byte[]{0x20}, opt.array());
 
         CancelOrderMessage msg = CancelOrderMessage.parse(raw);
-        assertEquals("RT01", msg.getRoutingFirmID());
+        assertEquals("RTFM", msg.getRoutingFirmID());
         assertArrayEquals(raw, msg.toBytes());
     }
 
@@ -227,22 +227,81 @@ class CancelOrderMessageTest {
         assertArrayEquals(raw, wire);
     }
 
-    // ── Bitfield 2 — Symbol (0x02) ────────────────────────────────────────────
+    // ── Blank bits and required SendTime ─────────────────────────────────────
 
     @Test
-    void testBf2Symbol_NulPadded() {
-        // BF2 = 0x02 → Symbol 8B Alphanumeric (NUL-padded per spec p.10)
-        ByteBuffer opt = ByteBuffer.allocate(8);
-        putAlpha(opt, "SPX", 8);
-        byte[] raw = buildRaw("ORD1", 2, new byte[]{0x00, 0x02}, opt.array());
+    void blankBitInTheSpecTable_isRejected() {
+        // BF2 = 0x02 is Symbol on other Cboe platforms, blank on Titanium Options
+        byte[] raw = buildRaw("ORD1", 2, new byte[]{0x00, 0x02}, new byte[8]);
+        assertEquals("Bitfield 2 bit 2 cannot be specified on Cancel Order", CancelOrderMessage.parse(raw).getFieldError());
+    }
 
-        CancelOrderMessage msg = CancelOrderMessage.parse(raw);
-        assertEquals("SPX", msg.getSymbol());
-        // verify NUL-padding in wire
-        byte[] wire = msg.toBytes();
-        // Symbol starts at: 31 (fixed) + 2 (bf array) = 33
-        assertEquals(0x00, wire[33 + 3], "byte 3 of Symbol must be NUL");
-        assertArrayEquals(raw, wire);
+    @Test
+    void massCancelLockoutAndMassCancelBits_areRejected() {
+        byte[] raw = buildRaw("", 1, new byte[]{0x06}, new byte[]{'Y', 'Y'});
+        assertEquals("Bitfield 1 bit 2 cannot be specified on Cancel Order", CancelOrderMessage.parse(raw).getFieldError());
+    }
+
+    @Test
+    void bitBeyondTheTwoSpecBitfields_isRejected() {
+        byte[] raw = buildRaw("ORD1", 3, new byte[]{0x00, 0x08, 0x01}, new byte[9]);
+        assertEquals("Bitfield 3 bit 1 cannot be specified on Cancel Order", CancelOrderMessage.parse(raw).getFieldError());
+    }
+
+    @Test
+    void missingSendTime_isRejected() {
+        assertEquals("SendTime is required on Cancel Order", CancelOrderMessage.parse(buildRaw("ORD1", 0, null, null)).getFieldError());
+    }
+
+    @Test
+    void optionalFieldsShorterThanTheBitfields_areRejected() {
+        byte[] raw = buildRaw("ORD1", 2, new byte[]{0x00, 0x08}, new byte[4]);
+        assertEquals("Cancel Order is too short for its optional fields", CancelOrderMessage.parse(raw).getFieldError());
+    }
+
+    @Test
+    void restCancel_isNotParsed_soItHasNoFieldError() {
+        assertNull(new CancelOrderMessage("ORD1").getFieldError());
+    }
+
+    // ── Spec examples ────────────────────────────────────────────────────────
+
+    private static byte[] hex(String s) {
+        String[] p = s.trim().split("\\s+");
+        byte[] b = new byte[p.length];
+        for (int i = 0; i < p.length; i++) b[i] = (byte) Integer.parseInt(p[i], 16);
+        return b;
+    }
+
+    @Test
+    void specTable37Example_singleCancel() {
+        CancelOrderMessage m = CancelOrderMessage.parse(hex("BA BA 2A 00 39 00 64 00 00 00 41 42 43 31 32 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                + "02 01 08 54 45 53 54 E0 7A B9 DA 13 3B 42 16"));
+
+        assertEquals("ABC123", m.getOrigClOrdID());
+        assertFalse(m.isMassCancel());
+        assertEquals("TEST", m.getClearingFirm());
+        assertEquals(1_603_909_373_757_324_000L, m.getSendTime());
+        assertNull(m.getFieldError());
+    }
+
+    @Test
+    void specTable38Example_massCancel() {
+        CancelOrderMessage m = CancelOrderMessage.parse(hex("BA BA 54 00 39 00 64 00 00 00 " + "00 ".repeat(20)
+                + "02 19 09 54 45 53 54 4D 53 46 54 00 00 41 42 43 31 32 33 " + "00 ".repeat(14)
+                + "46 53 4C 42 " + "00 ".repeat(12) + "E0 7A B9 DA 13 3B 42 16"));
+
+        assertTrue(m.isMassCancel());
+        assertEquals("TEST", m.getClearingFirm());
+        assertEquals("MSFT", m.getRiskRoot());
+        assertEquals("ABC123", m.getMassCancelId());
+        assertEquals("FSLB", m.getMassCancelInst());
+        assertEquals('F', m.massCancelInstChar(1));
+        assertEquals('S', m.massCancelInstChar(2));
+        assertEquals('L', m.massCancelInstChar(3));
+        assertEquals('B', m.massCancelInstChar(4));
+        assertNull(m.massCancelInstChar(5));
+        assertNull(m.getFieldError());
     }
 
     // ── Bitfield 2 — SendTime (0x08) ──────────────────────────────────────────
@@ -264,77 +323,44 @@ class CancelOrderMessageTest {
 
     @Test
     void testMassCancelFullRoundTrip() {
-        // BF1=0x99 (ClearingFirm+RiskRoot+RoutingFirmID+OperatorId), BF2=0x09 (MassCancelInst+SendTime)
-        // BF1: 0x01=ClearFirm(4) + 0x08=RiskRoot(6) + 0x10=MassCancelId(20) + 0x80=OperatorId(4) = 0x99
-        byte bf1 = (byte) 0x99;
-        byte bf2 = (byte) 0x09; // 0x01=MassCancelInst(16) + 0x08=SendTime(8)
-
+        // BF1: 0x01=ClearingFirm(4) + 0x08=RiskRoot(6) + 0x10=MassCancelId(20) + 0x20=RoutingFirmID(4) = 0x39
+        // BF2: 0x01=MassCancelInst(16) + 0x08=SendTime(8) = 0x09
         ByteBuffer opt = ByteBuffer.allocate(4 + 6 + 20 + 4 + 16 + 8);
-        putAlpha(opt, "ABCD", 4);  // ClearingFirm
-        putText(opt, "SPX", 6);    // RiskRoot
-        putText(opt, "MCID-XYZ-001-ABCD", 20); // MassCancelId
-        putAlpha(opt, "OPR1", 4);  // OperatorId
-        putText(opt, "A01L", 16);  // MassCancelInst
-        opt.order(ByteOrder.LITTLE_ENDIAN).putLong(999_999_000_000_000L); // SendTime
+        putAlpha(opt, "ABCD", 4);
+        putText(opt, "SPX", 6);
+        putText(opt, "MCID-XYZ-001-ABCD", 20);
+        putAlpha(opt, "RTFM", 4);
+        putText(opt, "ASL", 16);
+        opt.order(ByteOrder.LITTLE_ENDIAN).putLong(999_999_000_000_000L);
 
-        byte[] raw = buildRaw("", 2, new byte[]{bf1, bf2}, opt.array());
+        byte[] raw = buildRaw("", 2, new byte[]{0x39, 0x09}, opt.array());
         CancelOrderMessage msg = CancelOrderMessage.parse(raw);
 
         assertTrue(msg.isMassCancel());
         assertEquals("ABCD", msg.getClearingFirm());
         assertEquals("SPX", msg.getRiskRoot());
         assertEquals("MCID-XYZ-001-ABCD", msg.getMassCancelId());
-        assertEquals("OPR1", msg.getOperatorId());
-        assertEquals("A01L", msg.getMassCancelInst());
+        assertEquals("RTFM", msg.getRoutingFirmID());
+        assertEquals("ASL", msg.getMassCancelInst());
         assertEquals(999_999_000_000_000L, msg.getSendTime());
+        assertNull(msg.getFieldError());
 
         assertArrayEquals(raw, msg.toBytes());
     }
 
-    // ── MassCancelType ────────────────────────────────────────────────────────
-
     @Test
-    void testMassCancelType_firm() {
-        byte[] opt = new byte[16]; opt[0] = 'F';
-        byte[] raw = buildRaw("", 2, new byte[]{0x00, 0x01}, opt);
-        assertEquals(CancelOrderMessage.MassCancelType.FIRM, CancelOrderMessage.parse(raw).getMassCancelType());
-    }
+    void settersSetTheirBits_soTheEncoderRoundTrips() {
+        CancelOrderMessage msg = new CancelOrderMessage("");
+        msg.setClearingFirm("TEST");
+        msg.setMassCancelInst("FM");
+        msg.setSendTime(42L);
 
-    @Test
-    void testMassCancelType_symbol() {
-        byte[] opt = new byte[16]; opt[0] = 'S';
-        byte[] raw = buildRaw("", 2, new byte[]{0x00, 0x01}, opt);
-        assertEquals(CancelOrderMessage.MassCancelType.SYMBOL, CancelOrderMessage.parse(raw).getMassCancelType());
-    }
+        CancelOrderMessage parsed = CancelOrderMessage.parse(msg.toBytes());
 
-    @Test
-    void testMassCancelType_all() {
-        byte[] opt = new byte[16]; opt[0] = 'A';
-        byte[] raw = buildRaw("", 2, new byte[]{0x00, 0x01}, opt);
-        assertEquals(CancelOrderMessage.MassCancelType.ALL, CancelOrderMessage.parse(raw).getMassCancelType());
-    }
-
-    @Test
-    void testMassCancelType_none_whenNoInst() {
-        byte[] raw = buildRaw("", 0, null, null);
-        assertEquals(CancelOrderMessage.MassCancelType.NONE, CancelOrderMessage.parse(raw).getMassCancelType());
-    }
-
-    // ── isLockoutRequested ────────────────────────────────────────────────────
-
-    @Test
-    void testIsLockoutRequested_true() {
-        // MassCancelInst where char[2] == 'L'
-        byte[] opt = new byte[16]; opt[0] = 'F'; opt[1] = '0'; opt[2] = 'L';
-        byte[] raw = buildRaw("", 2, new byte[]{0x00, 0x01}, opt);
-        assertTrue(CancelOrderMessage.parse(raw).isLockoutRequested());
-    }
-
-    @Test
-    void testIsLockoutRequested_false() {
-        byte[] opt = new byte[16]; opt[0] = 'F'; opt[1] = '0'; opt[2] = 'N';
-        byte[] raw = buildRaw("", 2, new byte[]{0x00, 0x01}, opt);
-        assertFalse(CancelOrderMessage.parse(raw).isLockoutRequested());
+        assertEquals("TEST", parsed.getClearingFirm());
+        assertEquals('M', parsed.massCancelInstChar(2));
+        assertEquals(42L, parsed.getSendTime());
+        assertNull(parsed.getFieldError());
     }
 
     // ── Parse rejects bad input ───────────────────────────────────────────────
@@ -368,14 +394,22 @@ class CancelOrderMessageTest {
         assertArrayEquals(raw, msg.toBytes());
     }
 
+    // ── Character sets ────────────────────────────────────────────────────────
+
     @Test
-    void testBf1_MassCancelLockoutAndMassCancel() {
-        // BF1 = 0x06 = 0x02(MassCancelLockout 1B) + 0x04(MassCancel 1B)
-        byte[] opt = new byte[]{(byte) 'Y', (byte) 'Y'};
-        byte[] raw = buildRaw("", 1, new byte[]{0x06}, opt);
-        // Should parse without throwing (fields are bytes, not exposed via getters for now)
-        assertDoesNotThrow(() -> CancelOrderMessage.parse(raw));
-        // round-trip
-        assertArrayEquals(raw, CancelOrderMessage.parse(raw).toBytes());
+    void origClOrdIDMustBeText() {
+        byte[] raw = buildRaw("ORD\t1", 2, new byte[]{0x00, 0x08}, new byte[8]);
+
+        assertEquals("Invalid character 0x09 in OrigClOrdID (printable ASCII)", CancelOrderMessage.parse(raw).getFieldError());
+    }
+
+    @Test
+    void clearingFirmMustBeAlpha() {
+        ByteBuffer opt = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN);
+        putAlpha(opt, "TE5T", 4);
+        opt.putLong(1L);
+        byte[] raw = buildRaw("ORD1", 2, new byte[]{0x01, 0x08}, opt.array());
+
+        assertEquals("Invalid character 0x35 in ClearingFirm (A-Z, a-z)", CancelOrderMessage.parse(raw).getFieldError());
     }
 }

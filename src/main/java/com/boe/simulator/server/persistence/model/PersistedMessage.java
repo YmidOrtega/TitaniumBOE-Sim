@@ -95,7 +95,7 @@ public record PersistedMessage(
     }
 
     public String getIndexKey() {
-        return String.format("msg:%s", messageId);
+        return "msg:" + messageId;
     }
 
     public String getUserIndexKey() {
@@ -129,6 +129,23 @@ public record PersistedMessage(
 
     public boolean isResponse() {
         return direction == MessageDirection.OUTBOUND;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof PersistedMessage other
+                && messageType == other.messageType && connectionId == other.connectionId
+                && sequenceNumber == other.sequenceNumber && length == other.length
+                && java.util.Objects.equals(messageId, other.messageId) && java.util.Objects.equals(timestamp, other.timestamp)
+                && direction == other.direction && java.util.Objects.equals(messageTypeName, other.messageTypeName)
+                && java.util.Objects.equals(username, other.username) && java.util.Objects.equals(sessionSubID, other.sessionSubID)
+                && java.util.Arrays.equals(rawData, other.rawData) && java.util.Objects.equals(metadata, other.metadata);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * java.util.Objects.hash(messageId, timestamp, direction, messageType, messageTypeName, connectionId,
+                username, sessionSubID, sequenceNumber, length, metadata) + java.util.Arrays.hashCode(rawData);
     }
 
     @Override

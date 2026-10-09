@@ -28,8 +28,8 @@ DEMO_MODE=true java -jar target/boe-simulator-*.jar
 ```
 
 **Credenciales demo:**
-- `TRD1` / `Pass1234!`
-- `TRD2` / `Pass5678!`
+- `TRD1` / `Pass1234`
+- `TRD2` / `Pass5678`
 
 ---
 
@@ -39,11 +39,11 @@ Todos los endpoints marcados con **🔐** requieren credenciales via HTTP Basic 
 
 ```bash
 # Header manual
-curl -H "Authorization: Basic $(echo -n 'TRD1:Pass1234!' | base64)" \
+curl -H "Authorization: Basic $(echo -n 'TRD1:Pass1234' | base64)" \
      http://localhost:9091/api/orders/active
 
 # Forma abreviada con curl
-curl -u TRD1:Pass1234! http://localhost:9091/api/orders/active
+curl -u TRD1:Pass1234 http://localhost:9091/api/orders/active
 ```
 
 ---
@@ -99,7 +99,7 @@ curl -X POST http://localhost:9091/api/auth/register \
 Valida credenciales (retorna 200 si son correctas, 401 si no).
 
 ```bash
-curl -u TRD1:Pass1234! -X POST http://localhost:9091/api/auth/login
+curl -u TRD1:Pass1234 -X POST http://localhost:9091/api/auth/login
 ```
 
 ---
@@ -146,7 +146,7 @@ Envía una nueva orden. El servidor la procesa a través del matching engine y r
 
 ```bash
 curl -X POST http://localhost:9091/api/orders \
-  -u TRD1:Pass1234! \
+  -u TRD1:Pass1234 \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -194,7 +194,7 @@ curl -X POST http://localhost:9091/api/orders \
 Órdenes vivas (LIVE, PARTIALLY_FILLED) del usuario autenticado.
 
 ```bash
-curl -u TRD1:Pass1234! http://localhost:9091/api/orders/active
+curl -u TRD1:Pass1234 http://localhost:9091/api/orders/active
 ```
 
 #### `GET /api/orders/{clOrdID}` 🔐
@@ -202,7 +202,7 @@ curl -u TRD1:Pass1234! http://localhost:9091/api/orders/active
 Detalle de una orden por su ID de cliente.
 
 ```bash
-curl -u TRD1:Pass1234! http://localhost:9091/api/orders/ORD-1714500000001
+curl -u TRD1:Pass1234 http://localhost:9091/api/orders/ORD-1714500000001
 ```
 
 #### `DELETE /api/orders/{clOrdID}` 🔐
@@ -210,7 +210,7 @@ curl -u TRD1:Pass1234! http://localhost:9091/api/orders/ORD-1714500000001
 Cancela una orden viva. Retorna `404` si no existe o no pertenece al usuario autenticado.
 
 ```bash
-curl -X DELETE -u TRD1:Pass1234! \
+curl -X DELETE -u TRD1:Pass1234 \
      http://localhost:9091/api/orders/ORD-1714500000001
 ```
 
@@ -227,7 +227,7 @@ curl -X DELETE -u TRD1:Pass1234! \
 Todas las posiciones del usuario (netas por símbolo tras fills).
 
 ```bash
-curl -u TRD1:Pass1234! http://localhost:9091/api/positions
+curl -u TRD1:Pass1234 http://localhost:9091/api/positions
 ```
 
 ```json
@@ -242,7 +242,7 @@ curl -u TRD1:Pass1234! http://localhost:9091/api/positions
 Posición neta en un símbolo específico.
 
 ```bash
-curl -u TRD1:Pass1234! http://localhost:9091/api/positions/AAPL
+curl -u TRD1:Pass1234 http://localhost:9091/api/positions/AAPL
 ```
 
 ---
@@ -254,7 +254,7 @@ curl -u TRD1:Pass1234! http://localhost:9091/api/positions/AAPL
 Trades ejecutados por el usuario autenticado (como comprador o vendedor).
 
 ```bash
-curl -u TRD1:Pass1234! http://localhost:9091/api/trades/my
+curl -u TRD1:Pass1234 http://localhost:9091/api/trades/my
 ```
 
 ```json

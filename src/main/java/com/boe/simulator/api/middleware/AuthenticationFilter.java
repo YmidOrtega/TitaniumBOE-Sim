@@ -19,7 +19,7 @@ public class AuthenticationFilter implements Handler {
     private final UserRepository userRepository;
 
     public AuthenticationFilter(AuthenticationService authService) {
-        this.userRepository = (UserRepository) authService.getUserRepository();
+        this.userRepository = authService.getUserRepository();
     }
 
     @Override
@@ -75,7 +75,7 @@ public class AuthenticationFilter implements Handler {
 
             return PasswordHasher.verify(password, user.passwordHash());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error authenticating user: %s".formatted(username), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Error authenticating user: %s".formatted(username));
             return false;
         }
     }

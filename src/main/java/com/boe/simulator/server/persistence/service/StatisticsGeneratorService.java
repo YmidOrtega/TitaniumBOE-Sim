@@ -62,11 +62,11 @@ public class StatisticsGeneratorService {
         scheduler.scheduleAtFixedRate(
             this::generatePreviousDayStatistics,
             calculateInitialDelayToMidnight(),
-            24 * 60, // 24 hours
+            24L * 60, // 24 hours
             TimeUnit.MINUTES
         );
         
-        LOGGER.info("Statistics generator started (hourly updates + midnight aggregation)");
+        LOGGER.info(() -> "Statistics generator started (hourly updates + midnight aggregation)");
     }
     
 
@@ -161,7 +161,7 @@ public class StatisticsGeneratorService {
             statisticsRepository.save(stats);
             return stats;
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to generate statistics for " + date, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to generate statistics for " + date);
             return null;
         }
     }

@@ -1,5 +1,6 @@
 package com.boe.simulator.server.matching;
 
+import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.persistence.RocksDBManager;
 import com.boe.simulator.server.persistence.util.SerializationUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -12,7 +13,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class TradeRepositoryService implements TradeRepository {
     private static final Logger LOGGER = Logger.getLogger(TradeRepositoryService.class.getName());
@@ -80,7 +80,7 @@ public class TradeRepositoryService implements TradeRepository {
 
             LOGGER.log(Level.FINE, "Saved trade: {0}", trade.getTradeId());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save trade: " + trade.getTradeId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save trade: " + trade.getTradeId());
             throw new RuntimeException("Failed to save trade", e);
         }
     }
@@ -121,7 +121,7 @@ public class TradeRepositoryService implements TradeRepository {
             PersistedTrade persistedTrade = serializer.deserialize(data, PersistedTrade.class);
             return Optional.of(persistedTrade.toTrade());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find trade: " + tradeId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find trade: " + tradeId);
             return Optional.empty();
         }
     }
@@ -129,10 +129,10 @@ public class TradeRepositoryService implements TradeRepository {
     @Override
     public List<Trade> findBySymbol(String symbol) {
         try {
-            String prefix = String.format("trade-symbol:%s:", symbol);
+            String prefix = "trade-symbol:" + symbol + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find trades by symbol: " + symbol, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find trades by symbol: " + symbol);
             return new ArrayList<>();
         }
     }
@@ -142,16 +142,16 @@ public class TradeRepositoryService implements TradeRepository {
         return findBySymbol(symbol).stream()
                 .filter(t -> !t.getExecutionTime().isBefore(start)
                         && !t.getExecutionTime().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<Trade> findByUsername(String username) {
         try {
-            String prefix = String.format("trade-user:%s:", username);
+            String prefix = "trade-user:" + username + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find trades by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find trades by username: " + username);
             return new ArrayList<>();
         }
     }
@@ -160,7 +160,7 @@ public class TradeRepositoryService implements TradeRepository {
     public List<Trade> findByOrderId(long orderId) {
         return findAll().stream()
                 .filter(t -> t.getBuyOrderId() == orderId || t.getSellOrderId() == orderId)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -169,7 +169,7 @@ public class TradeRepositoryService implements TradeRepository {
                 .filter(t -> !t.getExecutionTime().isBefore(start)
                         && !t.getExecutionTime().isAfter(end))
                 .sorted(Comparator.comparing(Trade::getExecutionTime))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -177,7 +177,7 @@ public class TradeRepositoryService implements TradeRepository {
         return findAll().stream()
                 .sorted(Comparator.comparing(Trade::getExecutionTime).reversed())
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -185,7 +185,7 @@ public class TradeRepositoryService implements TradeRepository {
         return findBySymbol(symbol).stream()
                 .sorted(Comparator.comparing(Trade::getExecutionTime).reversed())
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -225,7 +225,7 @@ public class TradeRepositoryService implements TradeRepository {
                 dbManager.delete(CF_TRADES, key.getBytes());
                 deleted++;
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to delete trade: " + trade.getTradeId(), e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to delete trade: " + trade.getTradeId());
             }
         }
 
@@ -243,67 +243,67 @@ public class TradeRepositoryService implements TradeRepository {
         if (criteria.symbol() != null) {
             results = results.stream()
                     .filter(t -> criteria.symbol().equals(t.getSymbol()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.username() != null) {
             results = results.stream()
                     .filter(t -> criteria.username().equals(t.getBuyUsername())
                             || criteria.username().equals(t.getSellUsername()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.orderId() != null) {
             results = results.stream()
                     .filter(t -> t.getBuyOrderId() == criteria.orderId()
                             || t.getSellOrderId() == criteria.orderId())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.minPrice() != null) {
             results = results.stream()
                     .filter(t -> t.getPrice().compareTo(criteria.minPrice()) >= 0)
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.maxPrice() != null) {
             results = results.stream()
                     .filter(t -> t.getPrice().compareTo(criteria.maxPrice()) <= 0)
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.minQuantity() != null) {
             results = results.stream()
                     .filter(t -> t.getQuantity() >= criteria.minQuantity())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.maxQuantity() != null) {
             results = results.stream()
                     .filter(t -> t.getQuantity() <= criteria.maxQuantity())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.startDate() != null) {
             results = results.stream()
                     .filter(t -> !t.getExecutionTime().isBefore(criteria.startDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.endDate() != null) {
             results = results.stream()
                     .filter(t -> !t.getExecutionTime().isAfter(criteria.endDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         results = results.stream()
                 .sorted(Comparator.comparing(Trade::getExecutionTime).reversed())
-                .collect(Collectors.toList());
+                .toList();
 
         if (criteria.limit() != null && criteria.limit() > 0) {
             results = results.stream()
                     .limit(criteria.limit())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return results;
@@ -344,7 +344,7 @@ public class TradeRepositoryService implements TradeRepository {
 
         return trades.stream()
                 .sorted(Comparator.comparing(Trade::getExecutionTime).reversed())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private String buildKey(long tradeId) {
@@ -364,7 +364,8 @@ public class TradeRepositoryService implements TradeRepository {
             @JsonProperty("price") String price,
             @JsonProperty("executionTime") String executionTime,
             @JsonProperty("matchingUnit") byte matchingUnit,
-            @JsonProperty("clearingFirm") String clearingFirm
+            @JsonProperty("clearingFirm") String clearingFirm,
+            @JsonProperty("aggressorSide") String aggressorSide
     ) {
         @JsonCreator
         public PersistedTrade {}
@@ -383,7 +384,8 @@ public class TradeRepositoryService implements TradeRepository {
                     trade.getPrice().toString(),
                     trade.getExecutionTime().toString(),
                     trade.getMatchingUnit(),
-                    trade.getClearingFirm()
+                    trade.getClearingFirm(),
+                    trade.getAggressorSide() != null ? trade.getAggressorSide().name() : null
             );
         }
 
@@ -402,6 +404,7 @@ public class TradeRepositoryService implements TradeRepository {
                     .executionTime(Instant.parse(executionTime))
                     .matchingUnit(matchingUnit)
                     .clearingFirm(clearingFirm)
+                    .aggressorSide(aggressorSide != null ? Side.valueOf(aggressorSide) : null)
                     .build();
         }
     }

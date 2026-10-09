@@ -1,5 +1,7 @@
 package com.boe.simulator.server.matching;
 
+import com.boe.simulator.protocol.types.Side;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 
@@ -16,7 +18,8 @@ public record Trade(
         BigDecimal price,
         Instant executionTime,
         byte matchingUnit,
-        String clearingFirm
+        String clearingFirm,
+        Side aggressorSide
 ) {
     public Trade {
         if (symbol == null || symbol.isEmpty()) throw new IllegalArgumentException("Symbol is required");
@@ -47,6 +50,7 @@ public record Trade(
     public Instant getExecutionTime() { return executionTime; }
     public byte getMatchingUnit() { return matchingUnit; }
     public String getClearingFirm() { return clearingFirm; }
+    public Side getAggressorSide() { return aggressorSide; }
 
     @Override
     public String toString() {
@@ -72,6 +76,7 @@ public record Trade(
         private Instant executionTime;
         private byte matchingUnit;
         private String clearingFirm;
+        private Side aggressorSide;
 
         public Builder tradeId(long tradeId) { this.tradeId = tradeId; return this; }
         public Builder symbol(String symbol) { this.symbol = symbol; return this; }
@@ -86,11 +91,12 @@ public record Trade(
         public Builder executionTime(Instant executionTime) { this.executionTime = executionTime; return this; }
         public Builder matchingUnit(byte matchingUnit) { this.matchingUnit = matchingUnit; return this; }
         public Builder clearingFirm(String clearingFirm) { this.clearingFirm = clearingFirm; return this; }
+        public Builder aggressorSide(Side aggressorSide) { this.aggressorSide = aggressorSide; return this; }
 
         public Trade build() {
             return new Trade(tradeId, symbol, buyOrderId, buyClOrdID, buyUsername,
                     sellOrderId, sellClOrdID, sellUsername, quantity, price,
-                    executionTime, matchingUnit, clearingFirm);
+                    executionTime, matchingUnit, clearingFirm, aggressorSide);
         }
     }
 }

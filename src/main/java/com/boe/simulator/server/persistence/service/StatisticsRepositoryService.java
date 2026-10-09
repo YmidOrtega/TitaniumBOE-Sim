@@ -35,7 +35,7 @@ public class StatisticsRepositoryService implements StatisticsRepository {
             
             LOGGER.log(Level.FINE, "Saved statistics for date: {0}", statistics.date());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save statistics for: " + statistics.date(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save statistics for: " + statistics.date());
             throw new RuntimeException("Failed to save statistics", e);
         }
     }
@@ -51,7 +51,7 @@ public class StatisticsRepositoryService implements StatisticsRepository {
             PersistedStatistics stats = serializer.deserialize(data, PersistedStatistics.class);
             return Optional.of(stats);
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find statistics for date: " + date, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find statistics for date: " + date);
             return Optional.empty();
         }
     }
@@ -97,7 +97,7 @@ public class StatisticsRepositoryService implements StatisticsRepository {
     @Override
     public List<PersistedStatistics> findLastNDays(int days) {
         LocalDate endDate = LocalDate.now();
-        LocalDate startDate = endDate.minusDays(days - 1);
+        LocalDate startDate = endDate.minusDays(days - 1L);
         return findByDateRange(startDate, endDate);
     }
 

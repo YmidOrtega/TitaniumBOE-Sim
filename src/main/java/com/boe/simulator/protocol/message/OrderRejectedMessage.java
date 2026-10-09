@@ -1,9 +1,9 @@
 package com.boe.simulator.protocol.message;
 
+import com.boe.simulator.protocol.types.BoeTime;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 /**
  * Order Rejected — Table 73 (p.119), spec v2.11.90
@@ -25,22 +25,19 @@ import java.util.Arrays;
  *         Optional fields…
  */
 public final class OrderRejectedMessage extends ApplicationMessage {
-    private static final byte MESSAGE_TYPE = 0x26;
+    public static final byte MESSAGE_TYPE = 0x26;
     private static final byte SOM1 = (byte) 0xBA;
     private static final byte SOM2 = (byte) 0xBA;
     private static final int FIXED_SIZE = 101; // before bitfields/optional
 
     // Reject reason codes (Order Reason Codes p.213)
     public static final byte REASON_DUPLICATE_CLORDID          = (byte) 'D';
-    public static final byte REASON_INVALID_SYMBOL             = (byte) 'S';
-    public static final byte REASON_INVALID_PRICE              = (byte) 'P';
-    public static final byte REASON_INVALID_QUANTITY           = (byte) 'Q';
-    public static final byte REASON_MISSING_REQUIRED_FIELD     = (byte) 'M';
-    public static final byte REASON_UNAUTHORIZED               = (byte) 'U';
-    public static final byte REASON_UNKNOWN_ERROR              = (byte) 'X';
-    public static final byte REASON_INVALID_CAPACITY           = (byte) 'C';
-    public static final byte REASON_RATE_LIMIT_EXCEEDED        = (byte) 'R';
-    public static final byte REASON_SESSION_NOT_AUTHENTICATED  = (byte) 'A';
+    public static final byte REASON_RATE_THRESHOLD             = (byte) 'K';
+    public static final byte REASON_ORDER_SIZE_EXCEEDED        = (byte) 'M';
+    public static final byte REASON_SYMBOL_NOT_SUPPORTED       = (byte) 'Y';
+    public static final byte REASON_MAX_OPEN_ORDERS_EXCEEDED   = (byte) 'o';
+    public static final byte REASON_RECEIVED_DURING_REPLAY     = (byte) 'y';
+    public static final byte REASON_UNFORESEEN                 = (byte) 'Z';
 
     // Header (unsequenced — always 0)
     private byte matchingUnit;
@@ -53,8 +50,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
     private String text;
 
     // Bitfields (no optional fields by default)
-    private int numberOfBitfields;
-    private byte[] bitfields;
+    private ReturnFields returnFields = new ReturnFields();
 
     public OrderRejectedMessage() {}
 
@@ -62,11 +58,9 @@ public final class OrderRejectedMessage extends ApplicationMessage {
         this.clOrdID = clOrdID;
         this.orderRejectReason = reason;
         this.text = text;
-        this.transactTime = System.nanoTime();
+        this.transactTime = BoeTime.nowEpochNanos();
         this.matchingUnit = 0;
         this.sequenceNumber = 0;
-        this.numberOfBitfields = 0;
-        this.bitfields = new byte[0];
     }
 
     @Override
@@ -74,7 +68,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
 
     @Override
     public byte[] toBytes() {
-        int totalSize = FIXED_SIZE + numberOfBitfields;
+        int totalSize = FIXED_SIZE - 1 + returnFields.encodedSize();
 
         ByteBuffer buf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN);
 
@@ -89,8 +83,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
         buf.put(orderRejectReason);
         putText(buf, text, 60);
         buf.put((byte) 0x00);              // ReservedInternal
-        buf.put((byte) numberOfBitfields);
-        if (numberOfBitfields > 0) buf.put(bitfields, 0, numberOfBitfields);
+        returnFields.writeTo(buf);
 
         return buf.array();
     }
@@ -114,12 +107,7 @@ public final class OrderRejectedMessage extends ApplicationMessage {
 
         if (buf.remaining() >= 2) {
             buf.get(); // ReservedInternal
-            msg.numberOfBitfields = buf.get() & 0xFF;
-            msg.bitfields = new byte[msg.numberOfBitfields];
-            if (msg.numberOfBitfields > 0) buf.get(msg.bitfields);
-        } else {
-            msg.numberOfBitfields = 0;
-            msg.bitfields = new byte[0];
+            msg.returnFields = ReturnFields.readFrom(buf);
         }
 
         return msg;
@@ -144,6 +132,12 @@ public final class OrderRejectedMessage extends ApplicationMessage {
     public void setSequenceNumber(int sequenceNumber) { this.sequenceNumber = sequenceNumber; }
 
     public String getClOrdID() { return clOrdID; }
+    public ReturnFields getReturnFields() { return returnFields; }
+
+    public OrderRejectedMessage withReturnFields(ReturnFields returnFields) {
+        this.returnFields = returnFields;
+        return this;
+    }
     public byte getOrderRejectReason() { return orderRejectReason; }
     public String getText() { return text; }
 

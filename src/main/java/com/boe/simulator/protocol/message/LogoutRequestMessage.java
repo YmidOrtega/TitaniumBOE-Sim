@@ -82,10 +82,7 @@ public final class LogoutRequestMessage extends SessionMessage {
         // SequenceNumber (4 bytes)
         int sequenceNumber = buffer.getInt();
 
-        // Create message
-        LogoutRequestMessage msg = new LogoutRequestMessage(matchingUnit, sequenceNumber);
-
-        return msg;
+        return new LogoutRequestMessage(matchingUnit, sequenceNumber);
     }
 
     public void setMatchingUnit(byte matchingUnit) {

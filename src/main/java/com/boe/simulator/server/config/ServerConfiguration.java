@@ -15,7 +15,13 @@ public class ServerConfiguration {
     private final long heartbeatTimeoutSeconds;
 
     // Rate limiting
-    private final int rateLimitPerMinute;
+    private final int rateLimitPerSecond;
+
+    // Flow control
+    private final int maxUnacknowledgedMessages;
+    private final int resumeReadingBelow;
+    private final int maxOpenOrdersPerSession;
+    private final PortAttributes portAttributes;
 
     // Logging
     private final Level logLevel;
@@ -29,7 +35,11 @@ public class ServerConfiguration {
         this.connectionTimeout = builder.connectionTimeout;
         this.heartbeatIntervalSeconds = builder.heartbeatIntervalSeconds;
         this.heartbeatTimeoutSeconds = builder.heartbeatTimeoutSeconds;
-        this.rateLimitPerMinute = builder.rateLimitPerMinute;
+        this.rateLimitPerSecond = builder.rateLimitPerSecond;
+        this.maxUnacknowledgedMessages = builder.maxUnacknowledgedMessages;
+        this.resumeReadingBelow = builder.resumeReadingBelow;
+        this.maxOpenOrdersPerSession = builder.maxOpenOrdersPerSession;
+        this.portAttributes = builder.portAttributes;
         this.logLevel = builder.logLevel;
     }
     
@@ -56,7 +66,11 @@ public class ServerConfiguration {
     public int getConnectionTimeout() { return connectionTimeout; }
     public long getHeartbeatIntervalSeconds() { return heartbeatIntervalSeconds; }
     public long getHeartbeatTimeoutSeconds() { return heartbeatTimeoutSeconds; }
-    public int getRateLimitPerMinute() { return rateLimitPerMinute; }
+    public int getRateLimitPerSecond() { return rateLimitPerSecond; }
+    public int getMaxUnacknowledgedMessages() { return maxUnacknowledgedMessages; }
+    public int getResumeReadingBelow() { return resumeReadingBelow; }
+    public int getMaxOpenOrdersPerSession() { return maxOpenOrdersPerSession; }
+    public PortAttributes getPortAttributes() { return portAttributes; }
     public Level getLogLevel() { return logLevel; }
     
     @Override
@@ -68,6 +82,10 @@ public class ServerConfiguration {
                 ", connectionTimeout=" + connectionTimeout + "ms" +
                 ", heartbeatInterval=" + heartbeatIntervalSeconds + "s" +
                 ", heartbeatTimeout=" + heartbeatTimeoutSeconds + "s" +
+                ", rateLimit=" + rateLimitPerSecond + "/s" +
+                ", maxUnacknowledged=" + maxUnacknowledgedMessages +
+                ", resumeReadingBelow=" + resumeReadingBelow +
+                ", maxOpenOrdersPerSession=" + maxOpenOrdersPerSession +
                 ", logLevel=" + logLevel +
                 '}';
     }
@@ -77,9 +95,18 @@ public class ServerConfiguration {
         private int port = 8080;
         private int maxConnections = 100;
         private int connectionTimeout = 30000; // 30 seconds
-        private long heartbeatIntervalSeconds = 10;
-        private long heartbeatTimeoutSeconds = 30;
-        private int rateLimitPerMinute = 100;
+        private long heartbeatIntervalSeconds = 1;
+        private long heartbeatTimeoutSeconds = 5;
+        private int rateLimitPerSecond = 0; // 0 = off; the spec limit is the Port Order Rate Threshold
+        private int maxUnacknowledgedMessages = 1_024;
+        private int resumeReadingBelow = 960;
+        private int maxOpenOrdersPerSession = 2_000; // spec: 200,000 per port
+        private PortAttributes portAttributes = PortAttributes.SPEC_DEFAULTS;
+
+        public Builder portAttributes(PortAttributes portAttributes) {
+            this.portAttributes = portAttributes;
+            return this;
+        }
         private Level logLevel = Level.INFO;
         
         public Builder host(String host) {
@@ -117,9 +144,23 @@ public class ServerConfiguration {
             return this;
         }
 
-        public Builder rateLimitPerMinute(int limit) {
-            if (limit < 1) throw new IllegalArgumentException("Rate limit must be at least 1");
-            this.rateLimitPerMinute = limit;
+        public Builder rateLimitPerSecond(int limit) {
+            if (limit < 0) throw new IllegalArgumentException("Rate limit must not be negative");
+            this.rateLimitPerSecond = limit;
+            return this;
+        }
+
+        public Builder flowControl(int maxUnacknowledged, int resumeBelow) {
+            if (resumeBelow < 1 || resumeBelow > maxUnacknowledged)
+                throw new IllegalArgumentException("Resume threshold must be between 1 and the pause threshold");
+            this.maxUnacknowledgedMessages = maxUnacknowledged;
+            this.resumeReadingBelow = resumeBelow;
+            return this;
+        }
+
+        public Builder maxOpenOrdersPerSession(int limit) {
+            if (limit < 1) throw new IllegalArgumentException("Max open orders must be at least 1");
+            this.maxOpenOrdersPerSession = limit;
             return this;
         }
         

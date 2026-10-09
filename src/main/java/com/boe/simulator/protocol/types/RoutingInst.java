@@ -12,7 +12,7 @@ public enum RoutingInst {
 
     private final byte wireValue;
 
-    private static final Map<Byte, RoutingInst> BY_WIRE = new HashMap<>(values().length * 2);
+    private static final Map<Byte, RoutingInst> BY_WIRE = HashMap.newHashMap(values().length);
 
     static {
         for (RoutingInst ri : values()) {

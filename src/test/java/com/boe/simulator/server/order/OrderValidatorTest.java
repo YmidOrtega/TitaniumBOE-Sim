@@ -14,7 +14,6 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
@@ -68,7 +67,7 @@ class OrderValidatorTest {
 
     // Helper: builds a spec-compliant NewOrder wire message and parses it.
     // Bitfield layout per spec v2.11.90 Table 28:
-    //   bf1 bits: 2=Price, 3=OrdType
+    //   bf1 bits: 2=Price, 4=OrdType
     //   bf2 bits: 0=Symbol, 6=Capacity
     //   bf4 bits: 0=MaturityDate, 1=StrikePrice, 2=PutOrCall, 4=OpenClose
     // Bitfields array always covers up to the highest non-zero bitfield index.
@@ -76,7 +75,7 @@ class OrderValidatorTest {
         byte bf1 = 0, bf2 = 0, bf3 = 0, bf4 = 0;
 
         if (price != null)                            bf1 |= 0x04;
-        if (ordType != 0)                             bf1 |= 0x08;
+        if (ordType != 0)                             bf1 |= 0x10;
         if (symbol != null && !symbol.isEmpty())      bf2 |= 0x01;
         if (capacity != 0)                            bf2 |= 0x40;
         if (maturityDate != null && !maturityDate.isEmpty()) bf4 |= 0x01;
@@ -100,7 +99,7 @@ class OrderValidatorTest {
         int baseSize = 2 + 2 + 1 + 1 + 4 + 20 + 1 + 4 + 1;
         int optionalSize = 0;
         if ((bf1 & 0x04) != 0) optionalSize += 8;
-        if ((bf1 & 0x08) != 0) optionalSize += 1;
+        if ((bf1 & 0x10) != 0) optionalSize += 1;
         if ((bf2 & 0x01) != 0) optionalSize += 8;
         if ((bf2 & 0x40) != 0) optionalSize += 1;
         if ((bf4 & 0x01) != 0) optionalSize += 4;
@@ -133,10 +132,9 @@ class OrderValidatorTest {
 
         // Optional fields in spec order
         if ((bf1 & 0x04) != 0) buffer.put(BinaryPrice.fromPrice(price).toBytes());
-        if ((bf1 & 0x08) != 0) buffer.put(ordType);
+        if ((bf1 & 0x10) != 0) buffer.put(ordType);
         if ((bf2 & 0x01) != 0) {
             byte[] symbolBytes = new byte[8];
-            Arrays.fill(symbolBytes, (byte) 0x20);
             if (symbol != null) {
                 byte[] srcBytes = symbol.getBytes(StandardCharsets.US_ASCII);
                 System.arraycopy(srcBytes, 0, symbolBytes, 0, Math.min(srcBytes.length, 8));
@@ -144,11 +142,7 @@ class OrderValidatorTest {
             buffer.put(symbolBytes);
         }
         if ((bf2 & 0x40) != 0) buffer.put(capacity);
-        if ((bf4 & 0x01) != 0) {
-            LocalDate epoch = LocalDate.of(1970, 1, 1);
-            LocalDate matDate = LocalDate.parse(maturityDate, java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-            buffer.putInt((int) java.time.temporal.ChronoUnit.DAYS.between(epoch, matDate));
-        }
+        if ((bf4 & 0x01) != 0) buffer.putInt(Integer.parseInt(maturityDate)); // Date: YYYYMMDD as integer
         if ((bf4 & 0x02) != 0) buffer.put(BinaryPrice.fromPrice(strikePrice).toBytes());
         if ((bf4 & 0x04) != 0) buffer.put(putOrCall);
         if ((bf4 & 0x10) != 0) buffer.put(openClose);
@@ -346,5 +340,35 @@ class OrderValidatorTest {
         String clOrdID = "NON_EXISTENT_CLORDID";
         when(orderRepository.existsByClOrdID(clOrdID)).thenReturn(false);
         assertFalse(orderValidator.isDuplicateClOrdID(clOrdID, orderRepository));
+    }
+
+    @Test
+    void validateNewOrder_whenStopOrderHasNoStopPx_isRejected() {
+        NewOrderMessage message = buildNewOrderMessage("STOP1", (byte) '1', 10, "AAPL", (byte) '3', new BigDecimal("150.00"), (byte) 'C', (byte) 0, null, null, (byte) 0);
+        OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
+        assertFalse(result.isValid());
+        assertTrue(result.errorMessage().contains("StopPx is required for Stop and Stop Limit orders"));
+    }
+
+    @Test
+    void validateNewOrder_whenOrdTypeIsUnknown_isRejectedInsteadOfThrowing() {
+        NewOrderMessage message = buildNewOrderMessage("ODD1", (byte) '1', 10, "AAPL", (byte) 'P', new BigDecimal("150.00"), (byte) 'C', (byte) 0, null, null, (byte) 0);
+        OrderValidator.ValidationResult result = assertDoesNotThrow(() -> orderValidator.validateNewOrder(message));
+        assertFalse(result.isValid());
+        assertTrue(result.errorMessage().contains("Invalid OrdType"));
+    }
+
+    @Test
+    void validateNewOrder_whenMarketOrderHasPrice_isRejected() {
+        NewOrderMessage message = buildNewOrderMessage("MKT1", (byte) '1', 10, "AAPL", (byte) '1', new BigDecimal("150.00"), (byte) 'C', (byte) 0, null, null, (byte) 0);
+        OrderValidator.ValidationResult result = orderValidator.validateNewOrder(message);
+        assertFalse(result.isValid());
+        assertTrue(result.errorMessage().contains("Price must not be specified on market orders"));
+    }
+
+    @Test
+    void validateNewOrder_whenMarketOrderHasNoPrice_isValid() {
+        NewOrderMessage message = buildNewOrderMessage("MKT2", (byte) '1', 10, "AAPL", (byte) '1', null, (byte) 'C', (byte) 0, null, null, (byte) 0);
+        assertTrue(orderValidator.validateNewOrder(message).isValid());
     }
 }

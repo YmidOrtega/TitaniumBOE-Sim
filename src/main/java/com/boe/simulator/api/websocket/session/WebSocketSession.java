@@ -42,9 +42,8 @@ public class WebSocketSession {
         this.lastActivity = System.currentTimeMillis();
     }
 
-    public boolean isActive() {
-        // Consider inactive if no activity for 5 minutes
-        return (System.currentTimeMillis() - lastActivity) < 300_000;
+    public boolean isIdleFor(long millis) {
+        return System.currentTimeMillis() - lastActivity >= millis;
     }
 
     // Getters

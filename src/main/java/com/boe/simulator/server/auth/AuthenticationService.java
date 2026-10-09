@@ -38,9 +38,9 @@ public class AuthenticationService {
         long userCount = userRepository.count();
 
         if (userCount == 0) {
-            createUser(System.getenv().getOrDefault("DEMO_USER_1", "TRD1"),  System.getenv().getOrDefault("DEMO_PASS_1", "Pass1234!"));
-            createUser(System.getenv().getOrDefault("DEMO_USER_2", "TRD2"),  System.getenv().getOrDefault("DEMO_PASS_2", "Pass5678!"));
-            createUser(System.getenv().getOrDefault("DEMO_ADMIN",  "ADMN"),  System.getenv().getOrDefault("DEMO_ADMIN_PASS", "Admin999!"));
+            createUser(System.getenv().getOrDefault("DEMO_USER_1", "TRD1"),  System.getenv().getOrDefault("DEMO_PASS_1", "Pass1234"));
+            createUser(System.getenv().getOrDefault("DEMO_USER_2", "TRD2"),  System.getenv().getOrDefault("DEMO_PASS_2", "Pass5678"));
+            createUser(System.getenv().getOrDefault("DEMO_ADMIN",  "ADMN"),  System.getenv().getOrDefault("DEMO_ADMIN_PASS", "Admin999"));
             LOGGER.log(Level.INFO, "Seeded {0} demo users (override with DEMO_USER_1/DEMO_PASS_1 env vars)", userRepository.count());
         } else {
             LOGGER.log(Level.INFO, "Found {0} existing users in database", userCount);

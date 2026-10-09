@@ -17,7 +17,6 @@ import com.boe.simulator.server.matching.TradeRepository;
 import com.boe.simulator.server.order.OrderManager;
 import com.boe.simulator.server.order.OrderRepository;
 import io.javalin.Javalin;
-import io.javalin.http.ContentType;
 import io.javalin.http.staticfiles.Location;
 
 import java.util.logging.Level;
@@ -160,6 +159,7 @@ public class RestApiServer {
 
         // Start server
         app.start(port);
+        webSocketService.startCleanup();
         running = true;
 
         // Bot management endpoints
@@ -187,6 +187,7 @@ public class RestApiServer {
 
         LOGGER.info("Stopping REST API Server...");
 
+        webSocketService.stopCleanup();
         if (app != null) app.stop();
 
         running = false;

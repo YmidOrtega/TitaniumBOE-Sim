@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class MessageRepositoryService implements MessageRepository {
     private static final Logger LOGGER = Logger.getLogger(MessageRepositoryService.class.getName());
@@ -32,9 +31,9 @@ public class MessageRepositoryService implements MessageRepository {
             // Save indexes for efficient querying
             saveIndexes(message);
 
-            LOGGER.fine("Saved message: " + message.messageId());
+            LOGGER.fine(() -> "Saved message: " + message.messageId());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save message: " + message.messageId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save message: " + message.messageId());
             throw new RuntimeException("Failed to save message", e);
         }
     }
@@ -68,7 +67,7 @@ public class MessageRepositoryService implements MessageRepository {
     @Override
     public Optional<PersistedMessage> findById(String messageId) {
         try {
-            String key = String.format("msg:%s", messageId);
+            String key = "msg:" + messageId;
             byte[] data = dbManager.get(RocksDBManager.CF_MESSAGES, key.getBytes());
 
             if (data == null) return Optional.empty();
@@ -76,7 +75,7 @@ public class MessageRepositoryService implements MessageRepository {
             PersistedMessage message = serializer.deserialize(data, PersistedMessage.class);
             return Optional.of(message);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find message: " + messageId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find message: " + messageId);
             return Optional.empty();
         }
     }
@@ -107,10 +106,10 @@ public class MessageRepositoryService implements MessageRepository {
     @Override
     public List<PersistedMessage> findByUsername(String username) {
         try {
-            String prefix = String.format("user:%s:", username);
+            String prefix = "user:" + username + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find messages by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find messages by username: " + username);
             return new ArrayList<>();
         }
     }
@@ -119,7 +118,7 @@ public class MessageRepositoryService implements MessageRepository {
     public List<PersistedMessage> findByUsername(String username, Instant start, Instant end) {
         return findByUsername(username).stream()
                 .filter(m -> !m.timestamp().isBefore(start) && !m.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -128,7 +127,7 @@ public class MessageRepositoryService implements MessageRepository {
             String prefix = String.format("type:0x%02X:", messageType);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find messages by type: " + messageType, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find messages by type: " + messageType);
             return new ArrayList<>();
         }
     }
@@ -137,7 +136,7 @@ public class MessageRepositoryService implements MessageRepository {
     public List<PersistedMessage> findByMessageType(byte messageType, Instant start, Instant end) {
         return findByMessageType(messageType).stream()
                 .filter(m -> !m.timestamp().isBefore(start) && !m.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -146,7 +145,7 @@ public class MessageRepositoryService implements MessageRepository {
             String prefix = String.format("conn:%d:", connectionId);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find messages by connection: " + connectionId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find messages by connection: " + connectionId);
             return new ArrayList<>();
         }
     }
@@ -155,7 +154,7 @@ public class MessageRepositoryService implements MessageRepository {
     public List<PersistedMessage> findByDirection(PersistedMessage.MessageDirection direction) {
         return findAll().stream()
                 .filter(m -> m.direction() == direction)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -163,24 +162,24 @@ public class MessageRepositoryService implements MessageRepository {
         return findAll().stream()
                 .filter(m -> !m.timestamp().isBefore(start) && !m.timestamp().isAfter(end))
                 .sorted(Comparator.comparing(PersistedMessage::timestamp))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<PersistedMessage> findBySession(String username, String sessionSubID) {
         return findByUsername(username).stream()
                 .filter(m -> sessionSubID.equals(m.sessionSubID()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public void delete(String messageId) {
         try {
-            String key = String.format("msg:%s", messageId);
+            String key = "msg:" + messageId;
             dbManager.delete(RocksDBManager.CF_MESSAGES, key.getBytes());
-            LOGGER.fine("Deleted message: " + messageId);
+            LOGGER.fine(() -> "Deleted message: " + messageId);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to delete message: " + messageId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to delete message: " + messageId);
             throw new RuntimeException("Failed to delete message", e);
         }
     }
@@ -197,11 +196,11 @@ public class MessageRepositoryService implements MessageRepository {
                 delete(message.messageId());
                 deleted++;
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to delete old message: " + message.messageId(), e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to delete old message: " + message.messageId());
             }
         }
 
-        LOGGER.info("Deleted " + deleted + " messages older than " + cutoffDate);
+        LOGGER.log(Level.INFO, "Deleted {0} messages older than {1}", new Object[]{deleted, cutoffDate});
         return deleted;
     }
 
@@ -225,7 +224,7 @@ public class MessageRepositoryService implements MessageRepository {
         return findAll().stream()
                 .sorted(Comparator.comparing(PersistedMessage::timestamp).reversed())
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -236,49 +235,49 @@ public class MessageRepositoryService implements MessageRepository {
         if (criteria.username() != null) {
             results = results.stream()
                     .filter(m -> criteria.username().equals(m.username()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.connectionId() != null) {
             results = results.stream()
                     .filter(m -> m.connectionId() == criteria.connectionId())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.messageType() != null) {
             results = results.stream()
                     .filter(m -> m.messageType() == criteria.messageType())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.direction() != null) {
             results = results.stream()
                     .filter(m -> m.direction() == criteria.direction())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.startDate() != null) {
             results = results.stream()
                     .filter(m -> !m.timestamp().isBefore(criteria.startDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.endDate() != null) {
             results = results.stream()
                     .filter(m -> !m.timestamp().isAfter(criteria.endDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         // Sort by timestamp descending
         results = results.stream()
                 .sorted(Comparator.comparing(PersistedMessage::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
 
         // Apply limit
         if (criteria.limit() != null && criteria.limit() > 0) {
             results = results.stream()
                     .limit(criteria.limit())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return results;
@@ -301,6 +300,6 @@ public class MessageRepositoryService implements MessageRepository {
 
         return messages.stream()
                 .sorted(Comparator.comparing(PersistedMessage::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
     }
 }

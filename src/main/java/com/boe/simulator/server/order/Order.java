@@ -1,6 +1,7 @@
 package com.boe.simulator.server.order;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -8,10 +9,13 @@ import java.util.Map;
 import com.boe.simulator.protocol.types.Capacity;
 import com.boe.simulator.protocol.types.OpenClose;
 import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.PreventMatch;
 import com.boe.simulator.protocol.types.PutOrCall;
 import com.boe.simulator.protocol.types.RoutingInst;
 import com.boe.simulator.protocol.types.Side;
+import com.boe.simulator.protocol.types.TimeInForce;
 
+@SuppressWarnings("java:S3078")
 public class Order {
 
     // Identificadores
@@ -25,8 +29,21 @@ public class Order {
     private final int orderQty;
     private int leavesQty;
     private int cumQty;
+    private BigDecimal notional = BigDecimal.ZERO;
     private final BigDecimal price;
     private final OrdType ordType;
+    private final TimeInForce timeInForce;
+    private final PreventMatch preventMatch;
+    private final int customGroupId;
+    private final int minQty;
+    private final long expireTime;
+    private volatile boolean carried;
+    private volatile int maxFloor;
+    private final int displayRange;
+    private final BigDecimal stopPx;
+    private volatile BigDecimal modifiedStopPx;
+    private volatile int displayQty;
+    private volatile boolean stopElected;
 
     // Symbology
     private final String symbol;
@@ -45,11 +62,13 @@ public class Order {
 
     // Estado y timestamps
     private OrderState state;
+    private volatile byte cancelReason;
     private final Instant createdAt;
     private Instant lastModified;
 
     // Mutable overrides applied by Modify Order
     private volatile String modifiedClOrdID;
+    private volatile int modifyCount;
     private volatile BigDecimal modifiedPrice;
     private volatile OrdType modifiedOrdType;
     private volatile int modifiedOrderQty;  // 0 = not modified
@@ -63,6 +82,7 @@ public class Order {
 
     // Optional fields storage
     private final Map<String, Object> optionalFields;
+    private final Map<String, byte[]> echoFields;
 
     private Order(Builder builder) {
         this.clOrdID = builder.clOrdID;
@@ -75,6 +95,14 @@ public class Order {
         this.cumQty = 0;
         this.price = builder.price;
         this.ordType = builder.ordType;
+        this.timeInForce = builder.timeInForce;
+        this.preventMatch = builder.preventMatch;
+        this.customGroupId = builder.customGroupId;
+        this.minQty = builder.minQty;
+        this.expireTime = builder.expireTime;
+        this.maxFloor = builder.maxFloor;
+        this.displayRange = builder.displayRange;
+        this.stopPx = builder.stopPx;
         this.symbol = builder.symbol;
         this.maturityDate = builder.maturityDate;
         this.strikePrice = builder.strikePrice;
@@ -91,6 +119,7 @@ public class Order {
         this.receivedSequence = builder.receivedSequence;
         this.lastSentSequence = 0;
         this.optionalFields = new HashMap<>(builder.optionalFields);
+        this.echoFields = Map.copyOf(builder.echoFields);
         this.matchingUnit = builder.matchingUnit;
     }
 
@@ -108,6 +137,11 @@ public class Order {
         this.optionalFields.put("rejectReason", reason);
     }
 
+    public void cancel(byte reason) {
+        cancel();
+        this.cancelReason = reason;
+    }
+
     public void cancel() {
         if (!state.isCancellable()) throw new IllegalStateException("Cannot cancel order in state: " + state);
 
@@ -120,10 +154,34 @@ public class Order {
 
         this.cumQty += qty;
         this.leavesQty -= qty;
+        if (maxFloor > 0) this.displayQty = Math.max(0, displayQty - qty);
+        this.notional = notional.add(execPrice.multiply(BigDecimal.valueOf(qty)));
 
         if (this.leavesQty == 0) this.state = OrderState.FILLED;
         else this.state = OrderState.PARTIALLY_FILLED;
 
+        this.lastModified = Instant.now();
+    }
+
+    public void reloadDisplay(int displayed) {
+        this.displayQty = Math.clamp(displayed, 1, Math.max(1, leavesQty));
+    }
+
+    public void elect() {
+        this.stopElected = true;
+        this.lastModified = Instant.now();
+    }
+
+    public void modifyReserveAndStop(int newMaxFloor, BigDecimal newStopPx) {
+        if (newMaxFloor >= 0) this.maxFloor = newMaxFloor;
+        if (newStopPx != null) this.modifiedStopPx = newStopPx;
+    }
+
+    public void decrement(int qty, boolean orderQtyToo) {
+        if (qty <= 0 || qty > leavesQty) throw new IllegalArgumentException("Invalid decrement: " + qty);
+        if (orderQtyToo) this.modifiedOrderQty = getEffectiveOrderQty() - qty;
+        this.leavesQty -= qty;
+        if (maxFloor > 0) this.displayQty = Math.min(displayQty, leavesQty);
         this.lastModified = Instant.now();
     }
 
@@ -137,6 +195,8 @@ public class Order {
         if (newOrdType  != null) this.modifiedOrdType  = newOrdType;
         if (newOrderQty  > 0)   this.modifiedOrderQty  = newOrderQty;
         this.leavesQty    = newLeavesQty;
+        if (maxFloor > 0) this.displayQty = Math.min(displayQty, newLeavesQty);
+        this.modifyCount++;
         this.lastModified = Instant.now();
     }
 
@@ -155,11 +215,30 @@ public class Order {
     public String getUsername() { return username; }
     public Side getSide() { return side; }
     public int getOrderQty() { return orderQty; }
+    public int getModifyCount() { return modifyCount; }
     public int getEffectiveOrderQty() { return modifiedOrderQty > 0 ? modifiedOrderQty : orderQty; }
     public int getLeavesQty() { return leavesQty; }
     public int getCumQty() { return cumQty; }
+    public BigDecimal getAvgPx() { return cumQty > 0 ? notional.divide(BigDecimal.valueOf(cumQty), 4, RoundingMode.HALF_EVEN) : null; }
+    public Map<String, byte[]> getEchoFields() { return echoFields; }
     public BigDecimal getPrice() { return modifiedPrice != null ? modifiedPrice : price; }
     public OrdType getOrdType() { return modifiedOrdType != null ? modifiedOrdType : ordType; }
+    public TimeInForce getTimeInForce() { return timeInForce; }
+    public PreventMatch getPreventMatch() { return preventMatch; }
+    public int getCustomGroupId() { return customGroupId; }
+    public int getMinQty() { return minQty; }
+    public long getExpireTime() { return expireTime; }
+    public boolean isCarried() { return carried; }
+    public void markCarried() { this.carried = true; }
+    public boolean persistsOvernight() { return timeInForce == TimeInForce.GTC || timeInForce == TimeInForce.GTD; }
+    public int getMaxFloor() { return maxFloor; }
+    public int getDisplayRange() { return displayRange; }
+    public BigDecimal getStopPx() { return modifiedStopPx != null ? modifiedStopPx : stopPx; }
+    public boolean isReserve() { return maxFloor > 0; }
+    public int getDisplayQty() { return maxFloor > 0 ? displayQty : leavesQty; }
+    public boolean isPendingStop() { return getOrdType().isStop() && !stopElected; }
+    public boolean isStopElected() { return stopElected; }
+    public byte getCancelReason() { return cancelReason; }
     public String getSymbol() { return symbol; }
     public Instant getMaturityDate() { return maturityDate; }
     public BigDecimal getStrikePrice() { return strikePrice; }
@@ -235,6 +314,14 @@ public class Order {
         private int orderQty;
         private BigDecimal price;
         private OrdType ordType = OrdType.LIMIT;
+        private TimeInForce timeInForce = TimeInForce.DAY;
+        private PreventMatch preventMatch;
+        private int customGroupId;
+        private int minQty;
+        private long expireTime;
+        private int maxFloor;
+        private int displayRange;
+        private BigDecimal stopPx;
         private String symbol;
         private Instant maturityDate;
         private BigDecimal strikePrice;
@@ -247,6 +334,7 @@ public class Order {
         private RoutingInst routingInst = RoutingInst.BOOK_ONLY;
         private int receivedSequence;
         private final Map<String, Object> optionalFields = new HashMap<>();
+        private Map<String, byte[]> echoFields = Map.of();
         private byte matchingUnit = 0;
 
         public Builder matchingUnit(byte matchingUnit) {
@@ -291,6 +379,46 @@ public class Order {
 
         public Builder ordType(OrdType ordType) {
             this.ordType = ordType;
+            return this;
+        }
+
+        public Builder timeInForce(TimeInForce timeInForce) {
+            this.timeInForce = timeInForce;
+            return this;
+        }
+
+        public Builder expireTime(long expireTime) {
+            this.expireTime = expireTime;
+            return this;
+        }
+
+        public Builder minQty(int minQty) {
+            this.minQty = minQty;
+            return this;
+        }
+
+        public Builder maxFloor(int maxFloor) {
+            this.maxFloor = maxFloor;
+            return this;
+        }
+
+        public Builder displayRange(int displayRange) {
+            this.displayRange = displayRange;
+            return this;
+        }
+
+        public Builder stopPx(BigDecimal stopPx) {
+            this.stopPx = stopPx;
+            return this;
+        }
+
+        public Builder customGroupId(int customGroupId) {
+            this.customGroupId = customGroupId;
+            return this;
+        }
+
+        public Builder preventMatch(PreventMatch preventMatch) {
+            this.preventMatch = preventMatch;
             return this;
         }
 
@@ -349,6 +477,11 @@ public class Order {
             return this;
         }
 
+        public Builder echoFields(Map<String, byte[]> echoFields) {
+            this.echoFields = echoFields != null ? echoFields : Map.of();
+            return this;
+        }
+
         public Builder optionalField(String key, Object value) {
             this.optionalFields.put(key, value);
             return this;
@@ -365,6 +498,7 @@ public class Order {
             if (symbol == null || symbol.isEmpty()) throw new IllegalArgumentException("Symbol is required");
 
             if (ordType == OrdType.LIMIT && price == null) throw new IllegalArgumentException("Price is required for limit orders");
+            if (ordType == OrdType.STOP_LIMIT && price == null) throw new IllegalArgumentException("Price is required for stop limit orders");
 
             return new Order(this);
         }

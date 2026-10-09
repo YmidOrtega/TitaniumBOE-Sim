@@ -2,9 +2,12 @@ package com.boe.simulator.server.matching;
 
 import com.boe.simulator.api.websocket.WebSocketService;
 import com.boe.simulator.protocol.types.OrdType;
+import com.boe.simulator.protocol.types.PreventMatch;
 import com.boe.simulator.protocol.types.Side;
+import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.server.order.Order;
 import com.boe.simulator.server.order.OrderRepository;
+import com.boe.simulator.server.order.OrderState;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -16,13 +19,21 @@ import java.util.logging.Logger;
 public class MatchingEngine {
     private static final Logger LOGGER = Logger.getLogger(MatchingEngine.class.getName());
 
+    // Order Reason Codes (p.213) and RestatementReason (p.126)
+    public static final byte CANCEL_NO_LIQUIDITY = (byte) 'N';
+    public static final byte CANCEL_WOULD_WASH = (byte) 'V';
+    public static final byte RESTATED_WASH = (byte) 'W';
+    public static final byte RESTATED_RELOAD = (byte) 'L';
+
+    private final Random random = new Random();
+
     private final Map<String, OrderBook> orderBooks;
     private final Map<String, Object> symbolLocks;
     private final OrderRepository orderRepository;
     private final TradeRepository tradeRepository;
     private final AtomicLong tradeIdGenerator;
     private final List<MatchingEventListener> eventListeners;
-    private final boolean allowSelfTrade;
+    private volatile PreventMatch defaultMtp;
     private final AtomicLong totalMatches;
     private final AtomicLong totalTradeVolume;
     private WebSocketService webSocketService;
@@ -38,11 +49,11 @@ public class MatchingEngine {
         this.tradeRepository = tradeRepository;
         this.tradeIdGenerator = new AtomicLong(1000000);
         this.eventListeners = new ArrayList<>();
-        this.allowSelfTrade = allowSelfTrade;
+        this.defaultMtp = allowSelfTrade ? null : PreventMatch.PORT_DEFAULT;
         this.totalMatches = new AtomicLong(0);
         this.totalTradeVolume = new AtomicLong(0);
 
-        LOGGER.info("MatchingEngine initialized (Self-trade: " + allowSelfTrade + ")");
+        LOGGER.info(() -> "MatchingEngine initialized (Self-trade: " + allowSelfTrade + ")");
     }
 
     public void setWebSocketService(WebSocketService webSocketService) {
@@ -54,15 +65,37 @@ public class MatchingEngine {
         Object symbolLock = symbolLocks.computeIfAbsent(symbol, k -> new Object());
 
         synchronized (symbolLock) {
-        OrderBook book = orderBooks.computeIfAbsent(symbol, OrderBook::new);
+            OrderBook book = orderBooks.computeIfAbsent(symbol, OrderBook::new);
+            if (order.isPendingStop()) {
+                book.addStop(order);
+                return List.of();
+            }
+            List<Trade> trades = executeIncoming(order, book);
+            if (!trades.isEmpty()) electStops(book);
+            return trades;
+        }
+    }
 
+    // An incoming (new, modified or elected) order: FOK / MinQty checks, matching, then rest or cancel the remainder
+    private List<Trade> executeIncoming(Order order, OrderBook book) {
         List<Trade> trades = new ArrayList<>();
+        boolean immediate = order.getTimeInForce().isImmediate() || isMarketLike(order);
 
-        // If it is a market order or can be matched immediately, attempt matching.
+        if (order.getTimeInForce() == TimeInForce.FOK && fillableQuantity(order, book) < order.getLeavesQty()) {
+            order.cancel(CANCEL_NO_LIQUIDITY);
+            return trades;
+        }
+        if (order.getTimeInForce() == TimeInForce.IOC && order.getMinQty() > 0 && fillableQuantity(order, book) < order.getMinQty()) {
+            order.cancel(CANCEL_NO_LIQUIDITY);
+            return trades;
+        }
+
         if (canMatch(order, book)) trades = executeMatching(order, book);
 
-        // If there is an outstanding amount, add it to the book.
-        if (order.getLeavesQty() > 0 && order.isLive()) {
+        if (immediate && order.getLeavesQty() > 0 && order.getState().isCancellable()) {
+            order.cancel(CANCEL_NO_LIQUIDITY);
+        } else if (order.getLeavesQty() > 0 && order.isLive()) {
+            if (order.isReserve()) order.reloadDisplay(nextDisplay(order));
             book.addOrder(order);
             notifyOrderAdded(order, book);
 
@@ -71,9 +104,36 @@ public class MatchingEngine {
                         new Object[]{order.getClOrdID(), order.getLeavesQty(), order.getPrice()});
             }
         }
-
         return trades;
-        } // end synchronized
+    }
+
+    // Stop and Stop Limit orders elect off a new last sale (StopPx, p.211); trades of elected orders can elect more
+    private void electStops(OrderBook book) {
+        BigDecimal lastPrice = book.getLastTradePrice();
+        while (lastPrice != null) {
+            List<Order> elected = book.takeElectedStops(lastPrice);
+            boolean traded = false;
+            for (Order stop : elected) {
+                if (!stop.getState().isActive()) continue;
+                stop.elect();
+                LOGGER.log(Level.INFO, "Stop order elected: {0} (StopPx {1}, last sale {2})",
+                        new Object[]{stop.getClOrdID(), stop.getStopPx(), lastPrice});
+                traded |= !executeIncoming(stop, book).isEmpty();
+                if (stop.getState() == OrderState.CANCELLED) notifyOrderCancelled(stop, stop.getCancelReason(), book);
+            }
+            if (!traded) return;
+            lastPrice = book.getLastTradePrice();
+        }
+    }
+
+    private static boolean isMarketLike(Order order) {
+        return order.getOrdType() == OrdType.MARKET || (order.getOrdType() == OrdType.STOP && order.isStopElected());
+    }
+
+    // Random replenishment (DisplayRange, p.200): MaxFloor ± DisplayRange in round lots of one contract
+    private int nextDisplay(Order order) {
+        if (order.getDisplayRange() <= 0) return order.getMaxFloor();
+        return order.getMaxFloor() - order.getDisplayRange() + random.nextInt(2 * order.getDisplayRange() + 1);
     }
 
     /**
@@ -84,22 +144,53 @@ public class MatchingEngine {
     public List<Trade> modifyOrder(Order order, String newClOrdID, BigDecimal newPrice,
                                    com.boe.simulator.protocol.types.OrdType newOrdType,
                                    int newOrderQty) {
+        return modifyOrder(order, newClOrdID, newPrice, newOrdType, newOrderQty, null, null);
+    }
+
+    /**
+     * Time priority is kept when the modify only decreases OrderQty, changes StopPx on an unelected
+     * stop and/or changes MaxFloor (p.77); any other change, or no change at all, loses it.
+     */
+    public List<Trade> modifyOrder(Order order, String newClOrdID, BigDecimal newPrice,
+                                   com.boe.simulator.protocol.types.OrdType newOrdType,
+                                   int newOrderQty, Integer newMaxFloor, BigDecimal newStopPx) {
         String symbol = order.getSymbol();
         Object symbolLock = symbolLocks.computeIfAbsent(symbol, k -> new Object());
 
         synchronized (symbolLock) {
             OrderBook book = orderBooks.computeIfAbsent(symbol, OrderBook::new);
 
-            // 1. Remove at current (old) price — must happen BEFORE updating price on the order
-            book.removeOrder(order);
-            notifyOrderRemoved(order, book);
-
-            // 2. Compute new leavesQty per spec delta logic (p.77):
-            //    delta = newOrderQty - currentEffectiveOrderQty
-            //    newLeavesQty = leavesQty + delta
+            // Delta logic (p.77): newLeavesQty = leavesQty + (newOrderQty - currentEffectiveOrderQty)
             int currentQty = order.getEffectiveOrderQty();
             int delta       = newOrderQty - currentQty;
             int newLeavesQty = order.getLeavesQty() + delta;
+
+            boolean pendingStop = book.hasStop(order);
+            boolean samePrice = newPrice == null || order.getPrice() == null || newPrice.compareTo(order.getPrice()) == 0;
+            boolean sameOrdType = newOrdType == null || newOrdType == order.getOrdType();
+            boolean maxFloorChanged = newMaxFloor != null && newMaxFloor != order.getMaxFloor();
+            boolean stopPxChanged = newStopPx != null && pendingStop && newStopPx.compareTo(order.getStopPx()) != 0;
+            boolean keepsPriority = newLeavesQty > 0 && delta <= 0 && samePrice && sameOrdType
+                    && (delta < 0 || maxFloorChanged || stopPxChanged);
+
+            Runnable change = () -> {
+                order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty);
+                order.modifyReserveAndStop(newMaxFloor != null ? newMaxFloor : -1, newStopPx);
+                if (maxFloorChanged && order.isReserve()) order.reloadDisplay(nextDisplay(order));
+            };
+            if (keepsPriority) {
+                if (pendingStop) change.run();
+                else book.updateInPlace(order, change);
+                return List.of();
+            }
+
+            if (pendingStop) book.removeStop(order);
+
+            // Remove at the current price — must happen BEFORE updating the price on the order
+            if (!pendingStop) {
+                book.removeOrder(order);
+                notifyOrderRemoved(order, book);
+            }
 
             if (newLeavesQty <= 0) {
                 // Spec: if resulting leavesQty <= 0, cancel the order
@@ -109,22 +200,29 @@ public class MatchingEngine {
                 return List.of();
             }
 
-            // 3. Apply modification to order
-            order.modify(newClOrdID, newPrice, newOrdType, newOrderQty, newLeavesQty);
-
-            // 4. Try matching at new price
-            List<Trade> trades = new ArrayList<>();
-            if (canMatch(order, book)) {
-                trades = executeMatching(order, book);
+            change.run();
+            if (order.isPendingStop()) {
+                book.addStop(order);
+                return List.of();
             }
 
-            // 5. Re-add to book if still live
-            if (order.getLeavesQty() > 0 && order.isLive()) {
-                book.addOrder(order);
-                notifyOrderAdded(order, book);
-            }
-
+            List<Trade> trades = executeIncoming(order, book);
+            if (!trades.isEmpty()) electStops(book);
             return trades;
+        }
+    }
+
+    /** Puts an order recovered from the database back in the book (or the stop list) without matching it. */
+    public void restore(Order order) {
+        Object symbolLock = symbolLocks.computeIfAbsent(order.getSymbol(), k -> new Object());
+        synchronized (symbolLock) {
+            OrderBook book = orderBooks.computeIfAbsent(order.getSymbol(), OrderBook::new);
+            if (order.isPendingStop()) {
+                book.addStop(order);
+            } else if (order.getPrice() != null && order.getLeavesQty() > 0) {
+                if (order.isReserve()) order.reloadDisplay(nextDisplay(order));
+                book.addOrder(order);
+            }
         }
     }
 
@@ -132,7 +230,7 @@ public class MatchingEngine {
         OrderBook book = orderBooks.get(order.getSymbol());
         if (book == null) return false;
 
-        boolean removed = book.removeOrder(order);
+        boolean removed = book.removeOrder(order) || book.removeStop(order);
         if (removed) {
             notifyOrderRemoved(order, book);
             LOGGER.log(Level.FINE, "Order cancelled from book: {0}", order.getClOrdID());
@@ -142,7 +240,7 @@ public class MatchingEngine {
     }
 
     private boolean canMatch(Order incomingOrder, OrderBook book) {
-        if (incomingOrder.getOrdType() == OrdType.MARKET) return true;
+        if (isMarketLike(incomingOrder)) return true;
 
         BigDecimal incomingPrice = incomingOrder.getPrice();
         if (incomingPrice == null) return false;
@@ -154,6 +252,30 @@ public class MatchingEngine {
             BigDecimal bestBid = book.getBestBid();
             return bestBid != null && incomingPrice.compareTo(bestBid) <= 0;
         }
+    }
+
+    private int fillableQuantity(Order order, OrderBook book) {
+        int needed = order.getLeavesQty();
+        int available = 0;
+        for (Order resting : book.getOppositeOrders(order.getSide())) {
+            if (!isPriceAcceptable(order, resting.getPrice())) break;
+            if (!resting.getState().isActive()) continue;
+            PreventMatch prevention = preventionBetween(order, resting);
+            if (prevention != null) {
+                if (prevention.modifier() == PreventMatch.CANCEL_OLDEST) continue;
+                break;
+            }
+            available += resting.getLeavesQty();
+            if (available >= needed) break;
+        }
+        return available;
+    }
+
+    private static boolean isPriceAcceptable(Order incoming, BigDecimal restingPrice) {
+        if (isMarketLike(incoming)) return true;
+        if (incoming.getPrice() == null) return false;
+        int cmp = incoming.getPrice().compareTo(restingPrice);
+        return incoming.getSide() == Side.BUY ? cmp >= 0 : cmp <= 0;
     }
 
     private List<Trade> executeMatching(Order aggressiveOrder, OrderBook book) {
@@ -173,24 +295,14 @@ public class MatchingEngine {
                 continue;
             }
 
-            String aggressiveUsername = aggressiveOrder.getUsername();
-            String passiveUsername = passiveOrder.getUsername();
-
-            // Verify self-trade
-            if (!allowSelfTrade && aggressiveUsername != null && passiveUsername != null) {
-                if (aggressiveUsername.equals(passiveUsername)) {
-                    LOGGER.log(Level.WARNING, "Self-trade prevented: {0}", aggressiveUsername);
-                    book.removeOrder(passiveOrder);
-                    if (passiveOrder.getState().isCancellable()) {
-                        passiveOrder.cancel();
-                        orderRepository.saveAsync(passiveOrder);
-                    }
-                    continue;
-                }
+            PreventMatch prevention = preventionBetween(aggressiveOrder, passiveOrder);
+            if (prevention != null) {
+                if (applyPrevention(prevention, aggressiveOrder, passiveOrder, book)) break;
+                continue;
             }
 
-            // Calculate quantity to be executed
-            int fillQty = Math.min(aggressiveOrder.getLeavesQty(), passiveOrder.getLeavesQty());
+            // The displayed quantity of each resting order trades first (MaxFloor, p.205)
+            int fillQty = Math.min(aggressiveOrder.getLeavesQty(), passiveOrder.getDisplayQty());
 
             // Execution price is the price of the passive order (price-time priority).
             BigDecimal execPrice = passiveOrder.getPrice();
@@ -213,6 +325,11 @@ public class MatchingEngine {
 
             // If the passive order has been completed, remove it from the book.
             if (passiveOrder.getLeavesQty() == 0) book.removeOrder(passiveOrder);
+            else if (passiveOrder.isReserve() && passiveOrder.getDisplayQty() == 0) {
+                passiveOrder.reloadDisplay(nextDisplay(passiveOrder));
+                book.requeue(passiveOrder);
+                notifyOrderRestated(passiveOrder, RESTATED_RELOAD, false, book);
+            }
 
             // Update statistics
             totalMatches.incrementAndGet();
@@ -226,6 +343,80 @@ public class MatchingEngine {
         }
 
         return trades;
+    }
+
+    // Default MTP Value port attribute (p.220); null = none
+    public void setDefaultMtp(PreventMatch defaultMtp) {
+        this.defaultMtp = defaultMtp;
+    }
+
+    private PreventMatch effectivePreventMatch(Order order) {
+        return order.getPreventMatch() != null ? order.getPreventMatch() : defaultMtp;
+    }
+
+    // Match Trade Prevention (PreventMatch, p.207): the inbound order's instruction applies
+    private PreventMatch preventionBetween(Order inbound, Order resting) {
+        PreventMatch in = effectivePreventMatch(inbound);
+        PreventMatch rest = effectivePreventMatch(resting);
+        if (in == null || rest == null || in.level() != rest.level()) return null;
+        if (inbound.getUsername() == null || !inbound.getUsername().equals(resting.getUsername())) return null;
+        if (in.level() == PreventMatch.EFID_LEVEL && !Objects.equals(inbound.getClearingFirm(), resting.getClearingFirm())) return null;
+        if (in.tradingGroup() != 0 && rest.tradingGroup() != 0 && in.tradingGroup() != rest.tradingGroup()) return null;
+        return in;
+    }
+
+    // true when the inbound order is cancelled and matching must stop
+    private boolean applyPrevention(PreventMatch prevention, Order inbound, Order resting, OrderBook book) {
+        int inQty = inbound.getLeavesQty();
+        int restQty = resting.getLeavesQty();
+        boolean cancelInbound = false;
+        boolean cancelResting = false;
+        int decrementInbound = 0;
+        int decrementResting = 0;
+
+        switch (prevention.modifier()) {
+            case PreventMatch.CANCEL_NEWEST -> cancelInbound = true;
+            case PreventMatch.CANCEL_OLDEST -> cancelResting = true;
+            case PreventMatch.CANCEL_SMALLEST -> {
+                cancelInbound = inQty <= restQty;
+                cancelResting = restQty <= inQty;
+            }
+            case PreventMatch.DECREMENT, PreventMatch.DECREMENT_LEAVES_ONLY -> {
+                PreventMatch restingPrevention = effectivePreventMatch(resting);
+                if (inQty == restQty || (restQty > inQty && !restingPrevention.decrements())) {
+                    cancelInbound = cancelResting = true;
+                } else if (inQty < restQty) {
+                    cancelInbound = true;
+                    decrementResting = inQty;
+                } else {
+                    cancelResting = true;
+                    decrementInbound = restQty;
+                }
+            }
+            default -> cancelInbound = cancelResting = true;
+        }
+        LOGGER.log(Level.INFO, "Match trade prevention {0}: inbound {1}, resting {2}",
+                new Object[]{prevention.modifier(), inbound.getClOrdID(), resting.getClOrdID()});
+
+        boolean orderQtyToo = prevention.modifier() == PreventMatch.DECREMENT;
+        if (cancelResting) {
+            book.removeOrder(resting);
+            resting.cancel(CANCEL_WOULD_WASH);
+            orderRepository.saveAsync(resting);
+            notifyOrderCancelled(resting, CANCEL_WOULD_WASH, book);
+        }
+        if (decrementResting > 0) {
+            int qty = decrementResting;
+            book.updateInPlace(resting, () -> resting.decrement(qty, orderQtyToo));
+            orderRepository.saveAsync(resting);
+            notifyOrderRestated(resting, RESTATED_WASH, false, book);
+        }
+        if (decrementInbound > 0) {
+            inbound.decrement(decrementInbound, orderQtyToo);
+            notifyOrderRestated(inbound, RESTATED_WASH, true, book);
+        }
+        if (cancelInbound) inbound.cancel(CANCEL_WOULD_WASH);
+        return cancelInbound;
     }
 
     private Trade createTrade(Order aggressive, Order passive, int qty, BigDecimal price) {
@@ -246,6 +437,7 @@ public class MatchingEngine {
                 .price(price)
                 .matchingUnit(aggressive.getMatchingUnit())
                 .clearingFirm(aggressive.getClearingFirm())
+                .aggressorSide(aggressive.getSide())
                 .build();
     }
 
@@ -270,6 +462,27 @@ public class MatchingEngine {
         for (MatchingEventListener listener : eventListeners) {
             try {
                 listener.onTradeExecuted(trade, book);
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error notifying listener", e);
+            }
+        }
+    }
+
+    private void notifyOrderCancelled(Order order, byte reason, OrderBook book) {
+        for (MatchingEventListener listener : eventListeners) {
+            try {
+                listener.onOrderCancelled(order, reason, book);
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error notifying listener", e);
+            }
+        }
+        if (webSocketService != null) webSocketService.broadcastOrderBookUpdate(order.getSymbol(), book, 10);
+    }
+
+    private void notifyOrderRestated(Order order, byte reason, boolean incoming, OrderBook book) {
+        for (MatchingEventListener listener : eventListeners) {
+            try {
+                listener.onOrderRestated(order, reason, incoming, book);
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error notifying listener", e);
             }
@@ -323,5 +536,7 @@ public class MatchingEngine {
         default void onTradeExecuted(Trade trade, OrderBook book) {}
         default void onOrderAdded(Order order, OrderBook book) {}
         default void onOrderRemoved(Order order, OrderBook book) {}
+        default void onOrderCancelled(Order order, byte reason, OrderBook book) {}
+        default void onOrderRestated(Order order, byte reason, boolean incoming, OrderBook book) {}
     }
 }

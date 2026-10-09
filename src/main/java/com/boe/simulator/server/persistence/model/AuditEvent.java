@@ -89,7 +89,7 @@ public record AuditEvent(
     }
 
     public String getIndexKey() {
-        return String.format("audit:%s", eventId);
+        return "audit:" + eventId;
     }
 
     public String getTypeIndexKey() {

@@ -21,13 +21,10 @@ import java.nio.charset.StandardCharsets;
  *   [51]  ModifyOrderBitfield¹         1B  (if NumberOfBitfields > 0)
  *         Optional fields…
  *
- * Bitfield map (p.176):
- *   Byte 1: 0x01=ClearingFirm(4B,Alpha), 0x04=OrderQty(4B,Binary,R),
- *           0x08=Price(8B,BinaryPrice,R), 0x10=OrdType(1B),
- *           0x20=CancelOrigOnReject(1B), 0x40=ExecInst(1B), 0x80=Side(1B)
- *   Byte 2: 0x01=MaxFloor(4B), 0x02=StopPx(8B,BinaryPrice),
- *           0x04=RoutingFirmID(4B,Alpha), 0x08=ManualOrderIndicator(1B),
- *           0x10=OperatorId(4B,Alpha), 0x20=FrequentTraderID(20B), 0x80=LocateBroker(8B)
+ * Input bitfields (p.176) — every other bit is blank, reserved or "-" and cannot be specified:
+ *   Byte 1: 0x01=ClearingFirm(4B,Alpha), 0x04=OrderQty(4B,Binary,R), 0x08=Price(8B,BinaryPrice,R),
+ *           0x10=OrdType(1B), 0x20=CancelOrigOnReject(1B), 0x40=ExecInst(1B)
+ *   Byte 2: 0x01=MaxFloor(4B), 0x02=StopPx(8B,BinaryPrice), 0x04=RoutingFirmID(4B,Alpha)
  *
  * R = Required. OrderQty and Price must be present on all requests;
  * Price is optional for market orders (OrdType='1').
@@ -37,18 +34,30 @@ public final class ModifyOrderMessage extends ApplicationMessage {
     static final byte MESSAGE_TYPE = 0x3A;
     private static final int FIXED_SIZE = 51;
 
+    private static final int MAX_BITFIELDS = 2;
+    private static final int[][] FIELD_LENGTHS = {
+        {4, 0, 4, 8, 1, 1, 1, 0},   // 0 = blank, reserved or not allowed
+        {4, 8, 4, 0, 0, 0, 0, 0},
+    };
+
     private byte matchingUnit;
     private int sequenceNumber;
     private String clOrdID;
     private String origClOrdID;
+    private byte[] bitfields = new byte[0];
 
-    // Optional fields parsed from bitfields
     private String clearingFirm;
-    private int orderQty;           // 0 = not present
-    private BigDecimal price;       // null = not present
+    private int orderQty;
+    private BigDecimal price;       // null = not present or 0
     private byte ordType;           // 0 = not present
     private byte cancelOrigOnReject;
-    private byte side;
+    private byte execInst;
+    private int maxFloor;
+    private long stopPx;
+    private String routingFirmID;
+
+    private String fieldError;
+    private String charsetError;
 
     private ModifyOrderMessage() {}
 
@@ -67,40 +76,72 @@ public final class ModifyOrderMessage extends ApplicationMessage {
         ModifyOrderMessage msg = new ModifyOrderMessage();
         msg.matchingUnit   = buf.get();
         msg.sequenceNumber = buf.getInt();
-        msg.clOrdID        = getText(buf, 20);
-        msg.origClOrdID    = getText(buf, 20);
+        msg.clOrdID        = msg.getText(buf, 20, "ClOrdID", FieldCharset.CLORDID);
+        msg.origClOrdID    = msg.getText(buf, 20, "OrigClOrdID", FieldCharset.TEXT);
 
         int numBitfields = buf.get() & 0xFF;
-        byte[] bitfields = new byte[numBitfields];
-        for (int i = 0; i < numBitfields && buf.hasRemaining(); i++) {
-            bitfields[i] = buf.get();
+        if (buf.remaining() < numBitfields) {
+            msg.fieldError = "Modify Order is too short for its bitfields";
+            return msg;
         }
+        msg.bitfields = new byte[numBitfields];
+        buf.get(msg.bitfields);
 
-        // Byte 1 optional fields
-        if (numBitfields >= 1) {
-            byte bf1 = bitfields[0];
-            if ((bf1 & 0x01) != 0) msg.clearingFirm      = getAlpha(buf, 4);
-            if ((bf1 & 0x04) != 0) msg.orderQty           = buf.getInt();
-            if ((bf1 & 0x08) != 0) msg.price              = readPrice(buf);
-            if ((bf1 & 0x10) != 0) msg.ordType             = buf.get();
-            if ((bf1 & 0x20) != 0) msg.cancelOrigOnReject  = buf.get();
-            if ((bf1 & 0x40) != 0) buf.get();              // ExecInst — discard
-            if ((bf1 & 0x80) != 0) msg.side                = buf.get();
-        }
-
-        // Byte 2 optional fields — parse sizes only, fields not used by simulator
-        if (numBitfields >= 2) {
-            byte bf2 = bitfields[1];
-            if ((bf2 & 0x01) != 0) buf.getInt();                      // MaxFloor
-            if ((bf2 & 0x02) != 0) buf.getLong();                     // StopPx
-            if ((bf2 & 0x04) != 0) buf.getInt();                      // RoutingFirmID
-            if ((bf2 & 0x08) != 0) buf.get();                         // ManualOrderIndicator
-            if ((bf2 & 0x10) != 0) buf.getInt();                      // OperatorId
-            if ((bf2 & 0x20) != 0) buf.position(buf.position() + 20); // FrequentTraderID
-            if ((bf2 & 0x80) != 0) buf.getLong();                     // LocateBroker
-        }
-
+        msg.parseOptionalFields(buf);
+        if (msg.fieldError == null) msg.fieldError = msg.charsetError;
         return msg;
+    }
+
+    private void parseOptionalFields(ByteBuffer buf) {
+        for (int i = 0; i < bitfields.length; i++) {
+            for (int bit = 0; bit < 8; bit++) {
+                if ((bitfields[i] & 0xFF & (1 << bit)) == 0) continue;
+
+                int length = i < MAX_BITFIELDS ? FIELD_LENGTHS[i][bit] : 0;
+                if (length == 0) {
+                    fieldError = "Bitfield " + (i + 1) + " bit " + (1 << bit) + " cannot be specified on Modify Order";
+                    return;
+                }
+                if (buf.remaining() < length) {
+                    fieldError = "Modify Order is too short for its optional fields";
+                    return;
+                }
+                assign(i, 1 << bit, buf);
+            }
+        }
+        fieldError = unsupportedField();
+    }
+
+    private void assign(int bitfield, int bit, ByteBuffer buf) {
+        if (bitfield == 0) {
+            switch (bit) {
+                case 0x01 -> clearingFirm = getAlpha(buf, 4, "ClearingFirm");
+                case 0x04 -> orderQty = buf.getInt();
+                case 0x08 -> price = readPrice(buf);
+                case 0x10 -> ordType = buf.get();
+                case 0x20 -> cancelOrigOnReject = buf.get();
+                case 0x40 -> execInst = buf.get();
+                default -> throw new IllegalStateException("No field for bit " + bit);
+            }
+        } else {
+            switch (bit) {
+                case 0x01 -> maxFloor = buf.getInt();
+                case 0x02 -> stopPx = buf.getLong();
+                case 0x04 -> routingFirmID = getAlpha(buf, 4, "RoutingFirmID");
+                default -> throw new IllegalStateException("No field for bit " + bit);
+            }
+        }
+    }
+
+    private String unsupportedField() {
+        if (cancelOrigOnReject != 0 && cancelOrigOnReject != 'N' && cancelOrigOnReject != 'Y')
+            return "Invalid CancelOrigOnReject '" + (char) cancelOrigOnReject + "'";
+        if (execInst != 0) return "ExecInst is not supported by the simulator";
+        return null;
+    }
+
+    private boolean hasBit(int bitfield, int bit) {
+        return bitfield < bitfields.length && (bitfields[bitfield] & bit) != 0;
     }
 
     private static BigDecimal readPrice(ByteBuffer buf) {
@@ -108,20 +149,17 @@ public final class ModifyOrderMessage extends ApplicationMessage {
         return raw != 0 ? BigDecimal.valueOf(raw, 4) : null;
     }
 
-    private static String getText(ByteBuffer buf, int len) {
+    private String getText(ByteBuffer buf, int len, String field, FieldCharset charset) {
         byte[] bytes = new byte[len];
         buf.get(bytes);
+        if (charsetError == null) charsetError = charset.check(field, bytes);
         int end = len;
         while (end > 0 && bytes[end - 1] == 0x00) end--;
         return new String(bytes, 0, end, StandardCharsets.US_ASCII).trim();
     }
 
-    private static String getAlpha(ByteBuffer buf, int len) {
-        byte[] bytes = new byte[len];
-        buf.get(bytes);
-        int end = len;
-        while (end > 0 && (bytes[end - 1] == 0x00 || bytes[end - 1] == 0x20)) end--;
-        return new String(bytes, 0, end, StandardCharsets.US_ASCII).trim();
+    private String getAlpha(ByteBuffer buf, int len, String field) {
+        return getText(buf, len, field, FieldCharset.ALPHA);
     }
 
     @Override
@@ -141,9 +179,14 @@ public final class ModifyOrderMessage extends ApplicationMessage {
     public BigDecimal getPrice()          { return price; }
     public byte  getOrdType()             { return ordType; }
     public byte  getCancelOrigOnReject()  { return cancelOrigOnReject; }
-    public byte  getSide()                { return side; }
-    public boolean hasOrderQty()          { return orderQty > 0; }
-    public boolean hasPrice()             { return price != null; }
+    public boolean cancelsOrigOnReject()  { return cancelOrigOnReject == 'Y'; }
+    public String getRoutingFirmID()      { return routingFirmID; }
+    public boolean hasMaxFloor()          { return hasBit(1, 0x01); }
+    public int   getMaxFloor()            { return maxFloor; }
+    public BigDecimal getStopPx()         { return hasBit(1, 0x02) ? BigDecimal.valueOf(stopPx, 4) : null; }
+    public String getFieldError()         { return fieldError; }
+    public boolean hasOrderQty()          { return hasBit(0, 0x04); }
+    public boolean hasPrice()             { return hasBit(0, 0x08); }
 
     @Override
     public String toString() {

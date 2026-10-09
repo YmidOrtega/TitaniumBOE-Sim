@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.persistence.model.PersistedSession;
@@ -19,6 +18,7 @@ public class ClientSessionManager {
     private final ConcurrentHashMap<Integer, ClientConnectionHandler> handlers;
     private final ConcurrentHashMap<String, ClientConnectionHandler> handlersByUsername;
     private final SessionStatistics statistics;
+    private final BoeSessionRegistry sessionStates = new BoeSessionRegistry();
 
     private final SessionRepository sessionRepository;
     private final ConcurrentHashMap<Integer, PersistedSession> activeSessions;
@@ -150,7 +150,7 @@ public class ClientSessionManager {
             LOGGER.log(Level.INFO, "✓ Persisted session {0} (user={1}, duration={2}s)", new Object[]{closedSession.sessionId(), closedSession.username(), closedSession.durationSeconds()});
             
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to persist session for connection " + handler.getSession().getConnectionId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to persist session for connection " + handler.getSession().getConnectionId());
         }
     }
 
@@ -174,7 +174,7 @@ public class ClientSessionManager {
     public List<ClientConnectionHandler> getAuthenticatedHandlers() {
         return handlers.values().stream()
             .filter(h -> h.getSession().isAuthenticated())
-            .collect(Collectors.toList());
+            .toList();
     }
 
     public void broadcastMessage(byte[] messageBytes) {
@@ -223,12 +223,12 @@ public class ClientSessionManager {
         return false;
     }
 
-    public void disconnectAll() {
-        LOGGER.log(Level.INFO, "Disconnecting all sessions ({0} active)", handlers.size());
-        
+    public void logoutAll(byte reason, String text) {
+        LOGGER.log(Level.INFO, "Logging out all sessions ({0} active): {1}", new Object[]{handlers.size(), text});
+
         for (ClientConnectionHandler handler : handlers.values()) {
             try {
-                handler.stop();
+                handler.logoutAndClose(reason, text);
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error disconnecting connection {0}: {1}", new Object[]{handler.getSession().getConnectionId(), e.getMessage()});
             }
@@ -246,6 +246,10 @@ public class ClientSessionManager {
             .count();
     }
     
+    public BoeSessionRegistry getSessionStates() {
+        return sessionStates;
+    }
+
     public SessionStatistics getStatistics() {
         return statistics;
     }
@@ -253,7 +257,7 @@ public class ClientSessionManager {
     public List<SessionInfo> getSessionInfoList() {
         return handlers.values().stream()
             .map(h -> SessionInfo.from(h.getSession()))
-            .collect(Collectors.toList());
+            .toList();
     }
 
     public void printSessionSummary() {

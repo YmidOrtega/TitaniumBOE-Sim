@@ -23,14 +23,14 @@ public class BotManager {
     // Register a new bot
     public void registerBot(BotConfig config, TradingStrategy strategy) {
         if (bots.containsKey(config.botId())) {
-            LOGGER.warning("Bot already registered: " + config.botId());
+            LOGGER.warning(() -> "Bot already registered: " + config.botId());
             return;
         }
 
         Bot bot = new Bot(config, strategy);
         bots.put(config.botId(), bot);
 
-        LOGGER.info("Bot registered: " + config.botId() + " (" + strategy.getStrategyName() + ")");
+        LOGGER.info(() -> "Bot registered: " + config.botId() + " (" + strategy.getStrategyName() + ")");
 
         // Auto-start if manager is running
         if (running && config.enabled()) bot.start();
@@ -49,7 +49,7 @@ public class BotManager {
             if (bot.getConfig().enabled()) bot.start();
         }
 
-        LOGGER.info("BotManager started with " + bots.size() + " bots");
+        LOGGER.info(() -> "BotManager started with " + bots.size() + " bots");
     }
 
     // Stop all bots
@@ -77,7 +77,7 @@ public class BotManager {
     public boolean startBot(String botId) {
         Bot bot = bots.get(botId);
         if (bot == null) {
-            LOGGER.warning("Bot not found: " + botId);
+            LOGGER.warning(() -> "Bot not found: " + botId);
             return false;
         }
 
@@ -89,7 +89,7 @@ public class BotManager {
     public boolean stopBot(String botId) {
         Bot bot = bots.get(botId);
         if (bot == null) {
-            LOGGER.warning("Bot not found: " + botId);
+            LOGGER.warning(() -> "Bot not found: " + botId);
             return false;
         }
 
@@ -103,7 +103,7 @@ public class BotManager {
         if (bot == null) return false;
 
         bot.shutdown();
-        LOGGER.info("Bot removed: " + botId);
+        LOGGER.info(() -> "Bot removed: " + botId);
         return true;
     }
 
