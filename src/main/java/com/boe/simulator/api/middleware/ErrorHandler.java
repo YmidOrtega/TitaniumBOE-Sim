@@ -9,6 +9,9 @@ import io.javalin.http.ExceptionHandler;
 import io.javalin.http.HttpStatus;
 
 public class ErrorHandler {
+
+    private ErrorHandler() {
+    }
     private static final Logger LOGGER = Logger.getLogger(ErrorHandler.class.getName());
 
     public static ExceptionHandler<Exception> handle() {

@@ -3,6 +3,9 @@ package com.boe.simulator.server.validation;
 import com.boe.simulator.protocol.message.BoeMessage;
 
 public class MessageValidator {
+
+    private MessageValidator() {
+    }
     private static final int MIN_MESSAGE_LENGTH = 10;       // full header: MessageLength >= 8
     private static final int MAX_MESSAGE_LENGTH = 2 + 0xFFFF; // StartOfMessage + max MessageLength
 

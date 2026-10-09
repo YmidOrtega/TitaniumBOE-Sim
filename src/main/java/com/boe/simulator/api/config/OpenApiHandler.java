@@ -4,6 +4,9 @@ import io.javalin.http.Context;
 
 public class OpenApiHandler {
 
+    private OpenApiHandler() {
+    }
+
     public static void handle(Context ctx, int port) {
         String spec = """
             {

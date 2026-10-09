@@ -5,6 +5,9 @@ import org.mindrot.jbcrypt.BCrypt;
 import java.util.logging.Logger;
 
 public class PasswordHasher {
+
+    private PasswordHasher() {
+    }
     private static final Logger LOGGER = Logger.getLogger(PasswordHasher.class.getName());
     private static final int DEFAULT_LOG_ROUNDS = 12;
 

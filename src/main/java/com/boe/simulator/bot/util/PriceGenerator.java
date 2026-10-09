@@ -5,6 +5,9 @@ import java.util.Map;
 
 public class PriceGenerator {
 
+    private PriceGenerator() {
+    }
+
     private static final Map<String, BigDecimal> DEFAULT_PRICES = Map.of(
             "AAPL", new BigDecimal("150.00"),
             "MSFT", new BigDecimal("380.00"),

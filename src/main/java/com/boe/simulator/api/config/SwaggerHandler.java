@@ -4,6 +4,9 @@ import io.javalin.http.Context;
 
 public class SwaggerHandler {
 
+    private SwaggerHandler() {
+    }
+
     public static void handle(Context ctx) {
         String html = """
             <!DOCTYPE html>
