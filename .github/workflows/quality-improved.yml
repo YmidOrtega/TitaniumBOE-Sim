@@ -65,9 +65,9 @@ jobs:
     - name: Test Quality Gate
       run: |
         if compgen -G "target/surefire-reports/TEST-*.xml" > /dev/null; then
-          FAILURES=$(grep -o 'failures="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-          ERRORS=$(grep -o 'errors="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-          TESTS=$(grep -o 'tests="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          FAILURES=$(grep -ho 'failures="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          ERRORS=$(grep -ho 'errors="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
+          TESTS=$(grep -ho 'tests="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
           
           # Default to 0 if empty
           FAILURES=${FAILURES:-0}
