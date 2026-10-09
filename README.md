@@ -248,9 +248,9 @@ Results on a 16-core machine, three runs with a freshly started server each time
 | Metric | Result | Target |
 |---|---|---|
 | Concurrent TCP connections | 500, none refused | ≥ 500 |
-| BOE logins | 50–54/s | ≥ 200/s ❌ (BCrypt cost 12, deliberate) |
-| REST throughput | 4,700–10,700 req/s | ≥ 800 req/s |
-| Order Ack P99 (900 orders, 10 sessions, all acknowledged) | 2.8–4.3 ms | < 5 ms |
+| BOE logins | 50–56/s | ≥ 200/s ❌ (BCrypt cost 12, deliberate) |
+| REST throughput (public endpoints) | 4,600–4,700 req/s | ≥ 800 req/s |
+| Order Ack P99 (900 orders, 10 sessions, all acknowledged) | 2.5–4.0 ms | < 5 ms |
 | Order Ack P99 on a cold server (latency phase only) | 7.2–13.9 ms | — |
 
 The memory phase measures the client's heap, not the server's, so its result is not meaningful.

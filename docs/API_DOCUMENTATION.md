@@ -291,12 +291,14 @@ curl http://localhost:9091/api/trades/symbol/AAPL
 
 ### Simulador (Admin)
 
+Todas las rutas `/api/simulator/*` requieren Basic Auth, como órdenes, posiciones y trades.
+
 #### `GET /api/simulator/status`
 
 Estado general del simulador: uptime, órdenes totales, matches.
 
 ```bash
-curl http://localhost:9091/api/simulator/status
+curl -u TRD1:Pass1234 http://localhost:9091/api/simulator/status
 ```
 
 #### `GET /api/simulator/bots`
@@ -304,7 +306,7 @@ curl http://localhost:9091/api/simulator/status
 Lista de bots configurados y su estado.
 
 ```bash
-curl http://localhost:9091/api/simulator/bots
+curl -u TRD1:Pass1234 http://localhost:9091/api/simulator/bots
 ```
 
 ```json
@@ -320,8 +322,8 @@ curl http://localhost:9091/api/simulator/bots
 #### `POST /api/simulator/bots/{botId}/stop`
 
 ```bash
-curl -X POST http://localhost:9091/api/simulator/bots/TRADER-001/start
-curl -X POST http://localhost:9091/api/simulator/bots/MM-001/stop
+curl -X POST -u TRD1:Pass1234 http://localhost:9091/api/simulator/bots/TRADER-001/start
+curl -X POST -u TRD1:Pass1234 http://localhost:9091/api/simulator/bots/MM-001/stop
 ```
 
 ---

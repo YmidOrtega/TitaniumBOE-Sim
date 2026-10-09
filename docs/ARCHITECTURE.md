@@ -78,7 +78,7 @@ TitaniumBOE-Sim resuelve esto en Java 21 con una implementación completa y test
 | REST / WebSocket | Javalin 6.7 (Jetty 11) | Ligero, sin reflection en el hot path, compatible con VThreads. Fijado en 6.x: Javalin 7 traería Jetty 12 pero rehace la API de enrutado — ver nota de seguridad abajo |
 | Persistencia | RocksDB 9.11 | Escritura asíncrona (write-behind queue), alta throughput para órdenes |
 | Seguridad | JBCrypt | Hash de contraseñas con work factor configurable |
-| Testing | JUnit 5 + Awaitility | 603 tests; pruebas de wire format contra la spec |
+| Testing | JUnit 5 + Awaitility | 606 tests; pruebas de wire format contra la spec |
 
 > **Aviso de seguridad conocido:** Jetty 11 arrastra CVE-2026-6790 (*HTTP Authority/Host
 > mismatch*, severidad media) sin parche disponible, porque la rama 11.x está EOL. Corregirlo
@@ -927,16 +927,17 @@ existente. No hace falta migración.
 | Trades | GET | `/api/trades/my` | Basic | Mis trades |
 | Trades | GET | `/api/trades/recent` | Basic | Trades recientes (mercado) |
 | Trades | GET | `/api/trades/symbol/{symbol}` | Basic | Trades por símbolo |
-| Simulador | GET | `/api/simulator/status` | No | Estado del simulador |
-| Simulador | GET | `/api/simulator/bots` | No | Lista de bots |
-| Simulador | POST | `/api/simulator/bots/{id}/start` | No | Iniciar bot |
-| Simulador | POST | `/api/simulator/bots/{id}/stop` | No | Detener bot |
-| Simulador | POST | `/api/simulator/start` | No | Iniciar todos los bots |
-| Simulador | POST | `/api/simulator/stop` | No | Detener todos los bots |
+| Simulador | GET | `/api/simulator/status` | Sí | Estado del simulador |
+| Simulador | GET | `/api/simulator/bots` | Sí | Lista de bots |
+| Simulador | POST | `/api/simulator/bots/{id}/start` | Sí | Iniciar bot |
+| Simulador | POST | `/api/simulator/bots/{id}/stop` | Sí | Detener bot |
+| Simulador | POST | `/api/simulator/start` | Sí | Iniciar todos los bots |
+| Simulador | POST | `/api/simulator/stop` | Sí | Detener todos los bots |
 | Docs | GET | `/api/docs` | No | Scalar UI (OpenAPI) |
 
-> Los filtros `before` registrados son `/api/orders*`, `/api/positions*`, `/api/trades*` y
-> `/api/auth/me`. Las rutas `/api/simulator/*` quedan **sin autenticar**.
+> Los filtros `before` registrados son `/api/orders*`, `/api/positions*`, `/api/trades*`,
+> `/api/simulator*` y `/api/auth/me`. Cuando la autenticación falla, el filtro responde 401 y llama a
+> `ctx.skipRemainingHandlers()`, así que el handler de la ruta no llega a ejecutarse.
 
 ### 9.2 WebSocket Feed
 
@@ -1034,7 +1035,7 @@ Detalle completo y limitación conocida en §6.3.
 
 ### 12.1 Cobertura
 
-603 tests distribuidos en 65 clases (cifras de `mvn test`, no estimadas):
+606 tests distribuidos en 66 clases (cifras de `mvn test`, no estimadas):
 
 | Área | Tests | Enfoque |
 |------|-------|---------|
@@ -1050,6 +1051,7 @@ Detalle completo y limitación conocida en §6.3.
 | Rate limiting (`server/ratelimit/`) | 16 | Token bucket por conexión, contrapresión en vez de descarte; límite de mass cancels idénticos |
 | Conexión (`server/connection/`) | 56 | Orden de `SequenceNumber`, umbrales 1.024/960, reconexión, replay, heartbeats, login (`M`/`F`/primer mensaje), respuestas a Cancel, Modify e IOC, orden ACK → ejecuciones, Quote Update Rejected y Logout `!` por mensajes no soportados, y métricas con sockets reales |
 | WebSocket (`api/websocket/`) | 3 | Limpieza de sesiones inactivas |
+| Middleware (`api/middleware/`) | 3 | El filtro de autenticación corta la petición con 401 |
 | Servidor (`server/`) | 5 | Hora del cierre del día (17:30 ET, horario de verano) |
 | Validación de mensajes (`server/validation/`) | 7 | Header completo, longitud y marcador |
 | Heartbeat (`server/heartbeat/`) | 5 | Intervalos y timeout |
