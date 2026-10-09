@@ -237,8 +237,10 @@ class MatchingEngineMtpTest {
     @Test
     @DisplayName("PreventMatch inválido: se rechaza al parsear")
     void invalidPreventMatchIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> PreventMatch.fromBytes("XF\0".getBytes()));
-        assertThrows(IllegalArgumentException.class, () -> PreventMatch.fromBytes("OX\0".getBytes()));
+        byte[] badModifier = "XF\0".getBytes();
+        byte[] badLevel = "OX\0".getBytes();
+        assertThrows(IllegalArgumentException.class, () -> PreventMatch.fromBytes(badModifier));
+        assertThrows(IllegalArgumentException.class, () -> PreventMatch.fromBytes(badLevel));
         assertNull(PreventMatch.fromBytes(new byte[3]));
     }
 }

@@ -34,7 +34,7 @@ class RateLimiterTest {
         long wait = rateLimiter.reserve(2);
 
         assertTrue(wait > 0, "Message beyond the burst must wait, not be dropped");
-        assertEquals(NANOS_PER_PERMIT, wait, 1);
+        assertEquals((double) NANOS_PER_PERMIT, (double) wait, 1.0);
     }
 
     @Test
@@ -44,8 +44,8 @@ class RateLimiterTest {
         long first = rateLimiter.reserve(3);
         long second = rateLimiter.reserve(3);
 
-        assertEquals(NANOS_PER_PERMIT, first, 1);
-        assertEquals(2 * NANOS_PER_PERMIT, second, 1);
+        assertEquals((double) NANOS_PER_PERMIT, (double) first, 1.0);
+        assertEquals((double) (2 * NANOS_PER_PERMIT), (double) second, 1.0);
     }
 
     @Test

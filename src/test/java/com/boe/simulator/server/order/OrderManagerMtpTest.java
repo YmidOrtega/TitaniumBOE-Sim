@@ -49,7 +49,6 @@ class OrderManagerMtpTest {
 
     // Appends PreventMatch (bitfield 3, bit 32) to an encoded New Order
     private static byte[] withPreventMatch(byte[] bytes, String preventMatch) {
-        ByteBuffer in = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         int numberOfBitfields = bytes[35] & 0xFF;
         int fieldsStart = 36 + numberOfBitfields;
         byte[] bitfields = java.util.Arrays.copyOfRange(bytes, 36, fieldsStart);

@@ -56,7 +56,7 @@ class UnacknowledgedMessageGateTest {
     }
 
     @Test
-    void close_releasesPausedReader() throws Exception {
+    void close_releasesPausedReader() {
         UnacknowledgedMessageGate gate = new UnacknowledgedMessageGate(1, 1);
         gate.onRead();
         gate.onRead();

@@ -49,32 +49,37 @@ class ServerConfigurationTest {
     @Test
     void builder_shouldThrowException_forInvalidPort() {
         // Assert
-        assertThrows(IllegalArgumentException.class, () -> ServerConfiguration.builder().port(0));
-        assertThrows(IllegalArgumentException.class, () -> ServerConfiguration.builder().port(65536));
+        ServerConfiguration.Builder builder = ServerConfiguration.builder();
+        assertThrows(IllegalArgumentException.class, () -> builder.port(0));
+        assertThrows(IllegalArgumentException.class, () -> builder.port(65536));
     }
 
     @Test
     void builder_shouldThrowException_forInvalidMaxConnections() {
         // Assert
-        assertThrows(IllegalArgumentException.class, () -> ServerConfiguration.builder().maxConnections(0));
+        ServerConfiguration.Builder builder = ServerConfiguration.builder();
+        assertThrows(IllegalArgumentException.class, () -> builder.maxConnections(0));
     }
 
     @Test
     void builder_shouldThrowException_forInvalidConnectionTimeout() {
         // Assert
-        assertThrows(IllegalArgumentException.class, () -> ServerConfiguration.builder().connectionTimeout(999));
+        ServerConfiguration.Builder builder = ServerConfiguration.builder();
+        assertThrows(IllegalArgumentException.class, () -> builder.connectionTimeout(999));
     }
 
     @Test
     void builder_shouldThrowException_forInvalidHeartbeatInterval() {
         // Assert
-        assertThrows(IllegalArgumentException.class, () -> ServerConfiguration.builder().heartbeatIntervalSeconds(0));
+        ServerConfiguration.Builder builder = ServerConfiguration.builder();
+        assertThrows(IllegalArgumentException.class, () -> builder.heartbeatIntervalSeconds(0));
     }
 
     @Test
     void builder_shouldThrowException_forInvalidHeartbeatTimeout() {
         // Assert
-        assertThrows(IllegalArgumentException.class, () -> ServerConfiguration.builder().heartbeatTimeoutSeconds(4));
+        ServerConfiguration.Builder builder = ServerConfiguration.builder();
+        assertThrows(IllegalArgumentException.class, () -> builder.heartbeatTimeoutSeconds(4));
     }
 
     @Test

@@ -9,7 +9,6 @@ import com.boe.simulator.protocol.message.OrderRejectedMessage;
 import com.boe.simulator.protocol.types.BinaryPrice;
 import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.server.matching.MatchingEngine;
-import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.session.ClientSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

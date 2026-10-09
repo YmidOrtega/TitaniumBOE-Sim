@@ -87,7 +87,7 @@ class LogoutResponseMessageTest {
 
     @Test
     void reasonProtocolViolation_constantExists() {
-        assertEquals((byte) '!', LogoutResponseMessage.REASON_PROTOCOL_VIOLATION);
+        assertEquals(LogoutResponseMessage.REASON_PROTOCOL_VIOLATION, (byte) '!');
     }
 
     @Test

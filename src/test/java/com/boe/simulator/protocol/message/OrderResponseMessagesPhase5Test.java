@@ -1,6 +1,5 @@
 package com.boe.simulator.protocol.message;
 
-import com.boe.simulator.protocol.types.OrdType;
 import com.boe.simulator.protocol.types.Side;
 import com.boe.simulator.server.matching.Trade;
 import com.boe.simulator.server.order.Order;

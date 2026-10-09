@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import static org.mockito.Mockito.mock;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -86,7 +88,7 @@ class BoeMessageSerializerTest {
     @Test
     void serialize_boeMessage_shouldReturnDataFromMessage() {
         // Arrange
-        BoeMessage mockMessage = org.mockito.Mockito.mock(BoeMessage.class);
+        BoeMessage mockMessage = mock(BoeMessage.class);
         byte[] expectedData = {(byte) 0xBA, (byte) 0xBA, 0x05, 0x00, 0x01};
         when(mockMessage.getData()).thenReturn(expectedData);
 
