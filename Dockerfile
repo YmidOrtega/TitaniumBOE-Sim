@@ -9,13 +9,12 @@ COPY pom.xml ./
 # Download dependencies (cached layer)
 RUN mvn dependency:go-offline -B
 
-# Copy source and frontend
+# Copy source
 # Increment CACHE_BUST to force Railway to rebuild from this layer onward
 ARG CACHE_BUST=1
 COPY src ./src
-COPY frontend ./frontend
 
-# Build: Astro frontend (via frontend-maven-plugin) + fat JAR
+# Build the fat JAR
 RUN mvn clean package -DskipTests -B
 
 # Runtime stage — Debian-based for full glibc compatibility (RocksDB JNI)
@@ -46,7 +45,7 @@ RUN groupadd -r appgroup && \
 # Switch to non-root user
 USER appuser
 
-# Expose ports (BOE binary protocol + REST API/dashboard)
+# Expose ports (BOE binary protocol + REST API)
 EXPOSE 8081 9091
 
 # Health check against the API port (PORT wins when the platform injects it)

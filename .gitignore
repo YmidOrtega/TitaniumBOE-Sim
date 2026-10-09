@@ -63,13 +63,6 @@ autocommit.md
 docs/PHASES.md
 
 ####################################
-# Frontend
-####################################
-frontend/node_modules/
-frontend/dist/
-frontend/.astro/
-
-####################################
 # Notas locales (no parte del proyecto)
 ####################################
 REPASO-ENTREVISTA.md

@@ -117,6 +117,8 @@ public class RestApiServer {
                 matchingEngine.getTotalMatches()
         )));
 
+        app.get("/", ctx -> ctx.redirect("/api/docs"));
+
         app.ws("/ws/feed", wsHandler::configure);
 
         // API Documentation endpoints - Scalar UI (recommended)
