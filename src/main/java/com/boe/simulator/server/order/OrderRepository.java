@@ -56,7 +56,7 @@ public class OrderRepository {
             dbManager.put(CF_ORDERS, key.getBytes(), value);
             LOGGER.log(Level.FINE, "Saved order: {0}", order.getClOrdID());
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to save order: " + order.getClOrdID(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save order: " + order.getClOrdID());
             throw new RuntimeException("Failed to save order", e);
         }
     }
@@ -127,7 +127,7 @@ public class OrderRepository {
             LOGGER.log(Level.SEVERE, "Batch flush failed, falling back to individual saves", e);
             for (Order o : orders) {
                 try { save(o); } catch (Exception ex) {
-                    LOGGER.log(Level.SEVERE, "Individual save failed for " + o.getClOrdID(), ex);
+                    LOGGER.log(Level.SEVERE, ex, () -> "Individual save failed for " + o.getClOrdID());
                 }
             }
         }
@@ -145,7 +145,7 @@ public class OrderRepository {
             PersistedOrder persistedOrder = serializer.deserialize(data, PersistedOrder.class);
             return Optional.of(persistedOrder.toOrder());
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find order: " + clOrdID, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find order: " + clOrdID);
             return Optional.empty();
         }
     }
@@ -161,7 +161,7 @@ public class OrderRepository {
 
             return Optional.empty();
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find order by OrderID: " + orderID, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find order by OrderID: " + orderID);
             return empty();
         }
     }
@@ -176,7 +176,7 @@ public class OrderRepository {
         try {
             allData = dbManager.getAll(CF_ORDERS);
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to find orders by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find orders by username: " + username);
             return new ArrayList<>();
         }
 
@@ -214,7 +214,7 @@ public class OrderRepository {
                 if (order.isLive()) activeOrders.add(order);
             } catch (Exception e) {
                 String key = new String(entry.getKey(), StandardCharsets.UTF_8);
-                LOGGER.log(Level.WARNING, "Failed to deserialize order: " + key + ", skipping...", e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to deserialize order: " + key + ", skipping...");
             }
         }
 
@@ -240,7 +240,7 @@ public class OrderRepository {
             dbManager.delete(CF_ORDERS, key.getBytes());
             LOGGER.log(Level.INFO, "Deleted order: {0}", clOrdID);
         } catch (RocksDBException e) {
-            LOGGER.log(Level.SEVERE, "Failed to delete order: " + clOrdID, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to delete order: " + clOrdID);
             throw new RuntimeException("Failed to delete order", e);
         }
     }
@@ -250,7 +250,7 @@ public class OrderRepository {
             String key = buildKey(clOrdID);
             return dbManager.exists(CF_ORDERS, key.getBytes());
         } catch (RocksDBException | IllegalArgumentException e) {
-            LOGGER.log(Level.WARNING, "Failed to check if order exists: " + clOrdID, e);
+            LOGGER.log(Level.WARNING, e, () -> "Failed to check if order exists: " + clOrdID);
             return false;
         }
     }

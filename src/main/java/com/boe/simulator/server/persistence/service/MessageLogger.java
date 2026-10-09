@@ -49,7 +49,7 @@ public class MessageLogger {
 
             messageRepository.save(persistedMessage);
 
-            LOGGER.fine("Logged inbound message: " + messageTypeName);
+            LOGGER.fine(() -> "Logged inbound message: " + messageTypeName);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to log inbound message", e);
         }
@@ -86,7 +86,7 @@ public class MessageLogger {
 
             messageRepository.save(persistedMessage);
 
-            LOGGER.fine("Logged outbound message: " + messageTypeName);
+            LOGGER.fine(() -> "Logged outbound message: " + messageTypeName);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to log outbound message", e);
         }

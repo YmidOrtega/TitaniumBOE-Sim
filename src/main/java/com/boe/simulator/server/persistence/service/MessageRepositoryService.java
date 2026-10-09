@@ -31,9 +31,9 @@ public class MessageRepositoryService implements MessageRepository {
             // Save indexes for efficient querying
             saveIndexes(message);
 
-            LOGGER.fine("Saved message: " + message.messageId());
+            LOGGER.fine(() -> "Saved message: " + message.messageId());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save message: " + message.messageId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save message: " + message.messageId());
             throw new RuntimeException("Failed to save message", e);
         }
     }
@@ -75,7 +75,7 @@ public class MessageRepositoryService implements MessageRepository {
             PersistedMessage message = serializer.deserialize(data, PersistedMessage.class);
             return Optional.of(message);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find message: " + messageId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find message: " + messageId);
             return Optional.empty();
         }
     }
@@ -109,7 +109,7 @@ public class MessageRepositoryService implements MessageRepository {
             String prefix = String.format("user:%s:", username);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find messages by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find messages by username: " + username);
             return new ArrayList<>();
         }
     }
@@ -127,7 +127,7 @@ public class MessageRepositoryService implements MessageRepository {
             String prefix = String.format("type:0x%02X:", messageType);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find messages by type: " + messageType, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find messages by type: " + messageType);
             return new ArrayList<>();
         }
     }
@@ -145,7 +145,7 @@ public class MessageRepositoryService implements MessageRepository {
             String prefix = String.format("conn:%d:", connectionId);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find messages by connection: " + connectionId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find messages by connection: " + connectionId);
             return new ArrayList<>();
         }
     }
@@ -177,9 +177,9 @@ public class MessageRepositoryService implements MessageRepository {
         try {
             String key = String.format("msg:%s", messageId);
             dbManager.delete(RocksDBManager.CF_MESSAGES, key.getBytes());
-            LOGGER.fine("Deleted message: " + messageId);
+            LOGGER.fine(() -> "Deleted message: " + messageId);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to delete message: " + messageId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to delete message: " + messageId);
             throw new RuntimeException("Failed to delete message", e);
         }
     }
@@ -196,11 +196,11 @@ public class MessageRepositoryService implements MessageRepository {
                 delete(message.messageId());
                 deleted++;
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to delete old message: " + message.messageId(), e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to delete old message: " + message.messageId());
             }
         }
 
-        LOGGER.info("Deleted " + deleted + " messages older than " + cutoffDate);
+        LOGGER.log(Level.INFO, "Deleted {0} messages older than {1}", new Object[]{deleted, cutoffDate});
         return deleted;
     }
 

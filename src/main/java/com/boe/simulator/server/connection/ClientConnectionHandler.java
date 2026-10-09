@@ -104,7 +104,7 @@ public class ClientConnectionHandler implements Runnable {
                     .start(this::processLoop);
             readLoop();
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Handler error", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Handler error");
         } finally {
             readerDone = true;
             joinQuietly(processor);
@@ -178,7 +178,7 @@ public class ClientConnectionHandler implements Runnable {
                 handleInbound(message.message(), message.receivedDuringReplay());
             } catch (Exception e) {
                 errorHandler.handleError(session.getConnectionId(), "Error processing message", e);
-                LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Unexpected error", e);
+                LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Unexpected error");
             } finally {
                 if (gate.onAcknowledged()) {
                     LOGGER.log(Level.INFO, "[Session {0}] {1} unacknowledged messages - resuming socket reads",
@@ -268,7 +268,7 @@ public class ClientConnectionHandler implements Runnable {
                 });
             }
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error processing message type 0x" + String.format("%02X", messageType), e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error processing message type 0x" + String.format("%02X", messageType));
         }
     }
 
@@ -406,7 +406,7 @@ public class ClientConnectionHandler implements Runnable {
             LOGGER.log(Level.INFO, "[Session {0}] Login accepted: replayed {1} messages (last sent seq {2}, last received seq {3})",
                     new Object[]{session.getConnectionId(), missed.size(), state.lastSentSequence(), state.lastProcessedInbound()});
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending login response or replay", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending login response or replay");
         } finally {
             state.unlock();
             replayInProgress = false;
@@ -451,7 +451,7 @@ public class ClientConnectionHandler implements Runnable {
                     request != null ? request.getParamGroupBytes() : new byte[0]
             ).toBytes());
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending LoginResponse", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending LoginResponse");
         }
         replayInProgress = false;
         session.setState(SessionState.ERROR);
@@ -508,7 +508,7 @@ public class ClientConnectionHandler implements Runnable {
             ).toBytes());
             LOGGER.log(Level.INFO, "[Session {0}] → Sent Logout ({1})", new Object[]{session.getConnectionId(), (char) reason});
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending Logout", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending Logout");
         } finally {
             if (state != null) state.unlock();
         }
@@ -614,7 +614,7 @@ public class ClientConnectionHandler implements Runnable {
                                 .select(session.getReturnBitfields(), OrderAcknowledgmentMessage.MESSAGE_TYPE)).toBytes());
             }
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending restatements", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending restatements");
         }
     }
 
@@ -817,7 +817,7 @@ public class ClientConnectionHandler implements Runnable {
         try {
             for (IntFunction<byte[]> execution : executions) sendSequenced(execution);
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Failed to send executions (journaled for replay)", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Failed to send executions (journaled for replay)");
         }
     }
 
@@ -839,7 +839,7 @@ public class ClientConnectionHandler implements Runnable {
             }
 
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending OrderAcknowledgment", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending OrderAcknowledgment");
         }
     }
 
@@ -855,7 +855,7 @@ public class ClientConnectionHandler implements Runnable {
             });
 
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending OrderRejected", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending OrderRejected");
         }
     }
 
@@ -874,8 +874,7 @@ public class ClientConnectionHandler implements Runnable {
                             order.getClOrdID(), order.getOrderID()});
 
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE,
-                    "[Session " + session.getConnectionId() + "] Error sending OrderModified", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending OrderModified");
         }
     }
 
@@ -888,8 +887,7 @@ public class ClientConnectionHandler implements Runnable {
                     new Object[]{session.getConnectionId(), clOrdID, (char) reason});
 
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE,
-                    "[Session " + session.getConnectionId() + "] Error sending UserModifyRejected", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending UserModifyRejected");
         }
     }
 
@@ -900,7 +898,7 @@ public class ClientConnectionHandler implements Runnable {
             LOGGER.log(Level.INFO, "[Session {0}] → Sent CancelRejected: ClOrdID={1}, Reason={2}",
                     new Object[]{session.getConnectionId(), clOrdID, (char) reason});
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending CancelRejected", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending CancelRejected");
         }
     }
 
@@ -939,7 +937,7 @@ public class ClientConnectionHandler implements Runnable {
             });
 
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending OrderCancelled", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending OrderCancelled");
         }
     }
 
@@ -948,7 +946,7 @@ public class ClientConnectionHandler implements Runnable {
             sendMessage(new QuoteUpdateRejectedMessage(quoteUpdateID, QuoteUpdateRejectedMessage.REASON_NOT_ENABLED_FOR_QUOTES).toBytes());
             LOGGER.log(Level.INFO, "[Session {0}] → Sent QuoteUpdateRejected: {1}", new Object[]{session.getConnectionId(), quoteUpdateID});
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending QuoteUpdateRejected", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending QuoteUpdateRejected");
         }
     }
 
@@ -959,7 +957,7 @@ public class ClientConnectionHandler implements Runnable {
                     .select(session.getReturnBitfields(), PurgeRejectedMessage.MESSAGE_TYPE)).toBytes());
             LOGGER.log(Level.INFO, "[Session {0}] → Sent PurgeRejected: {1} {2}", new Object[]{session.getConnectionId(), (char) reason, text});
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending PurgeRejected", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending PurgeRejected");
         }
     }
 
@@ -968,7 +966,7 @@ public class ClientConnectionHandler implements Runnable {
             sendMessage(new PurgeNotificationMessage(response.getMassCancelId(), count, BoeSessionState.MATCHING_UNIT,
                     response.getPurgeClearingFirm(), response.getPurgeRiskRoot(), response.isLockout()).toBytes());
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending PurgeNotification", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending PurgeNotification");
         }
     }
 
@@ -978,7 +976,7 @@ public class ClientConnectionHandler implements Runnable {
             LOGGER.log(Level.INFO, "[Session {0}] → Sent RiskResetAcknowledgment: {1} {2}",
                     new Object[]{session.getConnectionId(), riskStatusID, (char) result});
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending RiskResetAcknowledgment", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending RiskResetAcknowledgment");
         }
     }
 
@@ -992,7 +990,7 @@ public class ClientConnectionHandler implements Runnable {
             LOGGER.log(Level.INFO, "[Session {0}] → Sent MassCancelAcknowledgment: {1} orders, ID={2}",
                     new Object[]{session.getConnectionId(), count, massCancelId});
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "[Session " + session.getConnectionId() + "] Error sending MassCancelAcknowledgment", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Session " + session.getConnectionId() + "] Error sending MassCancelAcknowledgment");
         }
     }
 

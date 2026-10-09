@@ -32,7 +32,7 @@ public class Bot {
 
     public void start() {
         if (running) {
-            LOGGER.warning("Bot %s is already running".formatted(config.botId()));
+            LOGGER.warning(() -> "Bot %s is already running".formatted(config.botId()));
             return;
         }
 
@@ -47,7 +47,7 @@ public class Bot {
                 TimeUnit.MILLISECONDS
         );
 
-        LOGGER.info("Bot started: %s (%s)".formatted(config.botId(), strategy.getStrategyName()));
+        LOGGER.info(() -> "Bot started: %s (%s)".formatted(config.botId(), strategy.getStrategyName()));
     }
 
     public void stop() {
@@ -60,7 +60,7 @@ public class Bot {
 
         strategy.cleanup();
 
-        LOGGER.info("Bot stopped: %s".formatted(config.botId()));
+        LOGGER.info(() -> "Bot stopped: %s".formatted(config.botId()));
     }
 
     public void shutdown() {
@@ -86,7 +86,7 @@ public class Bot {
             }
         } catch (Exception e) {
             statistics.recordOrderFailed();
-            LOGGER.log(Level.WARNING, "Error in bot " + config.botId() + " trading cycle", e);
+            LOGGER.log(Level.WARNING, e, () -> "Error in bot " + config.botId() + " trading cycle");
         }
     }
 

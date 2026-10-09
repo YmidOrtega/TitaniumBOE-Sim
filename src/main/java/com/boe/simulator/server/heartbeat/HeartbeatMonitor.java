@@ -74,7 +74,7 @@ public class HeartbeatMonitor {
             LOGGER.log(Level.FINE, "[Session {0}] → Sent ServerHeartbeat", handler.getSession().getConnectionId());
 
         } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "[Session " + handler.getSession().getConnectionId() + "] Error sending heartbeat", e);
+            LOGGER.log(Level.WARNING, e, () -> "[Session " + handler.getSession().getConnectionId() + "] Error sending heartbeat");
             stop();
         }
     }

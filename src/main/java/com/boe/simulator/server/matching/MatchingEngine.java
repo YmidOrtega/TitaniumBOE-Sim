@@ -53,7 +53,7 @@ public class MatchingEngine {
         this.totalMatches = new AtomicLong(0);
         this.totalTradeVolume = new AtomicLong(0);
 
-        LOGGER.info("MatchingEngine initialized (Self-trade: " + allowSelfTrade + ")");
+        LOGGER.info(() -> "MatchingEngine initialized (Self-trade: " + allowSelfTrade + ")");
     }
 
     public void setWebSocketService(WebSocketService webSocketService) {

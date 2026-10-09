@@ -55,7 +55,7 @@ public class OrderBook {
 
         BigDecimal price = order.getPrice();
         if (price == null) {
-            LOGGER.warning("Cannot add market order to book: " + order.getClOrdID());
+            LOGGER.warning(() -> "Cannot add market order to book: " + order.getClOrdID());
             return;
         }
 

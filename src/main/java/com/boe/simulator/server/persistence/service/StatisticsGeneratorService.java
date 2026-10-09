@@ -66,7 +66,7 @@ public class StatisticsGeneratorService {
             TimeUnit.MINUTES
         );
         
-        LOGGER.info("Statistics generator started (hourly updates + midnight aggregation)");
+        LOGGER.info(() -> "Statistics generator started (hourly updates + midnight aggregation)");
     }
     
 
@@ -161,7 +161,7 @@ public class StatisticsGeneratorService {
             statisticsRepository.save(stats);
             return stats;
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to generate statistics for " + date, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to generate statistics for " + date);
             return null;
         }
     }

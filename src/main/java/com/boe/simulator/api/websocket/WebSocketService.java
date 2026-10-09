@@ -130,7 +130,7 @@ public class WebSocketService {
                 removeSession(session.getSessionId());
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to send message to session: " + session.getSessionId(), e);
+            LOGGER.log(Level.WARNING, e, () -> "Failed to send message to session: " + session.getSessionId());
             removeSession(session.getSessionId());
         }
     }
@@ -212,7 +212,7 @@ public class WebSocketService {
                 try {
                     ctx.closeSession(1001, "Idle timeout");
                 } catch (Exception e) {
-                    LOGGER.log(Level.FINE, "Error closing idle WebSocket session " + session.getSessionId(), e);
+                    LOGGER.log(Level.FINE, e, () -> "Error closing idle WebSocket session " + session.getSessionId());
                 }
             }
             removeSession(session.getSessionId());

@@ -31,9 +31,9 @@ public class AuditRepositoryService implements AuditRepository {
             // Save indexes for efficient querying
             saveIndexes(event);
 
-            LOGGER.fine("Saved audit event: " + event.eventId());
+            LOGGER.fine(() -> "Saved audit event: " + event.eventId());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save audit event: " + event.eventId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save audit event: " + event.eventId());
             throw new RuntimeException("Failed to save audit event", e);
         }
     }
@@ -75,7 +75,7 @@ public class AuditRepositoryService implements AuditRepository {
             AuditEvent event = serializer.deserialize(data, AuditEvent.class);
             return Optional.of(event);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find audit event: " + eventId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find audit event: " + eventId);
             return Optional.empty();
         }
     }
@@ -115,7 +115,7 @@ public class AuditRepositoryService implements AuditRepository {
             String prefix = String.format("audit-type:%s:", eventType.name());
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find events by type: " + eventType, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by type: " + eventType);
             return new ArrayList<>();
         }
     }
@@ -133,7 +133,7 @@ public class AuditRepositoryService implements AuditRepository {
             String prefix = String.format("audit-user:%s:", username);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find events by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by username: " + username);
             return new ArrayList<>();
         }
     }
@@ -151,7 +151,7 @@ public class AuditRepositoryService implements AuditRepository {
             String prefix = String.format("audit-severity:%s:", severity.name());
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find events by severity: " + severity, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by severity: " + severity);
             return new ArrayList<>();
         }
     }
@@ -183,9 +183,9 @@ public class AuditRepositoryService implements AuditRepository {
         try {
             String key = String.format("audit:%s", eventId);
             dbManager.delete(RocksDBManager.CF_AUDIT, key.getBytes());
-            LOGGER.fine("Deleted audit event: " + eventId);
+            LOGGER.fine(() -> "Deleted audit event: " + eventId);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to delete audit event: " + eventId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to delete audit event: " + eventId);
             throw new RuntimeException("Failed to delete audit event", e);
         }
     }
@@ -202,11 +202,11 @@ public class AuditRepositoryService implements AuditRepository {
                 delete(event.eventId());
                 deleted++;
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to delete old event: " + event.eventId(), e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to delete old event: " + event.eventId());
             }
         }
 
-        LOGGER.info("Deleted " + deleted + " audit events older than " + cutoffDate);
+        LOGGER.log(Level.INFO, "Deleted {0} audit events older than {1}", new Object[]{deleted, cutoffDate});
         return deleted;
     }
 

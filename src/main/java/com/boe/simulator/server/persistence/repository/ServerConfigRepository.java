@@ -106,7 +106,7 @@ public class ServerConfigRepository {
             return Optional.of(config);
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to load configuration version " + version, e);
+            LOGGER.log(Level.WARNING, e, () -> "Failed to load configuration version " + version);
             return Optional.empty();
         }
     }
@@ -175,7 +175,7 @@ public class ServerConfigRepository {
             return true;
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to rollback to version " + version, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to rollback to version " + version);
             return false;
         }
     }

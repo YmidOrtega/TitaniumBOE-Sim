@@ -422,7 +422,7 @@ public class OrderManager {
             return OrderResponse.acknowledged(order, takeDeferredExecutions(order));
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error processing order", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[" + context.getSessionIdentifier() + "] Error processing order");
             totalOrdersRejected.incrementAndGet();
             return OrderResponse.rejected(
                     message.getClOrdID(),
@@ -505,7 +505,7 @@ public class OrderManager {
 
         } catch (Exception e) {
             activeOrdersByClOrdID.put(currentClOrdID, order);
-            LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error modifying order", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[" + context.getSessionIdentifier() + "] Error modifying order");
             return ModifyResponse.rejected(message.getClOrdID(),
                     UserModifyRejectedMessage.REASON_UNFORESEEN,
                     "Internal error: " + e.getMessage());
@@ -630,7 +630,7 @@ public class OrderManager {
             return CancelResponse.cancelled(order, OrderCancelledMessage.REASON_USER_REQUESTED);
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[" + context.getSessionIdentifier() + "] Error cancelling order", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[" + context.getSessionIdentifier() + "] Error cancelling order");
             return CancelResponse.rejected(origClOrdID, CancelRejectedMessage.REASON_UNFORESEEN, "Internal error: " + e.getMessage());
         }
     }
@@ -791,7 +791,7 @@ public class OrderManager {
 
                 cancelled.add(order);
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to cancel order: " + order.getClOrdID(), e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to cancel order: " + order.getClOrdID());
             }
         }
         totalOrdersCancelled.addAndGet(cancelled.size());

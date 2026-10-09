@@ -80,7 +80,7 @@ public class TradeRepositoryService implements TradeRepository {
 
             LOGGER.log(Level.FINE, "Saved trade: {0}", trade.getTradeId());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save trade: " + trade.getTradeId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to save trade: " + trade.getTradeId());
             throw new RuntimeException("Failed to save trade", e);
         }
     }
@@ -121,7 +121,7 @@ public class TradeRepositoryService implements TradeRepository {
             PersistedTrade persistedTrade = serializer.deserialize(data, PersistedTrade.class);
             return Optional.of(persistedTrade.toTrade());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find trade: " + tradeId, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find trade: " + tradeId);
             return Optional.empty();
         }
     }
@@ -132,7 +132,7 @@ public class TradeRepositoryService implements TradeRepository {
             String prefix = String.format("trade-symbol:%s:", symbol);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find trades by symbol: " + symbol, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find trades by symbol: " + symbol);
             return new ArrayList<>();
         }
     }
@@ -151,7 +151,7 @@ public class TradeRepositoryService implements TradeRepository {
             String prefix = String.format("trade-user:%s:", username);
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to find trades by username: " + username, e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to find trades by username: " + username);
             return new ArrayList<>();
         }
     }
@@ -225,7 +225,7 @@ public class TradeRepositoryService implements TradeRepository {
                 dbManager.delete(CF_TRADES, key.getBytes());
                 deleted++;
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to delete trade: " + trade.getTradeId(), e);
+                LOGGER.log(Level.WARNING, e, () -> "Failed to delete trade: " + trade.getTradeId());
             }
         }
 

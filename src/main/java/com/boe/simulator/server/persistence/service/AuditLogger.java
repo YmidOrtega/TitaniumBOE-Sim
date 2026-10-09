@@ -36,7 +36,7 @@ public class AuditLogger {
         );
 
         auditRepository.save(event);
-        LOGGER.fine("Logged connection event: " + eventType);
+        LOGGER.fine(() -> "Logged connection event: " + eventType);
     }
 
     public void logAuthentication(
@@ -68,7 +68,7 @@ public class AuditLogger {
         );
 
         auditRepository.save(event);
-        LOGGER.fine("Logged authentication event: " + eventType);
+        LOGGER.fine(() -> "Logged authentication event: " + eventType);
     }
 
     public void logSecurity(
@@ -91,7 +91,7 @@ public class AuditLogger {
         );
 
         auditRepository.save(event);
-        LOGGER.warning("Security event: " + description);
+        LOGGER.warning(() -> "Security event: " + description);
     }
 
     public void logSystem(
@@ -108,7 +108,7 @@ public class AuditLogger {
         );
 
         auditRepository.save(event);
-        LOGGER.info("System event: " + description);
+        LOGGER.info(() -> "System event: " + description);
     }
 
     public void logError(
@@ -134,7 +134,7 @@ public class AuditLogger {
         );
 
         auditRepository.save(event);
-        LOGGER.severe("Error event: " + description);
+        LOGGER.severe(() -> "Error event: " + description);
     }
 
     public AuditStatistics getStatistics() {

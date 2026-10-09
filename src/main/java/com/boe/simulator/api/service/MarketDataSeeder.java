@@ -75,6 +75,6 @@ public class MarketDataSeeder {
         matchingEngine.processOrder(buyOrder);
         matchingEngine.processOrder(sellOrder);
 
-        LOGGER.info("Seeded " + symbol + " with bid=" + bidPrice + " ask=" + askPrice);
+        LOGGER.info(() -> "Seeded " + symbol + " with bid=" + bidPrice + " ask=" + askPrice);
     }
 }

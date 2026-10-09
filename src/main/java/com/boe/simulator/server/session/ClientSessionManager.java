@@ -150,7 +150,7 @@ public class ClientSessionManager {
             LOGGER.log(Level.INFO, "✓ Persisted session {0} (user={1}, duration={2}s)", new Object[]{closedSession.sessionId(), closedSession.username(), closedSession.durationSeconds()});
             
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to persist session for connection " + handler.getSession().getConnectionId(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Failed to persist session for connection " + handler.getSession().getConnectionId());
         }
     }
 

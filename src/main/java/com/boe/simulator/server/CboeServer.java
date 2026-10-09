@@ -235,7 +235,7 @@ public class CboeServer {
 
         } catch (Exception e) {
             errorHandler.handleError(connectionId, "Handler error", e);
-            LOGGER.log(Level.SEVERE, "[Connection " + connectionId + "] Error in handler", e);
+            LOGGER.log(Level.SEVERE, e, () -> "[Connection " + connectionId + "] Error in handler");
         } finally {
             if (handler != null) sessionManager.unregisterHandler(handler);
 

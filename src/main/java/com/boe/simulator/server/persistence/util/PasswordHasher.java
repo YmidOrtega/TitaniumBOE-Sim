@@ -21,10 +21,10 @@ public class PasswordHasher {
 
         try {
             boolean matches = BCrypt.checkpw(plainPassword, hashedPassword);
-            LOGGER.fine("Password verification: " + (matches ? "success" : "failed"));
+            LOGGER.fine(() -> "Password verification: " + (matches ? "success" : "failed"));
             return matches;
         } catch (Exception e) {
-            LOGGER.warning("Password verification error: " + e.getMessage());
+            LOGGER.warning(() -> "Password verification error: " + e.getMessage());
             return false;
         }
     }
@@ -38,7 +38,7 @@ public class PasswordHasher {
             int rounds = Integer.parseInt(parts[2]);
             return rounds < DEFAULT_LOG_ROUNDS;
         } catch (Exception e) {
-            LOGGER.warning("Failed to parse BCrypt hash: " + e.getMessage());
+            LOGGER.warning(() -> "Failed to parse BCrypt hash: " + e.getMessage());
             return true;
         }
     }

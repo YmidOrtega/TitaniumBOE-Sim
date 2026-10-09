@@ -104,7 +104,7 @@ public class BoeMessageFactory {
 
     private static BoeProtocolMessage rejectIfServer(Context context, String name, Parser parser) {
         if (context == Context.SERVER) {
-            LOGGER.warning("Server received outbound-only message: " + name);
+            LOGGER.warning(() -> "Server received outbound-only message: " + name);
             return null;
         }
         return parser != null ? parser.parse() : null;
