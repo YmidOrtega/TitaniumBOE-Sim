@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import com.boe.simulator.server.connection.ClientConnectionHandler;
 import com.boe.simulator.server.persistence.model.PersistedSession;
@@ -175,7 +174,7 @@ public class ClientSessionManager {
     public List<ClientConnectionHandler> getAuthenticatedHandlers() {
         return handlers.values().stream()
             .filter(h -> h.getSession().isAuthenticated())
-            .collect(Collectors.toList());
+            .toList();
     }
 
     public void broadcastMessage(byte[] messageBytes) {
@@ -258,7 +257,7 @@ public class ClientSessionManager {
     public List<SessionInfo> getSessionInfoList() {
         return handlers.values().stream()
             .map(h -> SessionInfo.from(h.getSession()))
-            .collect(Collectors.toList());
+            .toList();
     }
 
     public void printSessionSummary() {

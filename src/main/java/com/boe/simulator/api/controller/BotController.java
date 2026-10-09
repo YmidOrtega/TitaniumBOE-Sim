@@ -7,7 +7,6 @@ import com.boe.simulator.bot.MarketSimulator;
 import io.javalin.http.Context;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class BotController {
     private final MarketSimulator marketSimulator;
@@ -34,7 +33,7 @@ public class BotController {
                         bot.getStatistics().getTotalVolume(),
                         bot.getStatistics().getSuccessRate()
                 ))
-                .collect(Collectors.toList());
+                .toList();
 
         ctx.json(ApiResponse.success(botDTOs));
     }

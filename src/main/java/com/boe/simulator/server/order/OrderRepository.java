@@ -19,7 +19,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import org.rocksdb.RocksDBException;
 
@@ -226,13 +225,13 @@ public class OrderRepository {
     public List<Order> findActiveOrdersByClearingFirm(String clearingFirm) {
         return findActiveOrders().stream()
                 .filter(o -> clearingFirm.equals(o.getClearingFirm()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public List<Order> findActiveOrdersBySymbol(String symbol) {
         return findActiveOrders().stream()
                 .filter(o -> symbol.equals(o.getSymbol()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public void delete(String clOrdID) {

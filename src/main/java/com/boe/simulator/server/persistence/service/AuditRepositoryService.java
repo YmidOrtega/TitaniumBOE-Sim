@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class AuditRepositoryService implements AuditRepository {
     private static final Logger LOGGER = Logger.getLogger(AuditRepositoryService.class.getName());
@@ -125,7 +124,7 @@ public class AuditRepositoryService implements AuditRepository {
     public List<AuditEvent> findByType(AuditEvent.EventType eventType, Instant start, Instant end) {
         return findByType(eventType).stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -143,7 +142,7 @@ public class AuditRepositoryService implements AuditRepository {
     public List<AuditEvent> findByUsername(String username, Instant start, Instant end) {
         return findByUsername(username).stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -161,7 +160,7 @@ public class AuditRepositoryService implements AuditRepository {
     public List<AuditEvent> findBySeverity(AuditEvent.EventSeverity severity, Instant start, Instant end) {
         return findBySeverity(severity).stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -169,14 +168,14 @@ public class AuditRepositoryService implements AuditRepository {
         return findAll().stream()
                 .filter(e -> !e.timestamp().isBefore(start) && !e.timestamp().isAfter(end))
                 .sorted(Comparator.comparing(AuditEvent::timestamp))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<AuditEvent> findByConnectionId(int connectionId) {
         return findAll().stream()
                 .filter(e -> e.connectionId() != null && e.connectionId() == connectionId)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -231,7 +230,7 @@ public class AuditRepositoryService implements AuditRepository {
         return findAll().stream()
                 .sorted(Comparator.comparing(AuditEvent::timestamp).reversed())
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -242,50 +241,50 @@ public class AuditRepositoryService implements AuditRepository {
         if (criteria.eventType() != null) {
             results = results.stream()
                     .filter(e -> e.eventType() == criteria.eventType())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.severity() != null) {
             results = results.stream()
                     .filter(e -> e.severity() == criteria.severity())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.username() != null) {
             results = results.stream()
                     .filter(e -> criteria.username().equals(e.username()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.connectionId() != null) {
             results = results.stream()
                     .filter(e -> e.connectionId() != null &&
                             e.connectionId().equals(criteria.connectionId()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.startDate() != null) {
             results = results.stream()
                     .filter(e -> !e.timestamp().isBefore(criteria.startDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.endDate() != null) {
             results = results.stream()
                     .filter(e -> !e.timestamp().isAfter(criteria.endDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         // Sort by timestamp descending
         results = results.stream()
                 .sorted(Comparator.comparing(AuditEvent::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
 
         // Apply limit
         if (criteria.limit() != null && criteria.limit() > 0) {
             results = results.stream()
                     .limit(criteria.limit())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return results;
@@ -308,6 +307,6 @@ public class AuditRepositoryService implements AuditRepository {
 
         return events.stream()
                 .sorted(Comparator.comparing(AuditEvent::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
     }
 }

@@ -12,7 +12,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class OrderService {
     private static final Logger LOGGER = Logger.getLogger(OrderService.class.getName());
@@ -45,7 +44,7 @@ public class OrderService {
         return orderRepository.findByUsername(username).stream()
                 .filter(Order::isLive)
                 .map(OrderResponse::fromOrder)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public Optional<OrderResponse> getOrder(String clOrdID, String username) {

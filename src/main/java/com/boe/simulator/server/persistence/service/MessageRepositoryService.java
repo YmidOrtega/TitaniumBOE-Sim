@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class MessageRepositoryService implements MessageRepository {
     private static final Logger LOGGER = Logger.getLogger(MessageRepositoryService.class.getName());
@@ -119,7 +118,7 @@ public class MessageRepositoryService implements MessageRepository {
     public List<PersistedMessage> findByUsername(String username, Instant start, Instant end) {
         return findByUsername(username).stream()
                 .filter(m -> !m.timestamp().isBefore(start) && !m.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -137,7 +136,7 @@ public class MessageRepositoryService implements MessageRepository {
     public List<PersistedMessage> findByMessageType(byte messageType, Instant start, Instant end) {
         return findByMessageType(messageType).stream()
                 .filter(m -> !m.timestamp().isBefore(start) && !m.timestamp().isAfter(end))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -155,7 +154,7 @@ public class MessageRepositoryService implements MessageRepository {
     public List<PersistedMessage> findByDirection(PersistedMessage.MessageDirection direction) {
         return findAll().stream()
                 .filter(m -> m.direction() == direction)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -163,14 +162,14 @@ public class MessageRepositoryService implements MessageRepository {
         return findAll().stream()
                 .filter(m -> !m.timestamp().isBefore(start) && !m.timestamp().isAfter(end))
                 .sorted(Comparator.comparing(PersistedMessage::timestamp))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<PersistedMessage> findBySession(String username, String sessionSubID) {
         return findByUsername(username).stream()
                 .filter(m -> sessionSubID.equals(m.sessionSubID()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -225,7 +224,7 @@ public class MessageRepositoryService implements MessageRepository {
         return findAll().stream()
                 .sorted(Comparator.comparing(PersistedMessage::timestamp).reversed())
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -236,49 +235,49 @@ public class MessageRepositoryService implements MessageRepository {
         if (criteria.username() != null) {
             results = results.stream()
                     .filter(m -> criteria.username().equals(m.username()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.connectionId() != null) {
             results = results.stream()
                     .filter(m -> m.connectionId() == criteria.connectionId())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.messageType() != null) {
             results = results.stream()
                     .filter(m -> m.messageType() == criteria.messageType())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.direction() != null) {
             results = results.stream()
                     .filter(m -> m.direction() == criteria.direction())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.startDate() != null) {
             results = results.stream()
                     .filter(m -> !m.timestamp().isBefore(criteria.startDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (criteria.endDate() != null) {
             results = results.stream()
                     .filter(m -> !m.timestamp().isAfter(criteria.endDate()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         // Sort by timestamp descending
         results = results.stream()
                 .sorted(Comparator.comparing(PersistedMessage::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
 
         // Apply limit
         if (criteria.limit() != null && criteria.limit() > 0) {
             results = results.stream()
                     .limit(criteria.limit())
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return results;
@@ -301,6 +300,6 @@ public class MessageRepositoryService implements MessageRepository {
 
         return messages.stream()
                 .sorted(Comparator.comparing(PersistedMessage::timestamp).reversed())
-                .collect(Collectors.toList());
+                .toList();
     }
 }
