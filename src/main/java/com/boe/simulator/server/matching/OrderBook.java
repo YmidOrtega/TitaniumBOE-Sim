@@ -32,7 +32,9 @@ public class OrderBook {
     private long nextStopPriority;
 
     private volatile BigDecimal lastTradePrice;
+    @SuppressWarnings("java:S3078")
     private volatile int totalBidQuantity;
+    @SuppressWarnings("java:S3078")
     private volatile int totalAskQuantity;
 
     public OrderBook(String symbol) {

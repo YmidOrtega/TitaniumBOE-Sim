@@ -197,6 +197,7 @@ public class ClientConnectionHandler implements Runnable {
         shutdownInputQuietly();
     }
 
+    @SuppressWarnings("javabugs:S2259")
     private void handleInbound(BoeMessage message, boolean receivedDuringReplay) {
         MessageValidator.ValidationResult validation = MessageValidator.validate(message);
         if (!validation.isValid()) {

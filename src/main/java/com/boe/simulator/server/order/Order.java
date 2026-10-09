@@ -41,6 +41,7 @@ public class Order {
     private final int displayRange;
     private final BigDecimal stopPx;
     private volatile BigDecimal modifiedStopPx;
+    @SuppressWarnings("java:S3078")
     private volatile int displayQty;
     private volatile boolean stopElected;
 
@@ -67,6 +68,7 @@ public class Order {
 
     // Mutable overrides applied by Modify Order
     private volatile String modifiedClOrdID;
+    @SuppressWarnings("java:S3078")
     private volatile int modifyCount;
     private volatile BigDecimal modifiedPrice;
     private volatile OrdType modifiedOrdType;
