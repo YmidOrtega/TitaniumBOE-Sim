@@ -1021,15 +1021,15 @@ public class OrderManager {
 
         ClientConnectionHandler handler = sessionManager.getHandlerByUsername(order.getUsername());
         try {
-            if (handler != null && handler.getSession().isAuthenticated()) {
+            if (handler != null && handler.isRunning() && handler.getSession().isAuthenticated()) {
                 handler.sendSequenced(encoder);
-                LOGGER.log(Level.INFO, "Sent execution to {0}: {1}", new Object[]{order.getUsername(), order.getClOrdID()});
+                LOGGER.log(Level.FINE, "Sent message to {0}: {1}", new Object[]{order.getUsername(), order.getClOrdID()});
             } else {
                 state.sendSequenced(encoder, null);
-                LOGGER.log(Level.INFO, "Journaled execution for disconnected {0}: {1}", new Object[]{order.getUsername(), order.getClOrdID()});
+                LOGGER.log(Level.FINE, "Journaled message for disconnected {0}: {1}", new Object[]{order.getUsername(), order.getClOrdID()});
             }
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Failed to send execution message to " + order.getUsername() + " (journaled for replay)", e);
+            LOGGER.log(Level.WARNING, "Failed to send to {0} (journaled for replay): {1}", new Object[]{order.getUsername(), e.getMessage()});
         }
     }
 

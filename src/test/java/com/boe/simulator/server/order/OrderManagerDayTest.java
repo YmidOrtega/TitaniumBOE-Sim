@@ -10,7 +10,10 @@ import com.boe.simulator.protocol.types.TimeInForce;
 import com.boe.simulator.server.config.PortAttributes;
 import com.boe.simulator.server.matching.MatchingEngine;
 import com.boe.simulator.server.matching.TradeRepository;
+import com.boe.simulator.server.connection.ClientConnectionHandler;
+import com.boe.simulator.server.session.BoeSessionState;
 import com.boe.simulator.server.session.ClientSession;
+import com.boe.simulator.server.session.ClientSessionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,7 +28,12 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrderManagerDayTest {
@@ -159,6 +167,22 @@ class OrderManagerDayTest {
         orderManager.setMarketClosed(false);
         assertEquals(1, orderManager.cancelOnDisconnect("u1"), "All, the spec default");
         assertTrue(orderManager.findByClOrdID("C1").isEmpty());
+    }
+
+    @Test
+    void cancelOnDisconnect_journalsTheCancelsWithoutWritingToTheClosingConnection() throws Exception {
+        ClientSessionManager sessionManager = new ClientSessionManager();
+        ClientConnectionHandler closing = mock(ClientConnectionHandler.class);
+        when(closing.getSession()).thenReturn(session);
+        sessionManager.registerUsername(closing, "u1");
+        BoeSessionState state = sessionManager.getSessionStates().bind("u1", "S1");
+        orderManager.setSessionManager(sessionManager);
+        submit("A1", '0');
+
+        assertEquals(1, orderManager.cancelOnDisconnect("u1"));
+
+        verify(closing, never()).sendSequenced(any());
+        assertEquals(1, state.messagesAfter(0).size(), "The Order Cancelled is kept for the replay");
     }
 
     @Test
