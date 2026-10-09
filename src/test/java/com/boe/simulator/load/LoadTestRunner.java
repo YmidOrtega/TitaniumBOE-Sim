@@ -179,7 +179,7 @@ public class LoadTestRunner {
             int letter = i / 1000;
             int num    = i % 1000;
             String user = String.format("%c%03d", 'A' + letter, num);
-            String pass = String.format("Ld%05d!", i);
+            String pass = String.format("Ld%05d", i);
             creds.add(new String[]{user, pass});
         }
 
@@ -365,7 +365,7 @@ public class LoadTestRunner {
         List<String[]> creds = new ArrayList<>(sessions);
         for (int i = 0; i < sessions; i++) {
             String user = String.format("Q%02d", i);
-            String pass = "AckTest1!";
+            String pass = "AckTest1";
             creds.add(new String[]{user, pass});
             registerUser(http, user, pass);
         }
@@ -448,7 +448,7 @@ public class LoadTestRunner {
         int ackOk     = 0;
         int ackFailed = 0;
 
-        for (int k = 0; k < sessions; k++) registerUser(http, String.format("M%03d", k), "MemTest1!"); // usernames are at most 4 chars
+        for (int k = 0; k < sessions; k++) registerUser(http, String.format("M%03d", k), "MemTest1"); // usernames are at most 4 chars
         System.out.printf("│  %d users registered%n", sessions);
 
         try {
@@ -497,7 +497,7 @@ public class LoadTestRunner {
     static Socket sessionFor(List<Socket> sockets, int k) throws Exception {
         while (sockets.size() <= k) {
             String user = String.format("M%03d", sockets.size());
-            Socket s = loginBoe(user, "MemTest1!", user);
+            Socket s = loginBoe(user, "MemTest1", user);
             if (s == null) throw new IOException("Login failed for " + user);
             s.setSoTimeout(10_000);
             sockets.add(s);
