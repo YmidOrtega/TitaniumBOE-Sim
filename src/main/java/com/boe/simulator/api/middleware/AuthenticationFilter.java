@@ -29,6 +29,7 @@ public class AuthenticationFilter implements Handler {
         if (authHeader == null || !authHeader.startsWith("Basic ")) {
             ctx.json(ApiResponse.error("Missing or invalid Authorization header"));
             ctx.status(401);
+            ctx.skipRemainingHandlers();
             return;
         }
 
@@ -40,6 +41,7 @@ public class AuthenticationFilter implements Handler {
             if (parts.length != 2) {
                 ctx.json(ApiResponse.error("Invalid credentials format"));
                 ctx.status(401);
+                ctx.skipRemainingHandlers();
                 return;
             }
 
@@ -50,6 +52,7 @@ public class AuthenticationFilter implements Handler {
                 LOGGER.log(Level.WARNING, "Authentication failed for user: {0}", username);
                 ctx.json(ApiResponse.error("Invalid credentials"));
                 ctx.status(401);
+                ctx.skipRemainingHandlers();
                 return;
             }
 
@@ -60,6 +63,7 @@ public class AuthenticationFilter implements Handler {
             LOGGER.log(Level.SEVERE, "Authentication error", e);
             ctx.json(ApiResponse.error("Authentication error"));
             ctx.status(500);
+            ctx.skipRemainingHandlers();
         }
     }
 
