@@ -287,8 +287,8 @@ public class LoadTestRunner {
     static final String[] PUBLIC_ENDPOINTS = {
             "http://" + HOST + ":" + REST_PORT + "/api/health",
             "http://" + HOST + ":" + REST_PORT + "/api/symbols",
-            "http://" + HOST + ":" + REST_PORT + "/api/simulator/bots",
-            "http://" + HOST + ":" + REST_PORT + "/api/simulator/status",
+            "http://" + HOST + ":" + REST_PORT + "/api/symbols/AAPL",
+            "http://" + HOST + ":" + REST_PORT + "/api/symbols/MSFT",
     };
 
     static RestResult runRestTest(int total, int concurrency) throws Exception {
