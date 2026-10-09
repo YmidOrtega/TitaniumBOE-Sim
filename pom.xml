@@ -23,7 +23,7 @@
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.java.source>21</sonar.java.source>
         <sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
-        <sonar.exclusions>**/target/**</sonar.exclusions>
+        <sonar.exclusions>**/target/**,src/main/resources/static/scalar/**,src/main/resources/static/swagger-ui/**</sonar.exclusions>
     </properties>
 
     <dependencies>
