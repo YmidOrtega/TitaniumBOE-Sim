@@ -62,7 +62,7 @@ public class StatisticsGeneratorService {
         scheduler.scheduleAtFixedRate(
             this::generatePreviousDayStatistics,
             calculateInitialDelayToMidnight(),
-            24 * 60, // 24 hours
+            24L * 60, // 24 hours
             TimeUnit.MINUTES
         );
         

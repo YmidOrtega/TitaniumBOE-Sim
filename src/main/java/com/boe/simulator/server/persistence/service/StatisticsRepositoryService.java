@@ -97,7 +97,7 @@ public class StatisticsRepositoryService implements StatisticsRepository {
     @Override
     public List<PersistedStatistics> findLastNDays(int days) {
         LocalDate endDate = LocalDate.now();
-        LocalDate startDate = endDate.minusDays(days - 1);
+        LocalDate startDate = endDate.minusDays(days - 1L);
         return findByDateRange(startDate, endDate);
     }
 
