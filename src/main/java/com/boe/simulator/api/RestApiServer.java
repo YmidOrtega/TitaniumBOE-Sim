@@ -143,6 +143,7 @@ public class RestApiServer {
         app.before("/api/orders*", authFilter);
         app.before("/api/positions*", authFilter);
         app.before("/api/trades*", authFilter);
+        app.before("/api/simulator*", authFilter);
 
         // Order endpoints
         app.post("/api/orders", orderController::submitOrder);

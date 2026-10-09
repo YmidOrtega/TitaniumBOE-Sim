@@ -166,6 +166,10 @@ jobs:
         echo "Testing authenticated endpoints..."
         curl -f -u $DEMO_USER:$DEMO_PASS http://localhost:9091/api/positions || exit 1
         curl -f -u $DEMO_USER:$DEMO_PASS http://localhost:9091/api/trades/my || exit 1
+        curl -f -u $DEMO_USER:$DEMO_PASS http://localhost:9091/api/simulator/status || exit 1
+
+        echo "Testing that protected endpoints reject anonymous requests..."
+        test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:9091/api/simulator/stop)" = "401" || exit 1
 
     - name: Upload Server Logs
       if: always()

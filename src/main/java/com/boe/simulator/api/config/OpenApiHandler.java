@@ -348,8 +348,10 @@ public class OpenApiHandler {
                 "/api/simulator/status": {
                   "get": {
                     "tags": ["Simulator"],
+                    "security": [{"BasicAuth": []}],
                     "summary": "Simulator status",
                     "responses": {
+                      "401": {"description": "Not authenticated"},
                       "200": {
                         "description": "Current simulator and bot status",
                         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SimulatorStatus"}}}
@@ -360,24 +362,28 @@ public class OpenApiHandler {
                 "/api/simulator/start": {
                   "post": {
                     "tags": ["Simulator"],
+                    "security": [{"BasicAuth": []}],
                     "summary": "Start simulator",
                     "description": "Start all trading bots",
-                    "responses": {"200": {"description": "Simulator started"}}
+                    "responses": {"200": {"description": "Simulator started"}, "401": {"description": "Not authenticated"}}
                   }
                 },
                 "/api/simulator/stop": {
                   "post": {
                     "tags": ["Simulator"],
+                    "security": [{"BasicAuth": []}],
                     "summary": "Stop simulator",
                     "description": "Stop all trading bots",
-                    "responses": {"200": {"description": "Simulator stopped"}}
+                    "responses": {"200": {"description": "Simulator stopped"}, "401": {"description": "Not authenticated"}}
                   }
                 },
                 "/api/simulator/bots": {
                   "get": {
                     "tags": ["Simulator"],
+                    "security": [{"BasicAuth": []}],
                     "summary": "List bots",
                     "responses": {
+                      "401": {"description": "Not authenticated"},
                       "200": {
                         "description": "All registered trading bots",
                         "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/BotInfo"}}}}
@@ -388,9 +394,11 @@ public class OpenApiHandler {
                 "/api/simulator/bots/{botId}": {
                   "get": {
                     "tags": ["Simulator"],
+                    "security": [{"BasicAuth": []}],
                     "summary": "Get bot",
                     "parameters": [{"name": "botId", "in": "path", "required": true, "schema": {"type": "string"}}],
                     "responses": {
+                      "401": {"description": "Not authenticated"},
                       "200": {"description": "Bot details"},
                       "404": {"description": "Bot not found"}
                     }
@@ -399,9 +407,11 @@ public class OpenApiHandler {
                 "/api/simulator/bots/{botId}/start": {
                   "post": {
                     "tags": ["Simulator"],
+                    "security": [{"BasicAuth": []}],
                     "summary": "Start bot",
                     "parameters": [{"name": "botId", "in": "path", "required": true, "schema": {"type": "string"}}],
                     "responses": {
+                      "401": {"description": "Not authenticated"},
                       "200": {"description": "Bot started"},
                       "404": {"description": "Bot not found"}
                     }
@@ -410,9 +420,11 @@ public class OpenApiHandler {
                 "/api/simulator/bots/{botId}/stop": {
                   "post": {
                     "tags": ["Simulator"],
+                    "security": [{"BasicAuth": []}],
                     "summary": "Stop bot",
                     "parameters": [{"name": "botId", "in": "path", "required": true, "schema": {"type": "string"}}],
                     "responses": {
+                      "401": {"description": "Not authenticated"},
                       "200": {"description": "Bot stopped"},
                       "404": {"description": "Bot not found"}
                     }
