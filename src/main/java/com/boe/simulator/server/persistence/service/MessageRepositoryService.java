@@ -67,7 +67,7 @@ public class MessageRepositoryService implements MessageRepository {
     @Override
     public Optional<PersistedMessage> findById(String messageId) {
         try {
-            String key = String.format("msg:%s", messageId);
+            String key = "msg:" + messageId;
             byte[] data = dbManager.get(RocksDBManager.CF_MESSAGES, key.getBytes());
 
             if (data == null) return Optional.empty();
@@ -106,7 +106,7 @@ public class MessageRepositoryService implements MessageRepository {
     @Override
     public List<PersistedMessage> findByUsername(String username) {
         try {
-            String prefix = String.format("user:%s:", username);
+            String prefix = "user:" + username + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, e, () -> "Failed to find messages by username: " + username);
@@ -175,7 +175,7 @@ public class MessageRepositoryService implements MessageRepository {
     @Override
     public void delete(String messageId) {
         try {
-            String key = String.format("msg:%s", messageId);
+            String key = "msg:" + messageId;
             dbManager.delete(RocksDBManager.CF_MESSAGES, key.getBytes());
             LOGGER.fine(() -> "Deleted message: " + messageId);
         } catch (Exception e) {

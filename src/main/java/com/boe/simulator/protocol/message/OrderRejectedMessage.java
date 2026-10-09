@@ -4,7 +4,6 @@ import com.boe.simulator.protocol.types.BoeTime;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 /**
  * Order Rejected — Table 73 (p.119), spec v2.11.90

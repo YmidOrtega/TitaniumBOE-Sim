@@ -16,7 +16,7 @@ public enum Capacity {
 
     private final byte wireValue;
 
-    private static final Map<Byte, Capacity> BY_WIRE = new HashMap<>(values().length * 2);
+    private static final Map<Byte, Capacity> BY_WIRE = HashMap.newHashMap(values().length);
 
     static {
         for (Capacity c : values()) {

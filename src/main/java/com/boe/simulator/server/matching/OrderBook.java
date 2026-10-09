@@ -323,19 +323,5 @@ public class OrderBook {
             List<PriceLevel> asks,
             BigDecimal lastTradePrice
     ) {
-        public void print() {
-            System.out.println("\n=== Order Book: " + symbol + " ===");
-            System.out.println("Last Trade: " + lastTradePrice);
-            System.out.println("\nASKS:");
-            for (int i = asks.size() - 1; i >= 0; i--) {
-                System.out.println("  " + asks.get(i));
-            }
-            System.out.println("-------------------");
-            System.out.println("BIDS:");
-            for (PriceLevel bid : bids) {
-                System.out.println("  " + bid);
-            }
-            System.out.println("===================\n");
-        }
     }
 }

@@ -95,7 +95,7 @@ public record PersistedMessage(
     }
 
     public String getIndexKey() {
-        return String.format("msg:%s", messageId);
+        return "msg:" + messageId;
     }
 
     public String getUserIndexKey() {

@@ -369,8 +369,10 @@ public class MatchingEngine {
     private boolean applyPrevention(PreventMatch prevention, Order inbound, Order resting, OrderBook book) {
         int inQty = inbound.getLeavesQty();
         int restQty = resting.getLeavesQty();
-        boolean cancelInbound = false, cancelResting = false;
-        int decrementInbound = 0, decrementResting = 0;
+        boolean cancelInbound = false;
+        boolean cancelResting = false;
+        int decrementInbound = 0;
+        int decrementResting = 0;
 
         switch (prevention.modifier()) {
             case PreventMatch.CANCEL_NEWEST -> cancelInbound = true;

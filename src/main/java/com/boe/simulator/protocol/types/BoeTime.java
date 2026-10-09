@@ -38,7 +38,9 @@ public final class BoeTime {
 
     public static Instant fromYyyymmdd(int yyyymmdd) {
         if (yyyymmdd == 0) return null;
-        int y = yyyymmdd / 10000, m = (yyyymmdd / 100) % 100, d = yyyymmdd % 100;
+        int y = yyyymmdd / 10000;
+        int m = (yyyymmdd / 100) % 100;
+        int d = yyyymmdd % 100;
         return LocalDate.of(y, m, d).atStartOfDay(EXCHANGE_ZONE).toInstant();
     }
 }

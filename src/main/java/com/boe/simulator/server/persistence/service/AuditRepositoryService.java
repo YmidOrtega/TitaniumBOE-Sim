@@ -67,7 +67,7 @@ public class AuditRepositoryService implements AuditRepository {
     @Override
     public Optional<AuditEvent> findById(String eventId) {
         try {
-            String key = String.format("audit:%s", eventId);
+            String key = "audit:" + eventId;
             byte[] data = dbManager.get(RocksDBManager.CF_AUDIT, key.getBytes());
 
             if (data == null) return Optional.empty();
@@ -112,7 +112,7 @@ public class AuditRepositoryService implements AuditRepository {
     @Override
     public List<AuditEvent> findByType(AuditEvent.EventType eventType) {
         try {
-            String prefix = String.format("audit-type:%s:", eventType.name());
+            String prefix = "audit-type:" + eventType.name() + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by type: " + eventType);
@@ -130,7 +130,7 @@ public class AuditRepositoryService implements AuditRepository {
     @Override
     public List<AuditEvent> findByUsername(String username) {
         try {
-            String prefix = String.format("audit-user:%s:", username);
+            String prefix = "audit-user:" + username + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by username: " + username);
@@ -148,7 +148,7 @@ public class AuditRepositoryService implements AuditRepository {
     @Override
     public List<AuditEvent> findBySeverity(AuditEvent.EventSeverity severity) {
         try {
-            String prefix = String.format("audit-severity:%s:", severity.name());
+            String prefix = "audit-severity:" + severity.name() + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, e, () -> "Failed to find events by severity: " + severity);
@@ -181,7 +181,7 @@ public class AuditRepositoryService implements AuditRepository {
     @Override
     public void delete(String eventId) {
         try {
-            String key = String.format("audit:%s", eventId);
+            String key = "audit:" + eventId;
             dbManager.delete(RocksDBManager.CF_AUDIT, key.getBytes());
             LOGGER.fine(() -> "Deleted audit event: " + eventId);
         } catch (Exception e) {

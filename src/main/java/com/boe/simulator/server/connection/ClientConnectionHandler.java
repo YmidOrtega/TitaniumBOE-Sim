@@ -90,7 +90,7 @@ public class ClientConnectionHandler implements Runnable {
 
         LOGGER.log(Level.INFO, "[Session {0}] Handler created for {1}", new Object[]{
                 session.getConnectionId(),
-                socket.getRemoteSocketAddress().toString()
+                socket.getRemoteSocketAddress()
         });
     }
 

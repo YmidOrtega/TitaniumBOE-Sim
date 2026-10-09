@@ -19,7 +19,7 @@ public class AuthenticationFilter implements Handler {
     private final UserRepository userRepository;
 
     public AuthenticationFilter(AuthenticationService authService) {
-        this.userRepository = (UserRepository) authService.getUserRepository();
+        this.userRepository = authService.getUserRepository();
     }
 
     @Override

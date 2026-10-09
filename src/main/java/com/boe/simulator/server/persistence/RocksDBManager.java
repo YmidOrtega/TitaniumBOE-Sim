@@ -272,9 +272,10 @@ public class RocksDBManager {
 
         @Override
         public boolean equals(Object o) {
-            return o instanceof WriteBatchOperation other && type == other.type
-                    && java.util.Objects.equals(columnFamily, other.columnFamily)
-                    && java.util.Arrays.equals(key, other.key) && java.util.Arrays.equals(value, other.value);
+            return o instanceof WriteBatchOperation(OperationType otherType, String otherColumnFamily, byte[] otherKey, byte[] otherValue)
+                    && type == otherType
+                    && java.util.Objects.equals(columnFamily, otherColumnFamily)
+                    && java.util.Arrays.equals(key, otherKey) && java.util.Arrays.equals(value, otherValue);
         }
 
         @Override

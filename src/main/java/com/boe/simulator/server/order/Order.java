@@ -164,7 +164,7 @@ public class Order {
     }
 
     public void reloadDisplay(int displayed) {
-        this.displayQty = Math.max(1, Math.min(displayed, leavesQty));
+        this.displayQty = Math.clamp(displayed, 1, Math.max(1, leavesQty));
     }
 
     public void elect() {

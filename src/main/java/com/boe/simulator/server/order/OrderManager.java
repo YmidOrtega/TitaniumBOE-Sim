@@ -40,7 +40,6 @@ import com.boe.simulator.protocol.message.ResetRiskMessage;
 import com.boe.simulator.protocol.message.RiskResetAcknowledgmentMessage;
 import com.boe.simulator.protocol.message.OrderReturnFields;
 import com.boe.simulator.protocol.message.ReturnField;
-import com.boe.simulator.protocol.message.ReturnBitfields;
 import com.boe.simulator.protocol.message.UserModifyRejectedMessage;
 import com.boe.simulator.server.config.ServerConfiguration;
 import com.boe.simulator.server.connection.ClientConnectionHandler;
@@ -145,7 +144,8 @@ public class OrderManager {
 
     /** End of the trading day: Day orders expire, GTC/GTD orders are carried, lockouts are released. */
     public void rollToNextDay() {
-        int expired = 0, carried = 0;
+        int expired = 0;
+        int carried = 0;
         for (Order order : List.copyOf(activeOrdersByOrderID.values())) {
             if (order.persistsOvernight() && order.getState().isActive()) {
                 order.markCarried();
@@ -208,7 +208,7 @@ public class OrderManager {
 
             @Override
             public void onOrderRestated(Order order, byte reason, boolean incoming, OrderBook book) {
-                handleRestatement(order, reason, incoming);
+                handleRestatement(order, reason);
             }
 
             @Override
@@ -956,7 +956,7 @@ public class OrderManager {
         });
     }
 
-    private void handleRestatement(Order order, byte reason, boolean incoming) {
+    private void handleRestatement(Order order, byte reason) {
         if (sessionManager == null || !isBoeOrder(order)) return;
         BoeSessionState state = sessionManager.getSessionStates().latestForUser(order.getUsername());
         if (state == null) return;

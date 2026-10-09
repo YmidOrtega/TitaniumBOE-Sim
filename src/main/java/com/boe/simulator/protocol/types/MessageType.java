@@ -60,7 +60,7 @@ public enum MessageType {
 
     private final byte wireValue;
 
-    private static final Map<Byte, MessageType> BY_WIRE = new HashMap<>(values().length * 2);
+    private static final Map<Byte, MessageType> BY_WIRE = HashMap.newHashMap(values().length);
 
     static {
         for (MessageType mt : values()) {

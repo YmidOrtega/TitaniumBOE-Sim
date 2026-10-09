@@ -129,7 +129,7 @@ public class TradeRepositoryService implements TradeRepository {
     @Override
     public List<Trade> findBySymbol(String symbol) {
         try {
-            String prefix = String.format("trade-symbol:%s:", symbol);
+            String prefix = "trade-symbol:" + symbol + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, e, () -> "Failed to find trades by symbol: " + symbol);
@@ -148,7 +148,7 @@ public class TradeRepositoryService implements TradeRepository {
     @Override
     public List<Trade> findByUsername(String username) {
         try {
-            String prefix = String.format("trade-user:%s:", username);
+            String prefix = "trade-user:" + username + ":";
             return findByIndexPrefix(prefix);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, e, () -> "Failed to find trades by username: " + username);

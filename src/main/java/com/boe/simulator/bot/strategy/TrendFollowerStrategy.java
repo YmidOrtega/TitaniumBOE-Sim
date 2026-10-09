@@ -106,8 +106,8 @@ public final class TrendFollowerStrategy implements TradingStrategy {
         if (bidQty == 0) return Trend.DOWNWARD;
 
         // 1.2x imbalance threshold
-        if ((double) bidQty > askQty * 1.2) return Trend.UPWARD;
-        if ((double) askQty > bidQty * 1.2) return Trend.DOWNWARD;
+        if (bidQty > askQty * 1.2) return Trend.UPWARD;
+        if (askQty > bidQty * 1.2) return Trend.DOWNWARD;
 
         return Trend.NEUTRAL;
     }
