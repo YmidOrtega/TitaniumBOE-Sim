@@ -1,139 +1,97 @@
-# 💹 TitaniumBOE-Sim
+# TitaniumBOE-Sim
 
-> **A comprehensive simulator for the Cboe Titanium U.S. Options Binary Order Entry (BOE) protocol with matching engine, trading bots, REST API and WebSocket streaming**
+**A Cboe Titanium BOE exchange you can run on your laptop.** It speaks the binary order-entry protocol of
+Cboe's U.S. options markets byte for byte (spec v2.11.90, 27 message types) and backs it with a
+price-time matching engine, trading bots, RocksDB persistence, a REST API and a WebSocket feed, all in
+one JAR.
 
-[![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/)
-[![Maven](https://img.shields.io/badge/Maven-3.9+-blue?logo=apache-maven)](https://maven.apache.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![CI/CD](https://github.com/YmidOrtega/TitaniumBOE-Sim/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/YmidOrtega/TitaniumBOE-Sim/actions)
 [![Code Quality](https://github.com/YmidOrtega/TitaniumBOE-Sim/workflows/Code%20Quality%20%26%20Coverage/badge.svg)](https://github.com/YmidOrtega/TitaniumBOE-Sim/actions)
-[![RocksDB](https://img.shields.io/badge/RocksDB-9.11-purple)](https://rocksdb.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
----
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/new-order-wire-dark.svg" />
+  <img src="docs/img/new-order-wire-light.svg" alt="Hex dump of the 91-byte New Order example from the Cboe BOE spec, Table 28, with every field decoded: ClOrdID ABC123, Buy 100 MSFT calls at 0.6000, strike 17.5000, maturity 2011-03-19" width="880" />
+</picture>
 
-## 📖 Overview
+<sub>The New Order example from Table 28 of the spec, as the simulator decodes it. The bytes and every
+decoded value are pinned by
+[`NewOrderMessageTest.specTable28Example_parsesEveryField`](src/test/java/com/boe/simulator/protocol/message/NewOrderMessageTest.java).</sub>
 
-**TitaniumBOE-Sim** is an enterprise-grade simulator of the **Cboe Titanium BOE protocol**, built in Java 21. It provides a complete trading ecosystem with a real-time matching engine, intelligent trading bots, RESTful API with interactive docs and WebSocket streaming — all packaged as a single self-contained JAR.
+> Educational and development use only. It does not connect to Cboe.
 
-### Perfect For
-- 📚 Learning binary financial protocols and market microstructure
-- 🧪 Testing trading strategies without live market connections
-- 🎓 Educational demonstrations of trading infrastructure
-- 💼 Portfolio showcase of financial systems engineering
+## Measured, not claimed
 
-> ⚠️ **Educational and development purposes only**. Does not connect to real Cboe systems.
+| | Result | Target |
+|---|---|---|
+| Order Ack P99 (900 orders, 10 BOE sessions, all acknowledged) | 2.5–4.1 ms | < 5 ms |
+| Concurrent BOE TCP sessions, one virtual thread each | 500, none refused | ≥ 500 |
+| REST throughput, public endpoints | 4,470–4,700 req/s | ≥ 800 req/s |
+| BOE logins | 50–56/s | ≥ 200/s ❌ BCrypt cost 12, on purpose |
 
----
+Four runs on a 16-core machine against a freshly started server (2026-10-08 and 2026-10-21). The
+failing row stays in the table: password hashing is meant to be slow. How to reproduce it is under
+[Load test](#load-test).
 
-## ✨ Key Features
+## Run it
 
-- 🔌 **BOE Protocol, audited against spec v2.11.90** — 27 message types (7 session + 20 application) with the exact binary wire format, return bitfields, sequencing and replay
-- 🎯 **Matching Engine** — Price-time priority; Day, IOC, FOK, GTC and GTD orders; reserve, MinQty and stop orders; self-trade prevention (MTP)
-- 🛡️ **Risk Controls** — Mass cancel, Purge Orders, self-imposed lockouts and Reset Risk
-- 🤖 **Trading Bots** — Market Maker, Trend Follower, Random Trader
-- 🌐 **REST API & WebSocket** — Full market data and trading APIs
-- 🗄️ **RocksDB Persistence** — Users, orders and trades survive a restart; live orders go back into the book
-- 🔐 **Production-grade Security** — BCrypt hashing, rate limiting, validation
-- ⚡ **Low-latency Engine** — StampedLock, async write-behind queue, hot-path optimizations
-- 🚦 **Spec Flow Control** — TCP backpressure at 1,024 / 960 unacknowledged messages and a per-session open-order limit (2,000, the spec's 200,000 scaled ÷100 so it is reachable on a PC)
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Java 21+
-- Maven 3.9+
-
-### Build & Run
+Java 21 and Maven 3.9:
 
 ```bash
-# Clone
 git clone https://github.com/YmidOrtega/TitaniumBOE-Sim.git
 cd TitaniumBOE-Sim
-
-# Build: packages everything into one fat JAR
 mvn clean package -DskipTests
-
-# Start server
 DEMO_MODE=true java -jar target/boe-simulator-*.jar
 ```
 
-Once running:
+Or with Docker, no local JDK needed: `docker compose up --build`.
 
-| Interface | URL |
+| Interface | Address |
 |---|---|
-| **REST API** | http://localhost:9091/api |
-| **WebSocket feed** | ws://localhost:9091/ws/feed |
-| **Interactive API docs** | http://localhost:9091/api/docs |
-| **BOE Protocol** | localhost:8081 |
+| BOE binary protocol | `localhost:8081` |
+| REST API | http://localhost:9091/api |
+| Interactive API docs (Scalar) | http://localhost:9091/api/docs |
+| WebSocket feed | ws://localhost:9091/ws/feed |
 
-**Demo Credentials:**
-- Username: `TRD1` / Password: `Pass1234`
-- Username: `TRD2` / Password: `Pass5678`
-
----
-
-## 🌐 REST API
+Demo accounts: `TRD1` / `Pass1234` and `TRD2` / `Pass5678`.
 
 ```bash
-# Health check
 curl http://localhost:9091/api/health
-
-# Get market data
 curl http://localhost:9091/api/symbols/AAPL
-
-# Authenticated endpoints
 curl -u TRD1:Pass1234 http://localhost:9091/api/positions
-curl -u TRD1:Pass1234 http://localhost:9091/api/trades/my
 ```
 
----
+## What it implements
 
-## 🏗️ Architecture
+- **The BOE protocol, audited against spec v2.11.90.** 7 session and 20 application messages with the exact
+  wire format, input and return bitfields, sequencing and replay. The spec's own hex examples are wire-format
+  tests.
+- **Matching engine.** Price-time priority; Day, IOC, FOK, GTC and GTD; reserve, MinQty and stop orders;
+  self-trade prevention (MTP). Concurrency through a `StampedLock` with optimistic reads.
+- **Risk controls.** Mass cancel, Purge Orders, self-imposed lockouts and Reset Risk.
+- **Flow control from the spec.** TCP backpressure at 1,024 / 960 unacknowledged messages, and a per-session
+  open-order limit of 2,000: the spec's 200,000 divided by 100 so it can be reached on a PC.
+- **Persistence.** Users, orders and trades go to RocksDB through an async write-behind queue; after a
+  restart, live orders go back into the book.
+- **Trading bots.** Market maker, trend follower and random trader, to keep the book moving.
+- **REST API and WebSocket feed**, with BCrypt-hashed credentials and rate limiting.
+
+**Not implemented:** auctions, complex orders, crosses and market-maker quotes (answered with the spec's
+rejects), and option series symbology: the book trades symbols like AAPL.
 
 ```
-Browser / REST client
-        │
-        ▼
-┌─────────────────────────────────────────────┐
-│           REST API Server (Port 9091)       │
-│  ┌───────────────┐   ┌────────────────────┐ │
-│  │ Scalar / docs │   │  REST / WebSocket  │ │
-│  │  (OpenAPI)    │   │     endpoints      │ │
-│  └───────────────┘   └────────────────────┘ │
-└─────────────────────┬───────────────────────┘
-                      │
-        ┌─────────────┼─────────────┐
-        │             │             │
-  ┌─────▼────┐  ┌─────▼────┐  ┌────▼─────┐
-  │ Matching │  │ Trading  │  │ RocksDB  │
-  │  Engine  │  │   Bots   │  │   DB     │
-  │StampedLk │  │MM/TF/Rnd │  │  async   │
-  └──────────┘  └──────────┘  └──────────┘
-        ▲
-        │  BOE binary protocol (Port 8081)
-  ┌─────┴──────┐
-  │ BOE client │
-  │   (TCP)    │
-  └────────────┘
+ BOE client ──TCP:8081──►  Session layer ──►  Matching engine ──►  RocksDB
+ (binary)                  login, sequencing,  StampedLock          async
+                           replay, backpressure      ▲
+                                                     │
+ Browser / REST client ──HTTP:9091──►  REST + WebSocket ◄── Trading bots
 ```
 
----
+The full design is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## 🐳 Docker
+## Configuration
 
-```bash
-# Build and start
-docker compose up --build
-
-# Stop
-docker compose down
-```
-
-The Docker build compiles and packages the JAR. No pre-build step required.
-
-Environment variables (via `.env` or `docker compose`):
+Environment variables, via `.env` or `docker compose`:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -152,88 +110,21 @@ directory to reseed them, or register new ones.
 The RocksDB directory is a JVM system property, not an environment variable:
 `java -Dcboe.db.path=/var/lib/boe/db -jar boe-simulator.jar` (default `./data/cboe_server`).
 
----
+Everything runs from one container, so any host that builds a `Dockerfile` can run it (Railway, Render,
+Fly.io, a VPS with `docker compose up -d --build`). Expose port 9091 for the API, and 8081 if BOE clients
+connect from outside.
 
-## ☁️ Deploying to the Cloud
-
-The entire app — API and matching engine — runs from a single Docker container.
-
-### Railway (recommended — simplest)
-
-1. Push the repo to GitHub
-2. New project at [railway.app](https://railway.app) → **Deploy from GitHub repo**
-3. Railway auto-detects the `Dockerfile`
-4. Set env vars: `DEMO_MODE=true`, `API_PORT=9091`
-5. Expose port **9091** — the API and its docs are live
-
-### Render
-
-1. New Web Service → connect repo → select **Docker**
-2. Set `DEMO_MODE=true` and port `9091`
-3. Free tier spins down on inactivity; use a paid plan for always-on
-
-### Fly.io
+## Testing
 
 ```bash
-fly launch   # detects Dockerfile, generates fly.toml
-fly deploy
+mvn test                              # 606 tests
+mvn clean test jacoco:report          # with coverage
+mvn test -Dtest=MatchingEngineTest    # one class
 ```
-
-### Any VPS (DigitalOcean, Hetzner, etc.)
-
-```bash
-git clone https://github.com/YmidOrtega/TitaniumBOE-Sim.git
-cd TitaniumBOE-Sim
-docker compose up -d --build
-```
-
----
-
-## 📁 Project Structure
-
-```
-TitaniumBOE-Sim/
-├── src/main/java/com/boe/simulator/
-│   ├── api/                    # REST API, WebSocket, static file serving
-│   │   └── config/             # Scalar/Swagger/OpenAPI handlers
-│   ├── bot/                    # Trading bots (MM, Trend, Random)
-│   ├── server/                 # BOE Server core
-│   │   ├── connection/         # TCP sessions, login, replay
-│   │   ├── matching/           # Matching engine (StampedLock)
-│   │   ├── auth/               # Authentication (BCrypt)
-│   │   ├── order/              # Order management
-│   │   ├── risk/               # Lockouts and risk resets
-│   │   └── persistence/        # RocksDB repositories
-│   └── protocol/               # BOE message definitions & serialization
-├── docs/                       # Architecture, API and BOE spec quick reference
-├── data/                       # RocksDB storage (runtime)
-├── Dockerfile
-├── docker-compose.yml
-└── pom.xml
-```
-
----
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-mvn test
-
-# Run with coverage
-mvn clean test jacoco:report
-
-# Run specific test
-mvn test -Dtest=MatchingEngineTest
-```
-
-More than 600 tests, including the hexadecimal examples of the spec as wire-format tests.
 
 ### Load test
 
-`LoadTestRunner` is run manually against a server that is already up, and checks explicit
-acceptance thresholds (500 concurrent TCP connections, 200 logins/s, 800 REST req/s,
-order-ack P99 under 5 ms, heap growth under 200 MB per 10k orders):
+`LoadTestRunner` runs against a server that is already up and checks the targets in the table above:
 
 ```bash
 mvn test-compile
@@ -243,83 +134,41 @@ java -cp "target/test-classes:target/classes:$(mvn -q dependency:build-classpath
     --tcp=500 --logins=100 --rest=5000 --ack-sessions=10 --ack-orders=90
 ```
 
-Results on a 16-core machine, three runs with a freshly started server each time (2026-10-08):
+On a cold server, before the JIT warms up, the order-ack P99 is 7.2–13.9 ms. The memory phase measures the
+client's heap, not the server's, so its result is not meaningful.
 
-| Metric | Result | Target |
-|---|---|---|
-| Concurrent TCP connections | 500, none refused | ≥ 500 |
-| BOE logins | 50–56/s | ≥ 200/s ❌ (BCrypt cost 12, deliberate) |
-| REST throughput (public endpoints) | 4,600–4,700 req/s | ≥ 800 req/s |
-| Order Ack P99 (900 orders, 10 sessions, all acknowledged) | 2.5–4.0 ms | < 5 ms |
-| Order Ack P99 on a cold server (latency phase only) | 7.2–13.9 ms | — |
+## Project layout
 
-The memory phase measures the client's heap, not the server's, so its result is not meaningful.
+```
+src/main/java/com/boe/simulator/
+├── protocol/        BOE message definitions and serialization
+├── server/
+│   ├── connection/  TCP sessions, login, sequencing, replay
+│   ├── matching/    Matching engine
+│   ├── order/       Order management
+│   ├── risk/        Lockouts and risk resets
+│   ├── auth/        Authentication (BCrypt)
+│   └── persistence/ RocksDB repositories
+├── bot/             Trading bots
+└── api/             REST API, WebSocket, OpenAPI docs
+```
 
----
-
-## 🔧 Technologies
-
-| Layer | Technology |
-|---|---|
-| Runtime | Java 21, Virtual Threads |
-| Build | Maven 3.9 |
-| REST API | Javalin 6.7 |
-| Persistence | RocksDB 9.11 |
-| Serialization | Jackson |
-| Security | JBCrypt, rate limiting |
-| Testing | JUnit 5, Mockito, Awaitility |
-
----
-
-## 📊 Features Checklist
-
-- [x] BOE protocol audited against spec v2.11.90 (27 message types)
-- [x] Real-time matching engine (StampedLock, optimistic reads)
-- [x] Async write-behind persistence queue
-- [x] Trading bot simulation (MM, Trend, Random)
-- [x] REST API & WebSocket
-- [x] Position tracking & P&L
-- [x] Persistent storage (RocksDB)
-- [x] Security & validation (BCrypt, rate limiting)
-- [x] Docker + cloud deployment ready
-
----
-
-## 📚 Documentation
-
-### **[📖 Full Documentation on DeepWiki →](https://deepwiki.com/YmidOrtega/TitaniumBOE-Sim/1-overview)**
-
-### In the repository
+## Documentation
 
 | Document | Content |
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Architecture, matching engine, protocol layer and design decisions |
 | [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md) | REST API and WebSocket |
-| [`docs/BOE Protocol Specification - Quick Reference.md`](<docs/BOE Protocol Specification - Quick Reference.md>) | BOE message reference, with every difference from the spec, its fix and the spec errata found |
+| [`docs/BOE Protocol Specification - Quick Reference.md`](<docs/BOE Protocol Specification - Quick Reference.md>) | BOE message reference, every difference from the spec with its fix, and the spec errata found |
 | [`SECURITY.md`](SECURITY.md) | Security policy and known unpatched advisories |
+| [DeepWiki](https://deepwiki.com/YmidOrtega/TitaniumBOE-Sim/1-overview) | Generated walkthrough of the codebase |
 
-**Not implemented:** auctions, complex orders, crosses and market-maker quotes (answered with the spec's rejects), and option series symbology: the book trades symbols like AAPL.
+Interactive API docs while the server runs: Scalar at `/api/docs`, Swagger UI at `/api/swagger`, the OpenAPI
+JSON at `/openapi`.
 
-### Interactive API Docs
+## License
 
-| Endpoint | Description |
-|---|---|
-| `http://localhost:9091/api/docs` | Scalar UI (recommended) |
-| `http://localhost:9091/api/swagger` | Swagger UI |
-| `http://localhost:9091/openapi` | OpenAPI spec (JSON) |
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **Cboe Global Markets** for the BOE protocol specification
-- **RocksDB Team** for the embedded database
+MIT. See [LICENSE](LICENSE).
 
 ---
 
