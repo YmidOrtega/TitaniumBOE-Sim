@@ -23,7 +23,7 @@ FROM eclipse-temurin:21-jre
 # Add metadata
 LABEL maintainer="yortegap7920@gmail.com"
 LABEL description="CBOE BOE Protocol Simulator"
-LABEL version="1.0.0"
+LABEL version="2.0.0"
 
 # Install curl for healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
