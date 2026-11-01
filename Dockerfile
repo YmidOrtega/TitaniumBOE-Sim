@@ -18,7 +18,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests -B
 
 # Runtime stage — Debian-based for full glibc compatibility (RocksDB JNI)
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:24-jre
 
 # Add metadata
 LABEL maintainer="yortegap7920@gmail.com"
