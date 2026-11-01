@@ -14,7 +14,7 @@
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.release>21</maven.compiler.release>
         <junit.jupiter.version>5.14.4</junit.jupiter.version>
-        <mockito.version>5.20.0</mockito.version>
+        <mockito.version>5.24.0</mockito.version>
         <jackson.version>2.21.7</jackson.version>
         
         <!-- SonarQube properties -->
